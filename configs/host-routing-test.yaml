@@ -1,0 +1,28 @@
+tenants:
+  # Legacy path-based routing (backward compatibility)
+  - name: "legacy-api"
+    path_prefix: "/api/"
+    health_interval: 10
+    services:
+      - name: "legacy-backend"
+        url: "http://httpbin.org:80"
+        health: "/status/200"
+  
+  # New host-based routing
+  - name: "modern-app"
+    domains: ["app.example.com", "www.app.example.com"]
+    health_interval: 15
+    services:
+      - name: "app-backend"
+        url: "http://httpbin.org:80"
+        health: "/status/200"
+  
+  # Hybrid routing (host + path)
+  - name: "versioned-api"
+    domains: ["api.example.com"]
+    path_prefix: "/v2/"
+    health_interval: 20
+    services:
+      - name: "api-v2-backend"
+        url: "http://httpbin.org:80"
+        health: "/status/200"
