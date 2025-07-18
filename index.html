@@ -1,76 +1,460 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Keystone Gateway</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keystone Gateway - Enterprise Reverse Proxy Infrastructure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'blue-primary': '#2563eb',
+                        'blue-secondary': '#1d4ed8',
+                        'gray-dark': '#1f2937',
+                        'gray-darker': '#111827',
+                        'gray-light': '#374151'
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
 </head>
-<body class="bg-gray-900 text-white font-sans">
+<body class="bg-white text-gray-900">
 
-  <!-- Hero -->
-  <section class="min-h-screen flex items-center justify-center text-center px-6">
-    <div>
-      <h1 class="text-4xl md:text-6xl font-bold mb-4">Keystone Gateway</h1>
-      <p class="text-xl md:text-2xl text-gray-300 mb-6">
-        Das smarte, leichtgewichtige Reverse Proxy Gateway für KMUs
-      </p>
-      <a href="#kontakt" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">Jetzt Kontakt aufnehmen</a>
-    </div>
-  </section>
+    <!-- Navigation -->
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div class="w-8 h-8 bg-blue-primary rounded flex items-center justify-center">
+                    <span class="text-white text-lg font-bold">K</span>
+                </div>
+                <span class="text-xl font-bold text-gray-900">Keystone Gateway</span>
+            </div>
+            <div class="hidden md:flex space-x-8">
+                <a href="#features" class="text-gray-600 hover:text-blue-primary transition-colors">Features</a>
+                <a href="#infrastructure" class="text-gray-600 hover:text-blue-primary transition-colors">Infrastructure</a>
+                <a href="#playground" class="text-gray-600 hover:text-blue-primary transition-colors">Playground</a>
+                <a href="#docs" class="text-gray-600 hover:text-blue-primary transition-colors">Docs</a>
+                <a href="https://github.com/ygalsk/keystone-gateway" class="bg-blue-primary text-white px-4 py-2 rounded-md hover:bg-blue-secondary transition-colors">GitHub</a>
+            </div>
+        </div>
+    </nav>
 
-  <!-- Über -->
-  <section class="bg-gray-800 py-16 px-6">
-    <div class="max-w-4xl mx-auto text-center">
-      <h2 class="text-3xl font-bold mb-4">Was ist Keystone Gateway?</h2>
-      <p class="text-gray-300 text-lg">
-        Keystone Gateway ist ein in Go entwickeltes, konfigurierbares Reverse Proxy System mit Health-Checks, Load Balancing, Multi-Tenant-Funktion und YAML-Konfiguration – optimiert für pragmatische Infrastruktur bei Agenturen & KMUs.
-      </p>
-    </div>
-  </section>
+    <!-- Hero Section -->
+    <section class="bg-gray-50 py-20">
+        <div class="max-w-7xl mx-auto px-6 text-center">
+            <h1 class="text-5xl font-bold text-gray-900 mb-6">
+                Enterprise Reverse Proxy Infrastructure
+            </h1>
+            <p class="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
+                Health-basiertes Load Balancing, Multi-Tenant-Architektur und komplette DevOps-Automatisierung. 
+                Von der Konfiguration bis zum Hetzner-Deployment – alles aus einer Hand.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="#quickstart" class="bg-blue-primary text-white px-8 py-3 rounded-md hover:bg-blue-secondary transition-colors text-lg font-medium">
+                    Quick Start
+                </a>
+                <a href="https://play.keystone-gateway.dev" class="border border-blue-primary text-blue-primary px-8 py-3 rounded-md hover:bg-blue-primary hover:text-white transition-colors text-lg font-medium">
+                    Live Demo
+                </a>
+            </div>
+        </div>
+    </section>
 
-  <!-- Features -->
-  <section class="py-16 px-6">
-    <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-10">
-      <div>
-        <h3 class="text-xl font-semibold mb-2">✅ Health-basiertes Load Balancing</h3>
-        <p class="text-gray-400">Weiterleitung nur an gesunde Backends – mit eingebauten HTTP-Checks.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">📄 YAML-Konfiguration</h3>
-        <p class="text-gray-400">Einfach, lesbar, git-versionierbar – ideal für DevOps-Workflows.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">🔁 Multi-Tenant-Routing</h3>
-        <p class="text-gray-400">Pro Tenant eigene Routen, Healthchecks und Backends – per Path-Präfix.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">🧩 Integration mit Caddy & Prometheus</h3>
-        <p class="text-gray-400">TLS & Monitoring out of the box – für professionelle Deployments.</p>
-      </div>
-    </div>
-  </section>
+    <!-- Key Features -->
+    <section id="features" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Core Features</h2>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
+                        <span class="text-white text-2xl font-bold">⚡</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Health-Based Load Balancing</h3>
+                    <p class="text-gray-600">Intelligente Lastverteilung nur an gesunde Backends mit automatischem Failover</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
+                        <span class="text-white text-2xl font-bold">🏢</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Multi-Tenant Architecture</h3>
+                    <p class="text-gray-600">Isolierte Routing-Logik pro Kunde mit flexibler Pfad-basierten Trennung</p>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
+                        <span class="text-white text-2xl font-bold">📊</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Enterprise Monitoring</h3>
+                    <p class="text-gray-600">Prometheus-Metriken, Grafana-Dashboards und Alert-Management</p>
+                </div>
+            </div>
+        </div>
+    </section>
 
-  <!-- Zielgruppe -->
-  <section class="bg-gray-800 py-16 px-6 text-center">
-    <h2 class="text-3xl font-bold mb-6">Für wen ist Keystone Gateway?</h2>
-    <p class="text-gray-300 text-lg max-w-2xl mx-auto mb-4">
-      Für Agenturen, KMUs und Startups, die moderne Infrastruktur brauchen – ohne Overhead.
-    </p>
-    <p class="text-gray-400">Keine Kubernetes-Monster. Einfach. Wartungsarm. Sicher.</p>
-  </section>
+    <!-- Infrastructure Overview -->
+    <section id="infrastructure" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Complete Infrastructure Stack</h2>
+            
+            <!-- Infrastructure Grid -->
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12">
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <h3 class="font-semibold text-lg mb-2">🚀 Core Gateway</h3>
+                    <p class="text-gray-600 text-sm mb-3">Reverse Proxy mit Health-Checks</p>
+                    <div class="text-xs text-blue-primary font-medium">keystone-gateway.dev</div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <h3 class="font-semibold text-lg mb-2">🎮 Playground</h3>
+                    <p class="text-gray-600 text-sm mb-3">Live-Demo & Testing Environment</p>
+                    <div class="text-xs text-blue-primary font-medium">play.keystone-gateway.dev</div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <h3 class="font-semibold text-lg mb-2">📖 Documentation</h3>
+                    <p class="text-gray-600 text-sm mb-3">API-Docs & Tutorials</p>
+                    <div class="text-xs text-blue-primary font-medium">docs.keystone-gateway.dev</div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <h3 class="font-semibold text-lg mb-2">📊 Grafana</h3>
+                    <p class="text-gray-600 text-sm mb-3">Monitoring & Dashboards</p>
+                    <div class="text-xs text-blue-primary font-medium">grafana.keystone-gateway.dev</div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <h3 class="font-semibold text-lg mb-2">🔧 Portainer</h3>
+                    <p class="text-gray-600 text-sm mb-3">Container Management</p>
+                    <div class="text-xs text-blue-primary font-medium">portainer.keystone-gateway.dev</div>
+                </div>
+                
+                <div class="bg-white p-6 rounded-lg border border-gray-200">
+                    <h3 class="font-semibold text-lg mb-2">🌐 Status</h3>
+                    <p class="text-gray-600 text-sm mb-3">System Health & Uptime</p>
+                    <div class="text-xs text-blue-primary font-medium">status.keystone-gateway.dev</div>
+                </div>
+            </div>
 
-  <!-- Kontakt -->
-  <section id="kontakt" class="py-16 px-6 text-center">
-    <h2 class="text-3xl font-bold mb-4">Kontakt</h2>
-    <p class="text-gray-300 mb-2">📧 kontakt@keystone-gateway.dev</p>
-    <p class="text-gray-300 mb-6">🌍 GitHub: <a class="text-blue-500 underline" href="https://github.com/ygalsk" target="_blank">ygalsk</a></p>
-    <a href="mailto:kontakt@keystone-gateway.dev" class="bg-blue-600 hover:bg-blue-700 px-5 py-3 rounded-lg font-semibold">Jetzt schreiben</a>
-  </section>
+            <!-- Roadmap -->
+            <div class="bg-white p-8 rounded-lg border border-gray-200">
+                <h3 class="text-2xl font-bold text-gray-900 mb-6">Roadmap</h3>
+                <div class="space-y-4">
+                    <div class="flex items-start space-x-3">
+                        <div class="w-2 h-2 bg-green-500 rounded-full mt-2"></div>
+                        <div>
+                            <h4 class="font-semibold">✅ Phase 1: Core Gateway (v1.1.0)</h4>
+                            <p class="text-gray-600 text-sm">Reverse Proxy mit Health-Checks und Multi-Tenant-Support</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="w-2 h-2 bg-blue-primary rounded-full mt-2"></div>
+                        <div>
+                            <h4 class="font-semibold">🚧 Phase 2: Infrastructure as Code</h4>
+                            <p class="text-gray-600 text-sm">Terraform-Module für automatisches Hetzner-Deployment</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="w-2 h-2 bg-gray-300 rounded-full mt-2"></div>
+                        <div>
+                            <h4 class="font-semibold">📋 Phase 3: Complete Monitoring Stack</h4>
+                            <p class="text-gray-600 text-sm">Grafana + Loki + Prometheus Templates für SaaS & E-Commerce</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start space-x-3">
+                        <div class="w-2 h-2 bg-gray-300 rounded-full mt-2"></div>
+                        <div>
+                            <h4 class="font-semibold">🔄 Phase 4: Backup & Recovery</h4>
+                            <p class="text-gray-600 text-sm">Automatische Backup-Strategien und Rollback-Mechanismen</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
-  <footer class="bg-gray-900 py-6 text-center text-sm text-gray-500">
-    © 2025 Keystone Gateway – Daniel Kremer, Konstanz
-  </footer>
+    <!-- Playground Section -->
+    <section id="playground" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">Live Playground</h2>
+                <p class="text-xl text-gray-600">Teste Keystone Gateway direkt in deinem Browser</p>
+            </div>
+            
+            <div class="bg-gray-50 p-8 rounded-lg">
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">🎯 Interactive Demo</h3>
+                        <ul class="space-y-2 text-gray-600">
+                            <li>• Konfiguration in Echtzeit bearbeiten</li>
+                            <li>• Health-Checks live verfolgen</li>
+                            <li>• Load Balancing testen</li>
+                            <li>• Monitoring-Metriken einsehen</li>
+                        </ul>
+                        <a href="https://play.keystone-gateway.dev" class="inline-block mt-6 bg-blue-primary text-white px-6 py-3 rounded-md hover:bg-blue-secondary transition-colors">
+                            Playground öffnen →
+                        </a>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold mb-4">🏗️ "Eat Your Own Dog Food"</h3>
+                        <p class="text-gray-600 mb-4">
+                            Keystone Gateway hostet sich selbst und alle Subdomains. Jedes Feature wird in der Live-Umgebung getestet.
+                        </p>
+                        <div class="bg-white p-4 rounded border border-gray-200">
+                            <div class="text-sm font-mono text-gray-700">
+                                <div class="text-blue-primary">play.keystone-gateway.dev</div>
+                                <div class="text-gray-500">├── Demo Environment</div>
+                                <div class="text-gray-500">├── Live Configuration</div>
+                                <div class="text-gray-500">└── Real-time Monitoring</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section id="quickstart" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Quick Start</h2>
+            
+            <div class="grid lg:grid-cols-2 gap-8">
+                <div class="bg-white p-8 rounded-lg border border-gray-200">
+                    <h3 class="text-xl font-semibold mb-4">🐳 Docker Deployment</h3>
+                    <pre class="bg-gray-900 text-gray-100 p-4 rounded text-sm overflow-x-auto"><code># Produktions-Ready Container
+docker run -d -p 8080:8080 \
+  -v $(pwd)/configs:/app/configs \
+  ygalsk/keystone-gateway:latest</code></pre>
+                </div>
+                
+                <div class="bg-white p-8 rounded-lg border border-gray-200">
+                    <h3 class="text-xl font-semibold mb-4">🔧 Development Setup</h3>
+                    <pre class="bg-gray-900 text-gray-100 p-4 rounded text-sm overflow-x-auto"><code># Repository klonen & starten
+git clone https://github.com/ygalsk/keystone-gateway.git
+cd keystone-gateway
+make test</code></pre>
+                </div>
+            </div>
+            
+            <div class="mt-8 bg-white p-8 rounded-lg border border-gray-200">
+                <h3 class="text-xl font-semibold mb-4">⚙️ Beispiel-Konfiguration</h3>
+                <pre class="bg-gray-900 text-gray-100 p-6 rounded text-sm overflow-x-auto"><code>tenants:
+  - name: "production-app"
+    path_prefix: "/app/"
+    health_interval: 30
+    services:
+      - name: "web-server"
+        url: "http://web-1.internal:8080"
+        health: "/health"
+      - name: "web-server-backup"
+        url: "http://web-2.internal:8080"
+        health: "/health"
+  - name: "staging-env"
+    path_prefix: "/staging/"
+    health_interval: 60
+    services:
+      - name: "staging-app"
+        url: "http://staging.internal:3000"
+        health: "/status"</code></pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- Documentation Links -->
+    <section id="docs" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Documentation & Resources</h2>
+            
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
+                        <span class="text-white text-2xl">📚</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">API Documentation</h3>
+                    <p class="text-gray-600 mb-4">Vollständige API-Referenz und Beispiele</p>
+                    <a href="https://docs.keystone-gateway.dev" class="text-blue-primary hover:text-blue-secondary">docs.keystone-gateway.dev →</a>
+                </div>
+                
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
+                        <span class="text-white text-2xl">📝</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">Blog & Tutorials</h3>
+                    <p class="text-gray-600 mb-4">Best Practices und Case Studies</p>
+                    <a href="https://blog.keystone-gateway.dev" class="text-blue-primary hover:text-blue-secondary">blog.keystone-gateway.dev →</a>
+                </div>
+                
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-lg mx-auto mb-4 flex items-center justify-center">
+                        <span class="text-white text-2xl">🐙</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-2">GitHub Repository</h3>
+                    <p class="text-gray-600 mb-4">Source Code, Issues und Contributions</p>
+                    <a href="https://github.com/ygalsk/keystone-gateway" class="text-blue-primary hover:text-blue-secondary">github.com/ygalsk/keystone-gateway →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture -->
+    <section class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-12">Enterprise Architecture</h2>
+            
+            <div class="bg-white p-8 rounded-lg border border-gray-200">
+                <div class="text-center mb-8">
+                    <h3 class="text-xl font-semibold mb-4">Production-Ready Stack</h3>
+                    <div class="flex flex-wrap justify-center items-center gap-4 text-sm">
+                        <div class="bg-gray-100 px-3 py-1 rounded">Internet</div>
+                        <div class="text-gray-400">→</div>
+                        <div class="bg-blue-100 px-3 py-1 rounded">Cloudflare</div>
+                        <div class="text-gray-400">→</div>
+                        <div class="bg-blue-primary text-white px-3 py-1 rounded">Keystone Gateway</div>
+                        <div class="text-gray-400">→</div>
+                        <div class="bg-gray-100 px-3 py-1 rounded">Backend Services</div>
+                    </div>
+                </div>
+                
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="text-center">
+                        <h4 class="font-semibold mb-2">🏗️ Infrastructure</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li>Hetzner Cloud</li>
+                            <li>Docker Swarm</li>
+                            <li>Terraform IaC</li>
+                            <li>Automated Backups</li>
+                        </ul>
+                    </div>
+                    <div class="text-center">
+                        <h4 class="font-semibold mb-2">📊 Monitoring</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li>Prometheus Metrics</li>
+                            <li>Grafana Dashboards</li>
+                            <li>Loki Log Aggregation</li>
+                            <li>Alert Management</li>
+                        </ul>
+                    </div>
+                    <div class="text-center">
+                        <h4 class="font-semibold mb-2">🔒 Security</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li>TLS Termination</li>
+                            <li>Rate Limiting</li>
+                            <li>Health Checks</li>
+                            <li>Fail-safe Routing</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact & Support -->
+    <section class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-12">
+                <h2 class="text-3xl font-bold text-gray-900 mb-4">Enterprise Support</h2>
+                <p class="text-xl text-gray-600">Professionelle Unterstützung für Ihre Infrastruktur</p>
+            </div>
+            
+            <div class="grid md:grid-cols-2 gap-8">
+                <div class="bg-gray-50 p-8 rounded-lg">
+                    <h3 class="text-xl font-semibold mb-4">📧 Direkter Kontakt</h3>
+                    <p class="text-gray-600 mb-4">
+                        Entwickelt von Daniel Kremer, einem erfahrenen DevOps-Engineer aus der Praxis für die Praxis.
+                    </p>
+                    <div class="space-y-2">
+                        <div class="flex items-center space-x-3">
+                            <span class="text-blue-primary">✉️</span>
+                            <a href="mailto:kontakt@keystone-gateway.dev" class="text-blue-primary hover:text-blue-secondary">kontakt@keystone-gateway.dev</a>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <span class="text-blue-primary">🐙</span>
+                            <a href="https://github.com/ygalsk" class="text-blue-primary hover:text-blue-secondary">GitHub: @ygalsk</a>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-blue-primary text-white p-8 rounded-lg">
+                    <h3 class="text-xl font-semibold mb-4">🚀 Production Ready</h3>
+                    <p class="mb-4">
+                        Keystone Gateway ist bereit für den Produktionseinsatz. Starten Sie noch heute mit einer bewährten Lösung.
+                    </p>
+                    <a href="https://github.com/ygalsk/keystone-gateway" class="inline-block bg-white text-blue-primary px-6 py-3 rounded-md hover:bg-gray-100 transition-colors font-medium">
+                        Jetzt starten →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-darker text-white py-12">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <div class="w-8 h-8 bg-blue-primary rounded flex items-center justify-center">
+                            <span class="text-white text-lg font-bold">K</span>
+                        </div>
+                        <span class="text-xl font-bold">Keystone Gateway</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Enterprise Reverse Proxy Infrastructure für moderne DevOps-Teams</p>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-3">Product</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="#features" class="hover:text-white">Features</a></li>
+                        <li><a href="https://play.keystone-gateway.dev" class="hover:text-white">Playground</a></li>
+                        <li><a href="https://docs.keystone-gateway.dev" class="hover:text-white">Documentation</a></li>
+                        <li><a href="https://status.keystone-gateway.dev" class="hover:text-white">Status</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-3">Infrastructure</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="https://grafana.keystone-gateway.dev" class="hover:text-white">Monitoring</a></li>
+                        <li><a href="https://portainer.keystone-gateway.dev" class="hover:text-white">Container Management</a></li>
+                        <li><a href="https://api.keystone-gateway.dev" class="hover:text-white">API</a></li>
+                        <li><a href="https://metrics.keystone-gateway.dev" class="hover:text-white">Metrics</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-3">Support</h4>
+                    <ul class="space-y-2 text-sm text-gray-400">
+                        <li><a href="https://blog.keystone-gateway.dev" class="hover:text-white">Blog</a></li>
+                        <li><a href="https://github.com/ygalsk/keystone-gateway/issues" class="hover:text-white">Issues</a></li>
+                        <li><a href="mailto:kontakt@keystone-gateway.dev" class="hover:text-white">Contact</a></li>
+                        <li><a href="https://github.com/ygalsk/keystone-gateway" class="hover:text-white">GitHub</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-sm text-gray-400">
+                <p>&copy; 2025 Keystone Gateway. Made with ❤️ in Konstanz, Germany.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
 
 </body>
 </html>
