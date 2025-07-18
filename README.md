@@ -42,8 +42,6 @@ Keystone Gateway ist eine intelligente Reverse-Proxy-Lösung, die speziell für 
 
 ## 🚀 Quick Start
 
-## 🚀 Quick Start
-
 ### Installation & Start
 
 ```bash
