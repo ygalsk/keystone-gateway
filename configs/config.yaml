@@ -1,0 +1,17 @@
+tenants:
+  - name: "acme-agency"
+    path_prefix: "/acme/"
+    health_interval: 10 # seconds
+    services:
+      - name: "webapp"
+        url: "http://test-backend-1:80"
+        health: "/health"
+      - name: "webapp2"
+        url: "http://test-backend-2:80"
+        health: "/health"
+  - name: "beta-shop"
+    path_prefix: "/beta/"
+    services:
+      - name: "shop"
+        url: "http://test-backend-3:80"
+        health: "/status"

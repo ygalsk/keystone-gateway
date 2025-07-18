@@ -1,0 +1,4 @@
+:80 {
+    respond /health "Backend 2 healthy"
+    respond * "Hello from ACME Backend 2"
+}

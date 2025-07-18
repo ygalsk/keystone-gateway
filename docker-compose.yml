@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  keystone-gateway:
+    image: keystone-gateway:latest
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs:/app/configs:ro
+    environment:
+      - TZ=Europe/Berlin
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/acme/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+    networks:
+      - gateway-network
+
+  # Test backend services for development/testing
+  test-backend-1:
+    image: caddy:2-alpine
+    volumes:
+      - ./test-data/Caddyfile1:/etc/caddy/Caddyfile:ro
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - gateway-network
+
+  test-backend-2:
+    image: caddy:2-alpine
+    volumes:
+      - ./test-data/Caddyfile2:/etc/caddy/Caddyfile:ro
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - gateway-network
+
+  test-backend-3:
+    image: caddy:2-alpine
+    volumes:
+      - ./test-data/Caddyfile3:/etc/caddy/Caddyfile:ro
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - gateway-network
+
+networks:
+  gateway-network:
+    driver: overlay
+    attachable: true

@@ -1,0 +1,818 @@
+diff --git a/.gitignore b/.gitignore
+new file mode 100644
+index 0000000..f001c4a
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,60 @@
++# Binaries for programs and plugins
++*.exe
++*.exe~
++*.dll
++*.so
++*.dylib
++
++# Test binary, built with `go test -c`
++*.test
++
++# Output of the go coverage tool, specifically when used with LiteIDE
++*.out
++
++# Dependency directories (remove the comment below to include it)
++# vendor/
++
++# Go workspace file
++go.work
++
++# Build artifacts
++/keystone-gateway
++/dist/
++/build/
++
++# Configuration files with sensitive data
++*.env
++*.env.local
++*.env.production
++.env*
++
++# Log files
++*.log
++logs/
++
++# IDE files
++.vscode/
++.idea/
++*.swp
++*.swo
++*~
++
++# OS files
++.DS_Store
++.DS_Store?
++._*
++.Spotlight-V100
++.Trashes
++ehthumbs.db
++Thumbs.db
++
++# Temporary files
++*.tmp
++*.temp
++
++# Docker
++.dockerignore
++
++# Local development
++/tmp/
++/temp/
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..c9c47af
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,85 @@
++# Multi-stage build with hardened Alpine Linux
++FROM golang:1.22-alpine3.19 AS builder
++
++# Install build dependencies and security updates
++RUN apk add --no-cache \
++    git \
++    ca-certificates \
++    tzdata \
++    upx \
++    && apk upgrade --no-cache
++
++# Create non-root user for build
++RUN adduser -D -g '' appuser
++
++WORKDIR /build
++
++# Copy go mod files for dependency caching
++COPY go.mod go.sum ./
++RUN go mod download && go mod verify
++
++# Copy source code
++COPY . .
++
++# Build with security hardening flags
++RUN CGO_ENABLED=0 \
++    GOOS=linux \
++    GOARCH=amd64 \
++    go build \
++    -a \
++    -installsuffix cgo \
++    -ldflags='-w -s -extldflags "-static"' \
++    -o keystone-gateway \
++    main.go
++
++# Compress binary (optional, saves ~30% size)
++RUN upx --best --lzma keystone-gateway
++
++# Final stage - Hardened Alpine
++FROM alpine:3.19
++
++# Install security updates and minimal runtime dependencies
++RUN apk --no-cache upgrade && \
++    apk --no-cache add \
++    ca-certificates \
++    tzdata \
++    dumb-init \
++    wget \
++    && rm -rf /var/cache/apk/*
++
++# Create non-root user
++RUN addgroup -g 1001 -S appgroup && \
++    adduser -u 1001 -S appuser -G appgroup
++
++# Create app directory with proper permissions
++RUN mkdir -p /app/configs && \
++    chown -R appuser:appgroup /app
++
++# Switch to non-root user
++USER appuser
++
++WORKDIR /app
++
++# Copy binary and configs from builder
++COPY --from=builder --chown=appuser:appgroup /build/keystone-gateway .
++COPY --from=builder --chown=appuser:appgroup /build/configs ./configs
++
++# Health check
++HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
++    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
++
++# Security: Run as non-root, use dumb-init for signal handling
++ENTRYPOINT ["/usr/bin/dumb-init", "--"]
++CMD ["./keystone-gateway", "-config", "configs/config.yaml"]
++
++# Expose port
++EXPOSE 8080
++
++# Labels for better maintainability
++LABEL maintainer="kontakt@keystone-gateway.dev" \
++      org.opencontainers.image.title="Keystone Gateway" \
++      org.opencontainers.image.description="Smart Reverse Proxy Gateway for SMBs" \
++      org.opencontainers.image.url="https://github.com/ygalsk/keystone-gateway" \
++      org.opencontainers.image.source="https://github.com/ygalsk/keystone-gateway" \
++      org.opencontainers.image.vendor="Keystone Gateway Team" \
++      org.opencontainers.image.licenses="MIT"
+diff --git a/Makefile b/Makefile
+new file mode 100644
+index 0000000..70400a1
+--- /dev/null
++++ b/Makefile
+@@ -0,0 +1,59 @@
++# Keystone Gateway
++APP_NAME := keystone-gateway
++STACK_NAME := keystone
++
++.PHONY: help build start test stop logs status clean
++
++help:
++	@echo "Keystone Gateway Commands:"
++	@echo "  build   - Build the application"
++	@echo "  start   - Deploy gateway stack"
++	@echo "  test    - Deploy and test endpoints"
++	@echo "  stop    - Remove the stack"
++	@echo "  logs    - Show service logs"
++	@echo "  status  - Show stack status"
++	@echo "  clean   - Clean up everything"
++
++build:
++	docker build -t $(APP_NAME):latest .
++
++start: build
++	docker swarm init 2>/dev/null || true
++	docker stack deploy -c docker-compose.yml $(STACK_NAME)
++
++test: build
++	docker swarm init 2>/dev/null || true
++	docker stack deploy -c docker-compose.yml $(STACK_NAME)
++	@echo "Waiting for services to start..."
++	@sleep 15
++	@echo ""
++	@echo "=== Testing Keystone Gateway ==="
++	@echo "Root (should return 404):"
++	@curl -s -o /dev/null -w "  Status: %{http_code}\n" http://localhost:8080/ || echo "  Connection failed"
++	@echo ""
++	@echo "ACME tenant:"
++	@echo -n "  Service: "
++	@curl -s http://localhost:8080/acme/ 2>/dev/null || echo "Not responding"
++	@echo -n "  Health: "
++	@curl -s http://localhost:8080/acme/health 2>/dev/null || echo "Not responding"
++	@echo ""
++	@echo "Beta tenant:"
++	@echo -n "  Service: "
++	@curl -s http://localhost:8080/beta/ 2>/dev/null || echo "Not responding"
++	@echo -n "  Status: "
++	@curl -s http://localhost:8080/beta/status 2>/dev/null || echo "Not responding"
++	@echo ""
++	@echo "✅ End-to-end test completed"
++
++stop:
++	docker stack rm $(STACK_NAME)
++
++logs:
++	docker service logs -f $(STACK_NAME)_keystone-gateway
++
++status:
++	docker stack services $(STACK_NAME)
++
++clean: stop
++	docker image rm $(APP_NAME):latest 2>/dev/null || true
++	docker system prune -f
+diff --git a/README.md b/README.md
+index d1d1015..6aa3d3b 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1,232 @@
+-# keystone-gateway
++# Keystone Gateway 🚀
++
++**Das smarte Reverse Proxy-Gateway für KMUs**
++
++Ein leichtgewichtiges, in Go geschriebenes Reverse-Proxy-System mit Health-basiertem Load Balancing und Multi-Tenant-Unterstützung – perfekt für Agenturen, KMUs & DevOps-Teams.
++
++## 🔧 Was ist Keystone Gateway?
++
++Keystone Gateway ist eine intelligente Reverse-Proxy-Lösung, die speziell für kleine und mittlere Unternehmen entwickelt wurde. Es bietet erweiterte Funktionen wie Health-Checks und Multi-Tenant-Unterstützung in einem einfach zu konfigurierenden Paket.
++
++## 💡 Hauptfunktionen auf einen Blick
++
++### 🔁 Health-basiertes Load Balancing
++- Verteilt Anfragen nur an gesunde Backends (regelmäßige HTTP-Checks)
++- Keine Downtime durch kranke Services
++- Automatisches Failover bei Service-Ausfällen
++
++### 🏢 Multi-Tenant-Unterstützung
++- Strukturierte Trennung pro Kunde/Mandant
++- Routing nach Pfadpräfix (z. B. `/kunde1/`, `/agenturX/`)
++- Isolierte Service-Konfiguration pro Tenant
++
++### 📄 Einfache YAML-Konfiguration
++- Kein komplizierter Caddyfile oder JSON
++- Klar & lesbar – ideal für DevOps-Automation
++- Hot-Reload von Konfigurationsänderungen
++
++### ⚙️ In Go entwickelt – Docker-ready
++- Schnell, portabel, minimaler Ressourcenverbrauch
++- Lässt sich einfach in bestehende Setups integrieren
++- Single Binary ohne externe Abhängigkeiten
++
++### 📊 Monitoring mit Prometheus (optional)
++- Export von Metriken zu Health-Status & Traffic
++- Ideal für Grafana & Alerting
++- Detaillierte Performance-Überwachung
++
++### 🧩 Ideal in Kombination mit Caddy
++- Caddy als TLS-fähiger Entry Proxy
++- Keystone übernimmt internes, intelligentes Routing
++- Beste Performance durch spezialisierte Aufgabenteilung
++
++## 🚀 Quick Start
++
++## 🚀 Quick Start
++
++### Installation & Start
++
++```bash
++# Repository klonen
++git clone https://github.com/ygalsk/keystone-gateway.git
++cd keystone-gateway
++
++# Build und Start
++make build
++make start
++
++# Mit Test-Backends
++make test
++```
++
++## 🛠️ Makefile Commands
++
++Simple commands for Docker Swarm deployment:
++
++```bash
++make help      # Available commands
++make build     # Build the application
++make start     # Deploy gateway stack
++make test      # Deploy with test backends
++make stop      # Remove the stack
++make logs      # Show service logs
++make status    # Show stack status
++make clean     # Clean up everything
++```
++
++## 📖 Verwendung
++
++### Routing-Beispiele
++
++- `http://localhost:8080/acme/` → Routes zu acme-agency Services
++- `http://localhost:8080/beta/` → Routes zu beta-shop Services
++
++### Health-Checks
++
++Das Gateway überwacht automatisch die konfigurierten Health-Endpoints:
++- `/health` für acme-agency Services (alle 10 Sekunden)
++- `/status` für beta-shop Services
++
++## 🏗️ Architektur
++
++```
++Internet → Caddy (TLS) → Keystone Gateway → Backend Services
++                              ↓
++                        Health Monitoring
++                              ↓
++                        Load Balancing Logic
++```
++
++## ✅ Warum Keystone Gateway statt nur Caddy oder NGINX?
++
++| Feature | Caddy/NGINX | Keystone Gateway |
++|---------|-------------|------------------|
++| Health-basierte Entscheidungen | ❌ | ✅ |
++| Multi-Tenant-Logik | ❌ | ✅ |
++| Einfache Konfiguration | ⚠️ | ✅ |
++| Go-Performance | ❌ | ✅ |
++| Speziell für KMUs | ❌ | ✅ |
++
++**Keystone Gateway**: intelligent, modular, einfach konfigurierbar – speziell für kleine Teams & pragmatische Projekte.
++
++## 🔧 Konfigurationsoptionen
++
++### Tenant-Konfiguration
++
++```yaml
++tenants:
++  - name: "tenant-name"           # Eindeutiger Tenant-Name
++    path_prefix: "/prefix/"       # URL-Präfix für Routing
++    health_interval: 30           # Health-Check Intervall in Sekunden
++    services:
++      - name: "service-name"      # Service-Bezeichnung
++        url: "http://host:port"   # Backend-URL
++        health: "/health"         # Health-Check Endpoint
++```
++
++## 🐳 Docker Support
++
++### Fertiges Docker Image von Docker Hub
++
++```bash
++# Neueste Version direkt verwenden
++docker run -d -p 8080:8080 \
++  -v $(pwd)/configs:/app/configs \
++  ygalsk/keystone-gateway:latest
++
++# Spezifische Version
++docker run -d -p 8080:8080 \
++  -v $(pwd)/configs:/app/configs \
++  ygalsk/keystone-gateway:v1.0
++```
++
++### Selbst bauen (Multi-Stage Alpine Dockerfile)
++
++```bash
++# Docker Image bauen (mit Makefile - empfohlen)
++make docker-build
++
++# Container starten
++make docker-run
++
++# Oder manuell:
++docker build -t keystone-gateway .
++docker run -d -p 8080:8080 \
++  -v $(pwd)/configs:/app/configs \
++  keystone-gateway
++
++# Debug-Zugang (Alpine-Vorteil)
++make docker-shell
++# oder: docker exec -it keystone-gateway-dev sh
++```
++
++### Docker Compose (Empfohlen für Development)
++
++```yaml
++version: '3.8'
++services:
++  keystone-gateway:
++    image: ygalsk/keystone-gateway:latest
++    # build: .  # Uncomment um lokal zu bauen
++    ports:
++      - "8080:8080"
++    volumes:
++      - ./configs:/app/configs:ro
++    restart: unless-stopped
++    environment:
++      - LOG_LEVEL=info
++    healthcheck:
++      test: ["CMD", "wget", "--quiet", "--spider", "http://localhost:8080/health"]
++      interval: 30s
++      timeout: 10s
++      retries: 3
++      start_period: 40s
++```
++
++### 🔒 Alpine vs Distroless - Warum Alpine?
++
++| Feature | Alpine Linux | Distroless |
++|---------|-------------|------------|
++| **Debugging** | ✅ Shell-Zugang für Troubleshooting | ❌ Kein Shell |
++| **Flexibilität** | ✅ Runtime-Tools installierbar | ❌ Statische Runtime |
++| **Monitoring** | ✅ Einfache Agent-Installation | ❌ Kompliziert |
++| **DevOps-Friendly** | ✅ Bekannte Linux-Tools | ❌ Eingeschränkt |
++| **Sicherheit** | ✅ Regelmäßige Updates | ✅ Minimal Surface |
++| **Image-Größe** | ~8MB final | ~5MB final |
++
++**Unsere Alpine-Implementation bietet:**
++- 🛡️ **Hardened Security**: Non-root User, dumb-init, minimal packages
++- 🔧 **Debug-Freundlich**: Shell-Zugang für Produktions-Troubleshooting  
++- 📦 **Optimiert**: UPX-komprimierte Binary, Layer-Caching
++- 🏥 **Health-Checks**: Integrierte Container-Gesundheitsprüfung
++- ⚡ **Performance**: Aktuelle Go 1.22 + Alpine 3.19
++
++## 📈 Monitoring & Metriken
++
++Keystone Gateway exportiert Prometheus-Metriken für:
++- Request-Anzahl pro Tenant/Service
++- Response-Zeiten
++- Health-Check Status
++- Error-Rates
++
++## 🤝 Contributing
++
++1. Fork das Repository
++2. Erstelle einen Feature-Branch (`git checkout -b feature/AmazingFeature`)
++3. Committe deine Änderungen (`git commit -m 'Add some AmazingFeature'`)
++4. Push zum Branch (`git push origin feature/AmazingFeature`)
++5. Öffne eine Pull Request
++
++## 📝 Lizenz
++
++Dieses Projekt steht unter der MIT-Lizenz. Siehe `LICENSE` Datei für Details.
++
++## 🆘 Support
++
++- 📧 Email: kontakt@keystone-gateway.dev
++- 🐛 Issues: [GitHub Issues](https://github.com/ygalsk/keystone-gateway/issues)
++- 📖 Dokumentation: [Wiki](https://github.com/ygalsk/keystone-gateway/wiki)
++
++---
++
++**Made with ❤️ for the DevOps Community**
+diff --git a/configs/config.yaml b/configs/config.yaml
+new file mode 100644
+index 0000000..1af0118
+--- /dev/null
++++ b/configs/config.yaml
+@@ -0,0 +1,17 @@
++tenants:
++  - name: "acme-agency"
++    path_prefix: "/acme/"
++    health_interval: 10 # seconds
++    services:
++      - name: "webapp"
++        url: "http://test-backend-1:80"
++        health: "/health"
++      - name: "webapp2"
++        url: "http://test-backend-2:80"
++        health: "/health"
++  - name: "beta-shop"
++    path_prefix: "/beta/"
++    services:
++      - name: "shop"
++        url: "http://test-backend-3:80"
++        health: "/status"
+\ No newline at end of file
+diff --git a/docker-compose.yml b/docker-compose.yml
+new file mode 100644
+index 0000000..8b57d73
+--- /dev/null
++++ b/docker-compose.yml
+@@ -0,0 +1,67 @@
++version: '3.8'
++
++services:
++  keystone-gateway:
++    image: keystone-gateway:latest
++    build: .
++    ports:
++      - "8080:8080"
++    volumes:
++      - ./configs:/app/configs:ro
++    environment:
++      - TZ=Europe/Berlin
++    healthcheck:
++      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/acme/"]
++      interval: 30s
++      timeout: 10s
++      retries: 3
++      start_period: 10s
++    deploy:
++      replicas: 1
++      restart_policy:
++        condition: on-failure
++      update_config:
++        parallelism: 1
++        delay: 10s
++        failure_action: rollback
++    networks:
++      - gateway-network
++
++  # Test backend services for development/testing
++  test-backend-1:
++    image: caddy:2-alpine
++    volumes:
++      - ./test-data/Caddyfile1:/etc/caddy/Caddyfile:ro
++    deploy:
++      replicas: 1
++      restart_policy:
++        condition: on-failure
++    networks:
++      - gateway-network
++
++  test-backend-2:
++    image: caddy:2-alpine
++    volumes:
++      - ./test-data/Caddyfile2:/etc/caddy/Caddyfile:ro
++    deploy:
++      replicas: 1
++      restart_policy:
++        condition: on-failure
++    networks:
++      - gateway-network
++
++  test-backend-3:
++    image: caddy:2-alpine
++    volumes:
++      - ./test-data/Caddyfile3:/etc/caddy/Caddyfile:ro
++    deploy:
++      replicas: 1
++      restart_policy:
++        condition: on-failure
++    networks:
++      - gateway-network
++
++networks:
++  gateway-network:
++    driver: overlay
++    attachable: true
+diff --git a/go.mod b/go.mod
+new file mode 100644
+index 0000000..8434b89
+--- /dev/null
++++ b/go.mod
+@@ -0,0 +1,5 @@
++module keystone-gateway
++
++go 1.19
++
++require gopkg.in/yaml.v3 v3.0.1
+diff --git a/go.sum b/go.sum
+new file mode 100644
+index 0000000..a62c313
+--- /dev/null
++++ b/go.sum
+@@ -0,0 +1,4 @@
++gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=
++gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
++gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
++gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+diff --git a/main.go b/main.go
+new file mode 100644
+index 0000000..e3af8e6
+--- /dev/null
++++ b/main.go
+@@ -0,0 +1,203 @@
++package main
++
++import (
++    "flag"
++    "log"
++    "net/http"
++    "net/http/httputil"
++    "net/url"
++    "os"
++    "strings"
++    "sync/atomic"
++    "time"
++
++    "gopkg.in/yaml.v3"
++)
++
++// -------------------------
++// Configuration structures
++// -------------------------
++
++type Config struct {
++    Tenants []Tenant `yaml:"tenants"`
++}
++
++type Tenant struct {
++    Name       string    `yaml:"name"`
++    PathPrefix string    `yaml:"path_prefix"` // e.g. "/acme/"
++    Interval   int       `yaml:"health_interval"` // seconds, optional (default 10)
++    Services   []Service `yaml:"services"`
++}
++
++type Service struct {
++    Name   string `yaml:"name"`
++    URL    string `yaml:"url"`    // e.g. "http://127.0.0.1:8080"
++    Health string `yaml:"health"` // e.g. "/health" (relative)
++}
++
++// -------------------------
++// Runtime backend object
++// -------------------------
++
++type backend struct {
++    url   *url.URL
++    alive atomic.Bool
++}
++
++type tenantRouter struct {
++    backends []*backend
++    rr       uint64 // round‑robin counter
++}
++
++// -------------------------
++// Load YAML configuration
++// -------------------------
++
++func loadConfig(path string) (*Config, error) {
++    f, err := os.ReadFile(path)
++    if err != nil {
++        return nil, err
++    }
++    var cfg Config
++    if err := yaml.Unmarshal(f, &cfg); err != nil {
++        return nil, err
++    }
++    return &cfg, nil
++}
++
++// -------------------------
++// Health checking
++// -------------------------
++
++func startHealthChecks(t Tenant, router *tenantRouter) {
++    interval := time.Duration(t.Interval) * time.Second
++    if interval == 0 {
++        interval = 10 * time.Second
++    }
++    go func() {
++        ticker := time.NewTicker(interval)
++        defer ticker.Stop()
++        for {
++            for i, svc := range t.Services {
++                b := router.backends[i]
++                target := svc.URL + "/" + strings.TrimPrefix(svc.Health, "/")
++                client := http.Client{Timeout: 3 * time.Second}
++                resp, err := client.Get(target)
++                if err != nil || resp.StatusCode >= 400 {
++                    b.alive.Store(false)
++                } else {
++                    b.alive.Store(true)
++                }
++                if resp != nil {
++                    resp.Body.Close()
++                }
++            }
++            <-ticker.C
++        }
++    }()
++}
++
++// -------------------------
++// Reverse proxy logic
++// -------------------------
++
++func (tr *tenantRouter) nextBackend() *backend {
++    total := len(tr.backends)
++    if total == 0 {
++        return nil
++    }
++    for i := 0; i < total; i++ {
++        idx := int(atomic.AddUint64(&tr.rr, 1) % uint64(total))
++        b := tr.backends[idx]
++        if b.alive.Load() {
++            return b
++        }
++    }
++    // fallback: return first even if unhealthy
++    return tr.backends[0]
++}
++
++// -------------------------
++// HTTP handler
++// -------------------------
++
++func makeHandler(routers map[string]*tenantRouter) http.HandlerFunc {
++    return func(w http.ResponseWriter, r *http.Request) {
++        // Match tenant by longest prefix
++        var matched *tenantRouter
++        var matchedPrefix string
++        for prefix, rt := range routers {
++            if strings.HasPrefix(r.URL.Path, prefix) {
++                if len(prefix) > len(matchedPrefix) {
++                    matchedPrefix = prefix
++                    matched = rt
++                }
++            }
++        }
++        if matched == nil {
++            http.NotFound(w, r)
++            return
++        }
++        backend := matched.nextBackend()
++        if backend == nil {
++            http.Error(w, "no backend available", http.StatusBadGateway)
++            return
++        }
++        proxy := httputil.NewSingleHostReverseProxy(backend.url)
++        // Rewrite path: strip tenant prefix
++        originalPrefix := matchedPrefix
++        proxy.Director = func(req *http.Request) {
++            req.URL.Scheme = backend.url.Scheme
++            req.URL.Host = backend.url.Host
++            req.URL.Path = strings.TrimPrefix(req.URL.Path, originalPrefix)
++            if backend.url.RawQuery == "" || req.URL.RawQuery == "" {
++                req.URL.RawQuery = backend.url.RawQuery + req.URL.RawQuery
++            } else {
++                req.URL.RawQuery = backend.url.RawQuery + "&" + req.URL.RawQuery
++            }
++        }
++        proxy.ServeHTTP(w, r)
++    }
++}
++
++// -------------------------
++// Main
++// -------------------------
++
++func main() {
++    cfgPath := flag.String("config", "config.yaml", "path to YAML config")
++    addr := flag.String("addr", ":8080", "listen address")
++    flag.Parse()
++
++    cfg, err := loadConfig(*cfgPath)
++    if err != nil {
++        log.Fatalf("failed to load config: %v", err)
++    }
++
++    routers := make(map[string]*tenantRouter)
++
++    for _, t := range cfg.Tenants {
++        tr := &tenantRouter{}
++        for _, svc := range t.Services {
++            u, err := url.Parse(svc.URL)
++            if err != nil {
++                log.Fatalf("invalid service url: %v", err)
++            }
++            b := &backend{url: u}
++            // assume unhealthy until first check
++            b.alive.Store(false)
++            tr.backends = append(tr.backends, b)
++        }
++        routers[t.PathPrefix] = tr
++        // start health checks per tenant
++        startHealthChecks(t, tr)
++        log.Printf("tenant %s loaded with %d service(s)", t.Name, len(tr.backends))
++    }
++
++    http.HandleFunc("/", makeHandler(routers))
++
++    log.Printf("Keystone Gateway listening on %s", *addr)
++    if err := http.ListenAndServe(*addr, nil); err != nil {
++        log.Fatal(err)
++    }
++}
+\ No newline at end of file
+diff --git a/test-data/Caddyfile1 b/test-data/Caddyfile1
+new file mode 100644
+index 0000000..04375a5
+--- /dev/null
++++ b/test-data/Caddyfile1
+@@ -0,0 +1,4 @@
++:80 {
++    respond /health "Backend 1 healthy"
++    respond * "Hello from ACME Backend 1"
++}
+diff --git a/test-data/Caddyfile2 b/test-data/Caddyfile2
+new file mode 100644
+index 0000000..462bb43
+--- /dev/null
++++ b/test-data/Caddyfile2
+@@ -0,0 +1,4 @@
++:80 {
++    respond /health "Backend 2 healthy"
++    respond * "Hello from ACME Backend 2"
++}
+diff --git a/test-data/Caddyfile3 b/test-data/Caddyfile3
+new file mode 100644
+index 0000000..beddb8f
+--- /dev/null
++++ b/test-data/Caddyfile3
+@@ -0,0 +1,4 @@
++:80 {
++    respond /status "Backend 3 healthy"
++    respond * "Hello from Beta Shop Backend"
++}
