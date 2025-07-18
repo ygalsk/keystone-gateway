@@ -1,6 +1,6 @@
 # Keystone Gateway Documentation
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Author:** Daniel Kremer  
 **Website:** https://keystone-gateway.dev
 
@@ -9,19 +9,27 @@
 1. [Überblick](#überblick)
 2. [Installation](#installation)
 3. [Konfiguration](#konfiguration)
-4. [Deployment](#deployment)
-5. [Monitoring](#monitoring)
-6. [Troubleshooting](#troubleshooting)
-7. [API Referenz](#api-referenz)
-8. [Best Practices](#best-practices)
-9. [Beispiele](#beispiele)
-10. [FAQ](#faq)
+4. [Host-Based Routing](#host-based-routing)
+5. [Deployment](#deployment)
+6. [Monitoring](#monitoring)
+7. [Troubleshooting](#troubleshooting)
+8. [API Referenz](#api-referenz)
+9. [Best Practices](#best-practices)
+10. [Beispiele](#beispiele)
+11. [FAQ](#faq)
 
 ---
 
 ## 🚀 Überblick
 
-Keystone Gateway ist ein intelligenter Reverse Proxy, der speziell für KMUs entwickelt wurde. Es kombiniert die Einfachheit von traditionellen Proxies mit erweiterten Features wie Health-Checks und Multi-Tenant-Unterstützung.
+Keystone Gateway ist ein intelligenter Reverse Proxy, der speziell für KMUs entwickelt wurde. Es kombiniert die Einfachheit von traditionellen Proxies mit erweiterten Features wie Health-Checks, Multi-Tenant-Unterstützung und **Host-Based Routing**.
+
+### ✨ Neue Features in v1.2.0
+
+- **🌐 Host-Based Routing**: Route basierend auf Domain/Hostname
+- **🔗 Hybrid Routing**: Kombiniere Host- und Path-basiertes Routing
+- **📋 Multi-Domain Support**: Mehrere Domains pro Tenant
+- **🔄 100% Backward Compatible**: Bestehende Konfigurationen funktionieren unverändert
 
 ### Warum Keystone Gateway?
 
@@ -30,13 +38,14 @@ Keystone Gateway ist ein intelligenter Reverse Proxy, der speziell für KMUs ent
 - **🔧 Einfach**: YAML-Konfiguration, keine Scripting-Sprachen
 - **🏥 Zuverlässig**: Health-basiertes Load Balancing
 - **🏢 Multi-Tenant**: Perfekt für Agenturen
+- **🌐 Flexibles Routing**: Path-, Host- und Hybrid-Routing
 
 ### Architektur
 
 ```
 Internet → TLS-Proxy (Caddy/Nginx) → Keystone Gateway → Backend Services
                                            ↓
-                                    Health Monitoring
+                    Host/Path/Hybrid Routing + Health Monitoring
                                            ↓
                                     Load Balancing
 ```
