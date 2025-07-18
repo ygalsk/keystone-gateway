@@ -1,83 +1,77 @@
-# Keystone Gateway Version Feature Matrix
+# Keystone Gateway Version Matrix
 
-## 📋 **Quick Reference: v1.2.0 → v1.3.0**
+**Feature evolution aligned with our simplicity-first philosophy**
 
-| Feature | v1.2.0 | v1.2.1 | v1.2.2 | v1.2.3 | v1.3.0 |
-|---------|--------|--------|--------|--------|--------|
-| **Performance (req/sec)** | 159 | 200+ | 260+ | 320+ | 500+ |
-| **Host-based routing** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Hybrid routing** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Path-based routing** | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Connection pooling** | ❌ | ✅ | ✅ | ✅ | ✅ |
-| **Response caching** | ❌ | ❌ | ✅ | ✅ | ✅ |
-| **Gzip compression** | ❌ | ❌ | ✅ | ✅ | ✅ |
-| **Advanced pooling** | ❌ | ❌ | ❌ | ✅ | ✅ |
-| **Wildcard domains** | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Middleware system** | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Built-in metrics** | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Advanced health checks** | ❌ | ❌ | ❌ | ❌ | ✅ |
-| **Single-file architecture** | ✅ | ✅ | ✅ | ✅ | ⚠️* |
+## 📋 **Quick Reference: Current → Future**
 
-*v1.3.0 may optionally split into minimal modules if >1000 lines
+| Feature | v1.2.0 | v1.2.1 | v1.2.2 | v1.3.0 |
+|---------|--------|--------|--------|--------|
+| **Performance (req/sec)** | 159 | 300+ | 400+ | 500+ |
+| **Router** | stdlib | Chi | Chi | Chi |
+| **Host routing** | ✅ | ✅ | ✅ | ✅ |
+| **Path routing** | ✅ | ✅ | ✅ | ✅ |
+| **Hybrid routing** | ✅ | ✅ | ✅ | ✅ |
+| **Wildcard domains** | ❌ | ❌ | ✅ | ✅ |
+| **Metrics endpoint** | ❌ | ❌ | ✅ | ✅ |
+| **Request logging** | ❌ | ❌ | ✅ | ✅ |
+| **Lua scripting** | ❌ | ❌ | ❌ | ✅ |
+| **Single binary** | ✅ | ✅ | ✅ | ✅ |
+| **Zero config changes** | ✅ | ✅ | ✅ | ✅ |
 
----
+## 🎯 **Version Philosophy**
 
-## 🎯 **Version Themes**
+### **v1.2.1 "Performance Foundation"**
+*Making the core faster and more professional*
+- Chi Router for 2x performance
+- Professional middleware patterns
+- Zero breaking changes
 
-### **v1.2.1 "Speed Boost"** 
-*Low-hanging performance optimizations*
-- HTTP transport tuning
-- Faster string operations  
-- Optimized routing structures
-- **Target**: +25% performance
+### **v1.2.2 "Operational Excellence"** 
+*Adding essential monitoring and observability*
+- Prometheus metrics
+- Wildcard domain support  
+- Optional request logging
 
-### **v1.2.2 "Smart Caching"**
-*Response optimization and basic caching*
-- Health check result caching
-- Response header optimization
-- Optional gzip compression
-- **Target**: +40% performance
-
-### **v1.2.3 "Connection Master"** 
-*Advanced connection management*
-- Custom connection pooling
-- Request/response pooling
-- Batch health checking
-- **Target**: +60% performance
-
-### **v1.3.0 "Feature Complete"**
-*New capabilities while maintaining simplicity*
-- Wildcard domain support (`*.example.com`)
-- Middleware system (logging, metrics, etc.)
-- Advanced health checks
-- Built-in observability
-- **Target**: +200% performance
+### **v1.3.0 "Lua Power"**
+*Optional enterprise features via scripting*
+- Lua runtime integration
+- CI/CD automation scripts
+- Community script repository
 
 ---
 
-## 🚀 **Migration Path**
+## 🚀 **Migration Path: Zero Friction**
 
-### **From v1.2.0 to v1.2.x**
+### **From v1.2.0 to v1.2.1**
 ```yaml
-# No configuration changes required!
-# All improvements are transparent optimizations
+# Your config.yaml - NO CHANGES NEEDED
 tenants:
   - name: "my-app"
-    domains: ["app.example.com"]  # Works exactly the same
-    services: [...]
+    domains: ["app.example.com"]
+    services:
+      - name: "backend"
+        url: "http://localhost:3000"
+        health: "/health"
 ```
+**Result**: Automatic 2x performance improvement
 
-### **From v1.2.x to v1.3.0**
+### **From v1.2.1 to v1.2.2**
 ```yaml
-# Optional new features, backward compatible
+# Optional new features (backward compatible)
 tenants:
   - name: "my-app"
     domains: ["*.example.com"]  # NEW: Wildcard support
-    middleware: ["logging", "metrics"]  # NEW: Optional middleware
-    health_check:  # NEW: Advanced health checks
-      interval: 30
-      timeout: 5
-      healthy_threshold: 2
+    monitoring: true            # NEW: Enable metrics
+    services: [...]
+```
+
+### **From v1.2.2 to v1.3.0**
+```yaml
+# Advanced users can add Lua scripting
+tenants:
+  - name: "my-app"
+    domains: ["api.example.com"]
+    lua_script: "canary.lua"    # NEW: Optional scripting
     services: [...]
 ```
 
