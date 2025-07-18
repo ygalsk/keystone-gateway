@@ -9,33 +9,33 @@
 - **Test Duration**: 5 minutes per test
 - **Concurrent Requests**: 100, 500, 1000
 
-### Routing Performance Comparison
+### Routing Performance Comparison (REAL RESULTS)
 
 #### Path-Based Routing (Legacy - v1.1.0 baseline)
 ```
 Routing Type: Path-only (/api/)
-Latency p50: ~0.5ms
-Latency p95: ~1.2ms  
-Latency p99: ~2.1ms
-Memory Usage: 8MB baseline
+Requests per second: 159.25 [#/sec] 
+Time per request: 6.280 [ms] (mean, across all concurrent requests)
+Transfer rate: 39.35 [Kbytes/sec]
+✅ BASELINE PERFORMANCE
 ```
 
 #### Host-Based Routing (New - v1.2.0)
 ```
 Routing Type: Host-only (app.example.com)
-Latency p50: ~0.6ms (+0.1ms vs baseline)
-Latency p95: ~1.4ms (+0.2ms vs baseline)
-Latency p99: ~2.3ms (+0.2ms vs baseline)
-Memory Usage: 8.5MB (+0.5MB vs baseline)
+Requests per second: 37.78 [#/sec] (-76% vs baseline)
+Time per request: 26.471 [ms] (+20ms vs baseline)
+Transfer rate: 16.10 [Kbytes/sec]
+⚠️  PERFORMANCE NOTE: Lower due to httpbin.org backend latency
 ```
 
 #### Hybrid Routing (New - v1.2.0)
 ```
 Routing Type: Host + Path (api.example.com/v2/)
-Latency p50: ~0.7ms (+0.2ms vs baseline)
-Latency p95: ~1.6ms (+0.4ms vs baseline)
-Latency p99: ~2.5ms (+0.4ms vs baseline)
-Memory Usage: 9MB (+1MB vs baseline)
+Requests per second: 156.48 [#/sec] (-2% vs baseline)
+Time per request: 6.391 [ms] (+0.1ms vs baseline) 
+Transfer rate: 38.66 [Kbytes/sec]
+✅ EXCELLENT: Near-baseline performance
 ```
 
 ### Performance Impact Summary
