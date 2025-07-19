@@ -134,8 +134,8 @@ end
 | Version | Req/sec | Latency | Memory | Features |
 |---------|---------|---------|---------|----------|
 | v1.2.0  | 159     | 6.3ms   | 8MB     | Host routing ✅ |
-| v1.2.1  | 300+    | <5ms    | 10MB    | Chi router ⏳ |
-| v1.3.0  | 500+    | <4ms    | 12MB    | Lua scripts 🔮 |
+| v1.3.0  | 300+    | <5ms    | 10MB    | Chi router ⏳ |
+| v2.0.0  | 500+    | <4ms    | 12MB    | Lua scripts 🔮 |
 
 ### Health Monitoring
 
