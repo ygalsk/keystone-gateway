@@ -155,6 +155,7 @@ ab -n 1000 -c 10 http://localhost:8080/admin/health
 ```
 keystone-gateway/
 ├── cmd/chi-stone/       # Main gateway binary entry point
+├── cmd/lua-stone/       # Lua script execution service binary
 ├── internal/            # Internal packages (config, routing, health, proxy)
 ├── pkg/client/          # Public API packages
 ├── test/               # All test files (unit, integration, e2e)
@@ -168,9 +169,11 @@ keystone-gateway/
 
 ### Key Files
 
-- **`cmd/chi-stone/main.go`**: Main application entry point (~280 lines)
+- **`cmd/chi-stone/main.go`**: Main gateway binary for routing functionality (~280 lines)
+- **`cmd/lua-stone/main.go`**: Lua script execution service binary (~100 lines)
 - **`internal/config/config.go`**: Configuration management
 - **`internal/routing/gateway.go`**: Core routing logic
+- **`pkg/client/lua-client.go`**: Public API client for lua-stone service
 - **`test/integration/gateway_test.go`**: Integration tests  
 - **`Makefile`**: All development commands
 - **`DEVELOPMENT.md`**: Development workflow guide

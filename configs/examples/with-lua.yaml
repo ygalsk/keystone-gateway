@@ -1,7 +1,7 @@
-# Keystone Gateway Configuration with Lua Engine Support
+# Keystone Gateway Configuration with Lua Stone Support
 lua_engine:
   enabled: true
-  url: "http://lua-engine:8081"
+  url: "http://lua-stone:8081"
   timeout: "5s"
 
 tenants:

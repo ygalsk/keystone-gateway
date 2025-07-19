@@ -4,7 +4,7 @@
 APP_NAME := keystone-gateway
 VERSION := 1.2.1
 GO_VERSION := 1.21
-DOCKER_IMAGE := $(APP_NAME):$(VERSION)
+DOCKER_IMAGE := chi-stone:$(VERSION)
 
 # Default Go build settings
 GOOS := $(shell go env GOOS)
@@ -89,8 +89,8 @@ build-all: ## Build all binaries
 	@echo "$(CYAN)→ Building all binaries...$(NC)"
 	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o chi-stone ./cmd/chi-stone
 	@echo "$(GREEN)✓ chi-stone binary ready$(NC)"
-	@echo "$(YELLOW)→ lua-stone coming soon...$(NC)"
-	@echo "$(GREEN)✓ Binary built: $(APP_NAME)$(NC)"
+	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o lua-stone ./cmd/lua-stone
+	@echo "$(GREEN)✓ lua-stone binary ready$(NC)"
 
 build-all-platforms: ## Build for multiple platforms
 	@echo "$(CYAN)→ Building for multiple platforms...$(NC)"
@@ -98,13 +98,16 @@ build-all-platforms: ## Build for multiple platforms
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-linux-amd64 ./cmd/chi-stone
 	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-darwin-amd64 ./cmd/chi-stone
 	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-windows-amd64.exe ./cmd/chi-stone
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/lua-stone-linux-amd64 ./cmd/lua-stone
+	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/lua-stone-darwin-amd64 ./cmd/lua-stone
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/lua-stone-windows-amd64.exe ./cmd/lua-stone
 	@echo "$(GREEN)✓ Multi-platform builds completed$(NC)"
 
 # Docker operations
 docker: ## Build Docker image
 	@echo "$(CYAN)→ Building Docker image...$(NC)"
 	@docker build -t $(DOCKER_IMAGE) .
-	@docker tag $(DOCKER_IMAGE) $(APP_NAME):latest
+	@docker tag $(DOCKER_IMAGE) chi-stone:latest
 	@echo "$(GREEN)✓ Docker image built: $(DOCKER_IMAGE)$(NC)"
 
 # Local development server
@@ -114,10 +117,10 @@ run: build ## Run the gateway locally with development config
 	@./chi-stone -config $(CONFIG_DEV) -addr :$(PORT)
 
 run-docker: docker ## Run the gateway in Docker
-	@echo "$(CYAN)→ Starting $(APP_NAME) in Docker...$(NC)"
-	@docker run --rm -p $(PORT):$(PORT) \
-		-v $(PWD)/$(CONFIG_DEV):/app/configs/config.yaml:ro \
-		$(DOCKER_IMAGE)
+	docker-run: ## Run the gateway in Docker
+	@echo "$(CYAN)→ Running chi-stone in Docker...$(NC)"
+	@docker run --rm -p 8080:8080 --name chi-stone-dev $(DOCKER_IMAGE)
+	@echo "$(GREEN)✓ chi-stone started$(NC)"
 
 # Quick testing with minimal backends
 test-local: build ## Run local test with minimal mock backends
@@ -127,12 +130,12 @@ test-local: build ## Run local test with minimal mock backends
 		-v $(PWD)/mock-backends/demo:/usr/share/nginx/html:ro nginx:alpine || true
 	@sleep 2
 	@echo "$(YELLOW)Starting gateway...$(NC)"
-	@./$(APP_NAME) -config $(CONFIG_DEV) -addr :$(PORT) &
+	@./chi-stone -config $(CONFIG_DEV) -addr :$(PORT) &
 	@sleep 3
 	@echo "$(CYAN)→ Testing endpoints...$(NC)"
 	@curl -s http://localhost:$(PORT)/admin/health | grep -q healthy && echo "$(GREEN)✓ Health check passed$(NC)" || echo "$(RED)✗ Health check failed$(NC)"
 	@echo "$(CYAN)→ Cleaning up...$(NC)"
-	@pkill -f $(APP_NAME) || true
+	@pkill -f chi-stone || true
 	@docker stop test-api || true
 	@echo "$(GREEN)✓ Local test completed$(NC)"
 
@@ -142,8 +145,8 @@ deploy-prod: build docker ## Deploy to production environment
 	@echo "$(YELLOW)Warning: This will replace the current production deployment$(NC)"
 	@read -p "Continue? [y/N] " -n 1 -r; echo; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		docker-compose -f docker-compose.simple.yml down --remove-orphans || true; \
-		docker-compose -f docker-compose.simple.yml up -d --build; \
+		docker-compose -f deployments/docker/docker-compose.simple.yml down --remove-orphans || true; \
+		docker-compose -f deployments/docker/docker-compose.simple.yml up -d --build; \
 		echo "$(GREEN)✓ Production deployment completed$(NC)"; \
 	else \
 		echo "$(YELLOW)Deployment cancelled$(NC)"; \
@@ -151,28 +154,28 @@ deploy-prod: build docker ## Deploy to production environment
 
 # Utilities
 logs: ## Show application logs (Docker)
-	@docker-compose -f docker-compose.simple.yml logs -f $(APP_NAME) || echo "$(RED)No running containers found$(NC)"
+	@docker-compose -f deployments/docker/docker-compose.simple.yml logs -f keystone-gateway || echo "$(RED)No running containers found$(NC)"
 
 stop: ## Stop all running services
 	@echo "$(CYAN)→ Stopping services...$(NC)"
-	@docker-compose -f docker-compose.simple.yml down --remove-orphans || true
-	@pkill -f $(APP_NAME) || true
+	@docker-compose -f deployments/docker/docker-compose.simple.yml down --remove-orphans || true
+	@pkill -f chi-stone || true
 	@docker stop test-api 2>/dev/null || true
 	@echo "$(GREEN)✓ Services stopped$(NC)"
 
 status: ## Show running services status
 	@echo "$(CYAN)→ Service Status:$(NC)"
-	@docker-compose -f docker-compose.simple.yml ps 2>/dev/null || echo "No Docker services running"
+	@docker-compose -f deployments/docker/docker-compose.simple.yml ps 2>/dev/null || echo "No Docker services running"
 	@echo ""
 	@echo "$(CYAN)→ Local Process:$(NC)"
-	@pgrep -f $(APP_NAME) && echo "Gateway process running" || echo "No local gateway process"
+	@pgrep -f chi-stone && echo "Gateway process running" || echo "No local gateway process"
 
 clean: stop ## Clean up build artifacts and containers
 	@echo "$(CYAN)→ Cleaning up...$(NC)"
-	@rm -f $(APP_NAME)
+	@rm -f chi-stone lua-stone
 	@rm -rf dist/
 	@rm -f coverage.out coverage.html
-	@docker image rm $(DOCKER_IMAGE) $(APP_NAME):latest 2>/dev/null || true
+	@docker image rm $(DOCKER_IMAGE) chi-stone:latest 2>/dev/null || true
 	@docker system prune -f
 	@echo "$(GREEN)✓ Cleanup completed$(NC)"
 
@@ -181,11 +184,11 @@ perf: build ## Run simplified performance test
 	@echo "$(CYAN)→ Running performance test...$(NC)"
 	@echo "$(YELLOW)Starting test environment...$(NC)"
 	@docker run -d --name perf-backend --rm -p 3001:80 nginx:alpine
-	@./$(APP_NAME) -config $(CONFIG_DEV) -addr :$(PORT) &
+	@./chi-stone -config $(CONFIG_DEV) -addr :$(PORT) &
 	@sleep 3
 	@echo "$(CYAN)→ Testing with Apache Bench...$(NC)"
 	@ab -n 1000 -c 10 -q http://localhost:$(PORT)/admin/health && echo "$(GREEN)✓ Performance test completed$(NC)" || echo "$(RED)✗ Performance test failed$(NC)"
-	@pkill -f $(APP_NAME) || true
+	@pkill -f chi-stone || true
 	@docker stop perf-backend || true
 
 # Development convenience targets

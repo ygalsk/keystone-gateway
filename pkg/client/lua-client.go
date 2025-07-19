@@ -8,14 +8,14 @@ import (
 	"time"
 )
 
-// LuaClient handles communication with Lua Engine
+// LuaClient handles communication with lua-stone service
 type LuaClient struct {
 	baseURL string
 	client  *http.Client
 }
 
-// LuaRoutingRequest represents the request sent to Lua Engine
-type LuaRoutingRequest struct {
+// RoutingRequest represents the request sent to lua-stone service
+type RoutingRequest struct {
 	Method   string            `json:"method"`
 	Path     string            `json:"path"`
 	Host     string            `json:"host"`
@@ -24,14 +24,14 @@ type LuaRoutingRequest struct {
 	Backends []Backend         `json:"backends"`
 }
 
-// Backend represents available backend services for Lua Engine
+// Backend represents available backend services for lua-stone
 type Backend struct {
 	Name   string `json:"name"`
 	URL    string `json:"url"`
 	Health bool   `json:"health"`
 }
 
-// RoutingResponse represents the Lua script's routing decision
+// RoutingResponse represents the lua script's routing decision
 type RoutingResponse struct {
 	SelectedBackend string            `json:"selected_backend"`
 	ModifiedHeaders map[string]string `json:"modified_headers,omitempty"`
@@ -40,6 +40,7 @@ type RoutingResponse struct {
 	RejectReason    string            `json:"reject_reason,omitempty"`
 }
 
+// NewLuaClient creates a new lua-stone client
 func NewLuaClient(baseURL string) *LuaClient {
 	return &LuaClient{
 		baseURL: baseURL,
@@ -49,7 +50,8 @@ func NewLuaClient(baseURL string) *LuaClient {
 	}
 }
 
-func (lc *LuaClient) RouteRequest(tenantName string, req LuaRoutingRequest) (*RoutingResponse, error) {
+// RouteRequest sends a routing request to lua-stone service
+func (lc *LuaClient) RouteRequest(tenantName string, req RoutingRequest) (*RoutingResponse, error) {
 	url := fmt.Sprintf("%s/route/%s", lc.baseURL, tenantName)
 
 	jsonData, err := json.Marshal(req)
@@ -59,12 +61,12 @@ func (lc *LuaClient) RouteRequest(tenantName string, req LuaRoutingRequest) (*Ro
 
 	resp, err := lc.client.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, fmt.Errorf("failed to call lua engine: %w", err)
+		return nil, fmt.Errorf("failed to call lua-stone: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("lua engine returned status: %d", resp.StatusCode)
+		return nil, fmt.Errorf("lua-stone returned status: %d", resp.StatusCode)
 	}
 
 	var routingResp RoutingResponse
@@ -75,22 +77,24 @@ func (lc *LuaClient) RouteRequest(tenantName string, req LuaRoutingRequest) (*Ro
 	return &routingResp, nil
 }
 
+// HealthCheck checks if lua-stone service is healthy
 func (lc *LuaClient) HealthCheck() error {
 	url := fmt.Sprintf("%s/health", lc.baseURL)
 
 	resp, err := lc.client.Get(url)
 	if err != nil {
-		return fmt.Errorf("failed to call lua engine health endpoint: %w", err)
+		return fmt.Errorf("failed to call lua-stone health endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("lua engine health check failed with status: %d", resp.StatusCode)
+		return fmt.Errorf("lua-stone health check failed with status: %d", resp.StatusCode)
 	}
 
 	return nil
 }
 
+// ReloadScripts reloads Lua scripts in lua-stone service
 func (lc *LuaClient) ReloadScripts() error {
 	url := fmt.Sprintf("%s/reload", lc.baseURL)
 
