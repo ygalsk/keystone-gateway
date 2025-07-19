@@ -14,7 +14,7 @@ Create a new Chi Router API design that enables lua-stone scripts to register cu
 - [x] **Refactor Gateway to use dynamic routing** (`internal/routing/gateway.go:50-120`): Replace static route maps with dynamic route registration system that accepts lua-defined routes
 - [x] **Create Lua-Chi bridge functions** (`internal/lua/chi_bindings.go`): Implement Go functions callable from Lua that register routes with Chi router (route, middleware, group, mount)
 - [x] **Update configuration schema** (`internal/config/config.go:25-35`): Add `lua_routes` field to tenant config for specifying route definition scripts vs backend selection scripts
-- [ ] **Replace setupTenantRouting with script execution** (`cmd/chi-stone/main.go:215-257`): Remove manual route configuration, replace with lua script execution that registers routes dynamically
+- [x] **Replace setupTenantRouting with script execution** (`cmd/chi-stone/main.go:215-257`): Remove manual route configuration, replace with lua script execution that registers routes dynamically
 - [ ] **Create lua script route examples** (`scripts/examples/`): Provide example scripts showing custom route registration patterns (canary routes, A/B testing routes, auth routes)
 - [ ] **Automated test**: Create integration tests verifying lua scripts can register custom Chi routes and middleware (`test/integration/lua_routing_test.go`)
 - [ ] **User test**: Verify lua scripts can define custom routing patterns like `/api/v1/{version}/users` with version-based backend selection without core code changes

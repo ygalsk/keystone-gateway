@@ -1,7 +1,7 @@
-# Keystone Gateway Configuration with Lua Stone Support
-lua_engine:
+# Keystone Gateway Configuration with Embedded Lua Support
+lua_routing:
   enabled: true
-  url: "http://lua-stone:8081"
+  scripts_dir: "./scripts/examples"
   timeout: "5s"
 
 tenants:
@@ -16,7 +16,7 @@ tenants:
   # Canary deployment with Lua script
   - name: "canary-api"
     domains: ["api.example.com"]
-    lua_script: "canary"  # references scripts/canary.lua
+    lua_routes: "canary-routes"  # references scripts/examples/canary-routes.lua
     services:
       - name: "api-stable"
         url: "http://backend-stable:80"
@@ -32,7 +32,7 @@ tenants:
   # Blue/Green deployment
   - name: "bluegreen-app"
     domains: ["app.example.com"]
-    lua_script: "blue-green"
+    lua_routes: "blue-green"
     services:
       - name: "app-blue"
         url: "http://localhost:3002"
@@ -48,7 +48,7 @@ tenants:
   # A/B Testing
   - name: "ab-test-service"
     domains: ["test.example.com"]
-    lua_script: "ab-testing"
+    lua_routes: "ab-testing"
     services:
       - name: "service-version-a"
         url: "http://localhost:3004"

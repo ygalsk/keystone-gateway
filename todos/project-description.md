@@ -1,50 +1,45 @@
 # Project: Keystone Gateway
-A lightweight, extensible reverse proxy specifically designed for SMEs and DevOps teams, combining simplicity with flexibility through Lua scripting architecture.
+A lightweight, extensible reverse proxy and API gateway designed for SMBs and DevOps teams, currently migrating from dual-service to embedded Lua scripting through Chi routing APIs.
 
 ## Features
-- Fast HTTP routing and reverse proxy (300+ req/sec)
-- Multi-tenant architecture with host-based and path-based routing
-- Health-based load balancing with automatic backend failover
-- Optional Lua scripting for advanced features (CI/CD, canary deployments, custom business logic)
-- Single binary deployment with no dependencies
-- YAML-based configuration
-- Admin API for health monitoring and tenant management
-- Community-driven extensibility through Lua scripts
+- Multi-tenant reverse proxy with host-based, path-based, and hybrid routing
+- Health-based load balancing with automatic backend monitoring  
+- Single binary deployment with YAML configuration
+- **MIGRATING**: From dual-service (chi-stone + lua-stone) to embedded Lua engine
+- Dynamic route registration via Lua scripts using Chi routing APIs
+- High performance target: 300+ requests/second with <5ms latency
+- Admin API endpoints for monitoring (/health, /tenants)
+- Multi-client hosting on single infrastructure
 
 ## Tech Stack
-- **Language**: Go 1.19+
-- **Router**: Chi v5 (github.com/go-chi/chi/v5)
-- **Scripting**: Lua via gopher-lua
-- **Config**: YAML (gopkg.in/yaml.v3)
-- **Testing**: Go testing + testify
-- **Deployment**: Docker, systemd, single binary
+**Languages:** Go (1.19+), Lua (via embedded gopher-lua)
+**Frameworks:** Chi router v5 with embedded Lua engine integration
+**Build Tools:** Go modules, comprehensive Makefile, Docker builds
+**Testing:** Go testing, Testify, integration tests for Lua routing
+**Migration Status:** Core embedded Lua implemented, Chi bindings need completion
 
 ## Structure
-- `cmd/chi-stone/` - Main gateway binary entry point
-- `cmd/lua-stone/` - Lua scripting engine binary
-- `internal/config/` - Configuration management
-- `internal/routing/` - Core routing and load balancing logic
-- `internal/health/` - Health checking functionality 
-- `internal/proxy/` - Proxy implementation
-- `configs/` - Configuration files and examples
-- `test/` - Unit, integration, and e2e tests
-- `deployments/` - Docker and systemd deployment configs
+**Entry Points:** cmd/chi-stone/main.go (single binary with embedded Lua)
+**Core Packages:** internal/config (YAML), internal/routing (gateway + lua_routes), internal/lua (embedded engine + chi_bindings)
+**Migration Focus:** internal/lua/chi_bindings.go (Chi routing API integration)
+**Configuration:** configs/ (lua_routing.enabled, scripts_dir)
+**Scripts:** scripts/examples/ (Lua route definition examples)
 
 ## Architecture
-Two-binary architecture: 
-1. **chi-stone**: Core gateway with Chi router handling HTTP routing, load balancing, and health checks
-2. **lua-stone**: Optional Lua scripting engine for advanced routing decisions and middleware
-
-Components communicate via HTTP API, with chi-stone making requests to lua-stone for script-based routing decisions.
+**Current State:** Migrating from external lua-stone service to embedded gopher-lua
+**New Approach:** Single chi-stone binary with embedded Lua engine for dynamic route registration
+**Route Registry:** LuaRouteRegistry manages tenant-specific Chi submuxes
+**Lua Integration:** Chi routing APIs exposed to Lua scripts (chi_route, chi_middleware, chi_group)
+**Migration Status:** 95% complete, needs chi_bindings.go compilation fixes
 
 ## Commands
-- Build: `make build` or `go build ./cmd/chi-stone` & `go build ./cmd/lua-stone`
-- Test: `make test` or `go test ./...`
-- Lint: `make lint` 
-- Dev/Run: `make dev` (complete workflow) or `./chi-stone -config configs/examples/config.yaml`
+- Build: `make build` (chi-stone only - lua-stone being deprecated)
+- Test: `make test` (includes Lua routing integration tests)
+- Lint: `make fmt`, `make lint`, `make check`
+- Dev/Run: `make run` (embedded Lua mode), `make dev` (full workflow)
 
 ## Testing
-- Unit tests: `internal/*/..._test.go` using Go testing + testify
-- Integration tests: `test/integration/`
-- E2E tests: `test/e2e/`
-- Test structure follows Go conventions with `_test.go` suffix
+**Migration Testing:** Integration tests in test/integration/lua_routing_test.go
+**Current Focus:** Testing embedded Lua route registration and Chi API integration
+**Test Coverage:** Lua script execution, route mounting, tenant isolation
+**Known Issues:** URL parameter extraction tests need chi_param() completion

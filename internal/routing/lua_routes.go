@@ -7,12 +7,17 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	lua "github.com/yuin/gopher-lua"
 )
 
 // LuaRouteRegistry manages dynamic route registration from Lua scripts
 type LuaRouteRegistry struct {
 	router      *chi.Mux
 	routeGroups map[string]*chi.Mux // tenant -> submux for tenant routes
+	Engine      interface {
+		GetScript(string) (string, bool)
+		SetupChiBindings(*lua.LState, string, string)
+	}
 }
 
 // RouteDefinition represents a route registered by Lua
@@ -40,10 +45,14 @@ type RouteGroupDefinition struct {
 }
 
 // NewLuaRouteRegistry creates a new registry for Lua-defined routes
-func NewLuaRouteRegistry(router *chi.Mux) *LuaRouteRegistry {
+func NewLuaRouteRegistry(router *chi.Mux, engine interface {
+	GetScript(string) (string, bool)
+	SetupChiBindings(*lua.LState, string, string)
+}) *LuaRouteRegistry {
 	return &LuaRouteRegistry{
 		router:      router,
 		routeGroups: make(map[string]*chi.Mux),
+		Engine:      engine,
 	}
 }
 
@@ -214,7 +223,7 @@ type RouteRegistryAPI struct {
 // NewRouteRegistryAPI creates a new API wrapper
 func NewRouteRegistryAPI(router *chi.Mux) *RouteRegistryAPI {
 	return &RouteRegistryAPI{
-		registry: NewLuaRouteRegistry(router),
+		registry: NewLuaRouteRegistry(router, nil),
 	}
 }
 

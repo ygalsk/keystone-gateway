@@ -10,13 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LuaEngineConfig represents lua-stone service configuration
-type LuaEngineConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	URL     string `yaml:"url,omitempty"`
-	Timeout string `yaml:"timeout,omitempty"`
-}
-
 // LuaRoutingConfig represents embedded Lua routing configuration
 type LuaRoutingConfig struct {
 	Enabled    bool   `yaml:"enabled"`
@@ -29,8 +22,7 @@ type LuaRoutingConfig struct {
 type Config struct {
 	Tenants       []Tenant          `yaml:"tenants"`
 	AdminBasePath string            `yaml:"admin_base_path,omitempty"`
-	LuaEngine     *LuaEngineConfig  `yaml:"lua_engine,omitempty"`
-	LuaRouting    *LuaRoutingConfig `yaml:"lua_routing,omitempty"` // New: Embedded Lua routing
+	LuaRouting    *LuaRoutingConfig `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
 }
 
 // Tenant represents a routing configuration for a specific application or service,

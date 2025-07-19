@@ -37,22 +37,12 @@ type Gateway struct {
 	pathRouters   map[string]*TenantRouter
 	hostRouters   map[string]*TenantRouter
 	hybridRouters map[string]map[string]*TenantRouter
-	luaClient     *LuaClient // TODO: Move to pkg/client
 	startTime     time.Time
 
 	// New: Dynamic route registry for Lua-defined routes
 	routeRegistry *LuaRouteRegistry
 }
 
-// LuaClient is a placeholder for the Lua client (will be moved to pkg/client)
-type LuaClient struct {
-	URL string
-}
-
-// NewLuaClient creates a new Lua client (placeholder)
-func NewLuaClient(url string) *LuaClient {
-	return &LuaClient{URL: url}
-}
 
 // NewGateway creates a new Gateway instance from the provided configuration,
 // initializing all tenant routers and starting health check goroutines.
@@ -65,15 +55,7 @@ func NewGateway(cfg *config.Config) *Gateway {
 		startTime:     time.Now(),
 	}
 
-	// Initialize lua-stone client if enabled
-	if cfg.LuaEngine != nil && cfg.LuaEngine.Enabled {
-		if cfg.LuaEngine.URL == "" {
-			log.Printf("Warning: lua-stone enabled but no URL configured")
-		} else {
-			gw.luaClient = NewLuaClient(cfg.LuaEngine.URL)
-			log.Printf("lua-stone integration enabled at %s", cfg.LuaEngine.URL)
-		}
-	}
+	// ...removed legacy lua-stone client integration...
 
 	gw.initializeRouters()
 	return gw
@@ -87,18 +69,10 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 		hostRouters:   make(map[string]*TenantRouter),
 		hybridRouters: make(map[string]map[string]*TenantRouter),
 		startTime:     time.Now(),
-		routeRegistry: NewLuaRouteRegistry(router),
+		routeRegistry: NewLuaRouteRegistry(router, nil),
 	}
 
-	// Initialize lua-stone client if enabled
-	if cfg.LuaEngine != nil && cfg.LuaEngine.Enabled {
-		if cfg.LuaEngine.URL == "" {
-			log.Printf("Warning: lua-stone enabled but no URL configured")
-		} else {
-			gw.luaClient = NewLuaClient(cfg.LuaEngine.URL)
-			log.Printf("lua-stone integration enabled at %s", cfg.LuaEngine.URL)
-		}
-	}
+	// ...removed legacy lua-stone client integration...
 
 	gw.initializeRouters()
 	return gw

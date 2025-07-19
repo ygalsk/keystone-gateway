@@ -89,8 +89,7 @@ build-all: ## Build all binaries
 	@echo "$(CYAN)→ Building all binaries...$(NC)"
 	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o chi-stone ./cmd/chi-stone
 	@echo "$(GREEN)✓ chi-stone binary ready$(NC)"
-	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o lua-stone ./cmd/lua-stone
-	@echo "$(GREEN)✓ lua-stone binary ready$(NC)"
+	@echo "$(YELLOW)lua-stone deprecated - using embedded Lua$(NC)"
 
 build-all-platforms: ## Build for multiple platforms
 	@echo "$(CYAN)→ Building for multiple platforms...$(NC)"
@@ -98,19 +97,15 @@ build-all-platforms: ## Build for multiple platforms
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-linux-amd64 ./cmd/chi-stone
 	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-darwin-amd64 ./cmd/chi-stone
 	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-windows-amd64.exe ./cmd/chi-stone
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/lua-stone-linux-amd64 ./cmd/lua-stone
-	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/lua-stone-darwin-amd64 ./cmd/lua-stone
-	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/lua-stone-windows-amd64.exe ./cmd/lua-stone
+	@echo "$(YELLOW)lua-stone deprecated - single binary deployment$(NC)"
 	@echo "$(GREEN)✓ Multi-platform builds completed$(NC)"
 
 # Docker operations
 docker: ## Build both Docker images
 	@echo "$(CYAN)→ Building Docker images...$(NC)"
 	@docker build -f deployments/docker/chi-stone.Dockerfile -t chi-stone:$(VERSION) .
-	@docker build -f deployments/docker/lua-stone.Dockerfile -t lua-stone:$(VERSION) .
 	@docker tag chi-stone:$(VERSION) chi-stone:latest
-	@docker tag lua-stone:$(VERSION) lua-stone:latest
-	@echo "$(GREEN)✓ Docker images built: chi-stone:$(VERSION), lua-stone:$(VERSION)$(NC)"
+	@echo "$(GREEN)✓ Docker image built: chi-stone:$(VERSION)$(NC)"
 
 docker-chi: ## Build chi-stone Docker image only
 	@echo "$(CYAN)→ Building chi-stone Docker image...$(NC)"
@@ -118,11 +113,6 @@ docker-chi: ## Build chi-stone Docker image only
 	@docker tag chi-stone:$(VERSION) chi-stone:latest
 	@echo "$(GREEN)✓ Chi-stone image built$(NC)"
 
-docker-lua: ## Build lua-stone Docker image only
-	@echo "$(CYAN)→ Building lua-stone Docker image...$(NC)"
-	@docker build -f deployments/docker/lua-stone.Dockerfile -t lua-stone:$(VERSION) .
-	@docker tag lua-stone:$(VERSION) lua-stone:latest
-	@echo "$(GREEN)✓ Lua-stone image built$(NC)"
 
 # Local development server
 run: build ## Run the gateway locally with development config
@@ -219,7 +209,6 @@ stop: ## Stop all running services
 	@docker-compose -f deployments/docker/docker-compose.full.yml down --remove-orphans 2>/dev/null || true
 	@docker-compose -f deployments/docker/docker-compose.production.yml down --remove-orphans 2>/dev/null || true
 	@pkill -f chi-stone || true
-	@pkill -f lua-stone || true
 	@docker stop test-api 2>/dev/null || true
 	@echo "$(GREEN)✓ Services stopped$(NC)"
 
@@ -239,7 +228,7 @@ status: ## Show running services status
 
 clean: stop ## Clean up build artifacts and containers
 	@echo "$(CYAN)→ Cleaning up...$(NC)"
-	@rm -f chi-stone lua-stone
+	@rm -f chi-stone
 	@rm -rf dist/
 	@rm -f coverage.out coverage.html
 	@docker image rm $(DOCKER_IMAGE) chi-stone:latest 2>/dev/null || true

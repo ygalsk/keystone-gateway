@@ -28,9 +28,20 @@ const (
 // Engine manages embedded Lua script execution and route registration
 type Engine struct {
 	scriptsDir    string
-	scripts       map[string]string         // tenant_name -> script_content
+	scripts       map[string]string         // script_tag -> script_content
 	router        *chi.Mux                  // Chi router for dynamic route registration
 	routeRegistry *routing.LuaRouteRegistry // Route registry for Lua integration
+}
+
+// GetScript returns the script content for a given scriptTag
+func (e *Engine) GetScript(scriptTag string) (string, bool) {
+	script, ok := e.scripts[scriptTag]
+	return script, ok
+}
+
+// RouteRegistry returns the route registry for mounting tenant routes
+func (e *Engine) RouteRegistry() *routing.LuaRouteRegistry {
+	return e.routeRegistry
 }
 
 // RouteRegistration represents a route registered by Lua
@@ -44,11 +55,11 @@ type RouteRegistration struct {
 // NewEngine creates a new embedded Lua engine
 func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 	engine := &Engine{
-		scriptsDir:    scriptsDir,
-		scripts:       make(map[string]string),
-		router:        router,
-		routeRegistry: routing.NewLuaRouteRegistry(router),
+		scriptsDir: scriptsDir,
+		scripts:    make(map[string]string),
+		router:     router,
 	}
+	engine.routeRegistry = routing.NewLuaRouteRegistry(router, engine)
 	engine.loadScripts()
 	return engine
 }
@@ -75,7 +86,7 @@ func (e *Engine) loadScripts() {
 
 		tenantName := strings.TrimSuffix(filepath.Base(path), ".lua")
 		e.scripts[tenantName] = string(content)
-		log.Printf("Loaded route script for tenant: %s", tenantName)
+		log.Printf("Loaded route script: %s", tenantName)
 		return nil
 	})
 
@@ -84,11 +95,11 @@ func (e *Engine) loadScripts() {
 	}
 }
 
-// ExecuteRouteScript executes a Lua script that registers routes with Chi
-func (e *Engine) ExecuteRouteScript(tenantName string) error {
-	script, exists := e.scripts[tenantName]
+// ExecuteRouteScript executes a Lua script that registers routes with Chi for a specific tenant
+func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
+	script, exists := e.scripts[scriptTag]
 	if !exists {
-		return fmt.Errorf("no route script found for tenant: %s", tenantName)
+		return fmt.Errorf("no route script found for tag: %s", scriptTag)
 	}
 
 	// Create isolated Lua state
@@ -106,7 +117,7 @@ func (e *Engine) ExecuteRouteScript(tenantName string) error {
 	}()
 
 	// Setup Lua environment with Chi bindings
-	e.setupChiBindings(L, tenantName)
+	e.SetupChiBindings(L, scriptTag, tenantName)
 
 	// Execute script with timeout protection
 	done := make(chan error, 1)
@@ -149,52 +160,52 @@ func (e *Engine) createExampleRouteScript() {
 
 -- Register a simple GET route
 chi_route("GET", "/api/v1/health", function(w, r)
-    w:header("Content-Type", "application/json")
-    w:write('{"status":"healthy","service":"example"}')
+	w:header("Content-Type", "application/json")
+	w:write('{"status":"healthy","service":"example"}')
 end)
 
 -- Register a route with path parameters
 chi_route("GET", "/api/v1/users/{id}", function(w, r)
-    local user_id = chi_param(r, "id")
-    w:header("Content-Type", "application/json")
-    w:write('{"user_id":"' .. user_id .. '","name":"User ' .. user_id .. '"}')
+	local user_id = chi_param(r, "id")
+	w:header("Content-Type", "application/json")
+	w:write('{"user_id":"' .. user_id .. '","name":"User ' .. user_id .. '"}')
 end)
 
 -- Register middleware for all routes under /api/v1/
 chi_middleware("/api/v1/*", function(next)
-    return function(w, r)
-        -- Add custom headers
-        w:header("X-API-Version", "v1")
-        w:header("X-Powered-By", "Lua-Keystone")
-        next(w, r)
-    end
+	return function(w, r)
+		-- Add custom headers
+		w:header("X-API-Version", "v1")
+		w:header("X-Powered-By", "Lua-Keystone")
+		next(w, r)
+	end
 end)
 
 -- Register a route group with shared middleware
 chi_group("/api/v1/admin", function()
-    -- Auth middleware for admin routes
-    chi_middleware("/*", function(next)
-        return function(w, r)
-            local auth_header = r:header("Authorization")
-            if not auth_header or auth_header ~= "Bearer admin-token" then
-                w:status(401)
-                w:write("Unauthorized")
-                return
-            end
-            next(w, r)
-        end
-    end)
-    
-    -- Admin-only routes
-    chi_route("GET", "/stats", function(w, r)
-        w:header("Content-Type", "application/json") 
-        w:write('{"requests":1234,"uptime":"24h"}')
-    end)
-    
-    chi_route("POST", "/reload", function(w, r)
-        -- Trigger script reload (this would be implemented)
-        w:write("Scripts reloaded")
-    end)
+	-- Auth middleware for admin routes
+	chi_middleware("/*", function(next)
+		return function(w, r)
+			local auth_header = r:header("Authorization")
+			if not auth_header or auth_header ~= "Bearer admin-token" then
+				w:status(401)
+				w:write("Unauthorized")
+				return
+			end
+			next(w, r)
+		end
+	end)
+	
+	-- Admin-only routes
+	chi_route("GET", "/stats", function(w, r)
+		w:header("Content-Type", "application/json") 
+		w:write('{"requests":1234,"uptime":"24h"}')
+	end)
+	
+	chi_route("POST", "/reload", function(w, r)
+		-- Trigger script reload (this would be implemented)
+		w:write("Scripts reloaded")
+	end)
 end)
 
 log("Route registration complete for example tenant")`
