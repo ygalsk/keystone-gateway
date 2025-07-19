@@ -175,15 +175,6 @@ curl http://localhost:8080/metrics
 
 ## 📚 Dokumentation
 
-### 🎯 **Roadmap & Planung**
-- [**MACHBARE_ROADMAP.md**](docs/MACHBARE_ROADMAP.md) - Aktuelle Entwicklungsplanung mit Lua-Vision
-- [**PROJECT_SUMMARY.md**](docs/PROJECT_SUMMARY.md) - Vollständiger Projektüberblick
-
-### 🏗️ **Implementierung & Entwicklung**
-- [**FRAMEWORK_ANALYSIS.md**](docs/FRAMEWORK_ANALYSIS.md) - Chi Router vs. stdlib Analyse
-- [**v1.2.1-CHI-PLAN.md**](docs/v1.2.1-CHI-PLAN.md) - Chi Router Integration Plan
-- [**PERFORMANCE.md**](docs/PERFORMANCE.md) - Benchmarks und Optimierungen
-
 ### 📋 **Vollständige Dokumentation**
 Siehe [**docs/README.md**](docs/README.md) für alle verfügbaren Dokumente.
 
