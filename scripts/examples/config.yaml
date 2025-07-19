@@ -1,0 +1,55 @@
+# Example configuration using Lua-based routing
+# This demonstrates how to configure tenants with Lua route scripts
+
+# Enable embedded Lua routing
+lua_routing:
+  enabled: true
+  scripts_dir: "./scripts"
+  timeout: "5s"
+
+tenants:
+  # Canary deployment example
+  - name: canary-api
+    domains:
+      - api.example.com
+    lua_routes: "canary-routes"  # References scripts/canary-routes.lua
+    services:
+      - name: api-stable
+        url: http://api-stable:8080
+        health: /health
+      - name: api-canary
+        url: http://api-canary:8080
+        health: /health
+
+  # A/B testing example
+  - name: ecommerce-frontend
+    domains:
+      - shop.example.com
+    lua_routes: "ab-testing-routes"  # References scripts/ab-testing-routes.lua
+    services:
+      - name: frontend-a
+        url: http://frontend-v1:3000
+        health: /health
+      - name: frontend-b
+        url: http://frontend-v2:3000
+        health: /health
+
+  # Authentication service example
+  - name: auth-service
+    path_prefix: "/auth/"
+    lua_routes: "auth-routes"  # References scripts/auth-routes.lua
+    services:
+      - name: auth-backend
+        url: http://auth-service:9000
+        health: /health
+
+  # Legacy static routing (no Lua script)
+  - name: legacy-service
+    path_prefix: "/legacy/"
+    services:
+      - name: legacy-backend
+        url: http://legacy-service:8080
+        health: /health
+
+# Admin settings
+admin_base_path: "/admin"

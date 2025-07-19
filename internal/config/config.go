@@ -17,12 +17,20 @@ type LuaEngineConfig struct {
 	Timeout string `yaml:"timeout,omitempty"`
 }
 
+// LuaRoutingConfig represents embedded Lua routing configuration
+type LuaRoutingConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	ScriptsDir string `yaml:"scripts_dir,omitempty"`
+	Timeout    string `yaml:"timeout,omitempty"`
+}
+
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
-	Tenants       []Tenant         `yaml:"tenants"`
-	AdminBasePath string           `yaml:"admin_base_path,omitempty"`
-	LuaEngine     *LuaEngineConfig `yaml:"lua_engine,omitempty"`
+	Tenants       []Tenant          `yaml:"tenants"`
+	AdminBasePath string            `yaml:"admin_base_path,omitempty"`
+	LuaEngine     *LuaEngineConfig  `yaml:"lua_engine,omitempty"`
+	LuaRouting    *LuaRoutingConfig `yaml:"lua_routing,omitempty"` // New: Embedded Lua routing
 }
 
 // Tenant represents a routing configuration for a specific application or service,
@@ -33,6 +41,7 @@ type Tenant struct {
 	Domains    []string  `yaml:"domains,omitempty"`
 	Interval   int       `yaml:"health_interval"`
 	LuaScript  string    `yaml:"lua_script,omitempty"`
+	LuaRoutes  string    `yaml:"lua_routes,omitempty"` // New: Script for route definition
 	Services   []Service `yaml:"services"`
 }
 

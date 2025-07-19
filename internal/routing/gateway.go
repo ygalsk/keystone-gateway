@@ -3,6 +3,7 @@
 package routing
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"keystone-gateway/internal/config"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // GatewayBackend represents a proxied backend server with health status tracking.
@@ -36,6 +39,9 @@ type Gateway struct {
 	hybridRouters map[string]map[string]*TenantRouter
 	luaClient     *LuaClient // TODO: Move to pkg/client
 	startTime     time.Time
+
+	// New: Dynamic route registry for Lua-defined routes
+	routeRegistry *LuaRouteRegistry
 }
 
 // LuaClient is a placeholder for the Lua client (will be moved to pkg/client)
@@ -57,6 +63,31 @@ func NewGateway(cfg *config.Config) *Gateway {
 		hostRouters:   make(map[string]*TenantRouter),
 		hybridRouters: make(map[string]map[string]*TenantRouter),
 		startTime:     time.Now(),
+	}
+
+	// Initialize lua-stone client if enabled
+	if cfg.LuaEngine != nil && cfg.LuaEngine.Enabled {
+		if cfg.LuaEngine.URL == "" {
+			log.Printf("Warning: lua-stone enabled but no URL configured")
+		} else {
+			gw.luaClient = NewLuaClient(cfg.LuaEngine.URL)
+			log.Printf("lua-stone integration enabled at %s", cfg.LuaEngine.URL)
+		}
+	}
+
+	gw.initializeRouters()
+	return gw
+}
+
+// NewGatewayWithRouter creates a Gateway with an existing Chi router for dynamic routing
+func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
+	gw := &Gateway{
+		config:        cfg,
+		pathRouters:   make(map[string]*TenantRouter),
+		hostRouters:   make(map[string]*TenantRouter),
+		hybridRouters: make(map[string]map[string]*TenantRouter),
+		startTime:     time.Now(),
+		routeRegistry: NewLuaRouteRegistry(router),
 	}
 
 	// Initialize lua-stone client if enabled
@@ -214,6 +245,32 @@ func (gw *Gateway) GetConfig() *config.Config {
 // GetStartTime returns when the gateway was started.
 func (gw *Gateway) GetStartTime() time.Time {
 	return gw.startTime
+}
+
+// GetRouteRegistry returns the dynamic route registry
+func (gw *Gateway) GetRouteRegistry() *LuaRouteRegistry {
+	return gw.routeRegistry
+}
+
+// RegisterDynamicRoute registers a route via the dynamic route registry
+func (gw *Gateway) RegisterDynamicRoute(tenantName, method, pattern string, handler http.HandlerFunc) error {
+	if gw.routeRegistry == nil {
+		return fmt.Errorf("dynamic route registry not initialized")
+	}
+	return gw.routeRegistry.RegisterRoute(RouteDefinition{
+		TenantName: tenantName,
+		Method:     method,
+		Pattern:    pattern,
+		Handler:    handler,
+	})
+}
+
+// MountTenantDynamicRoutes mounts dynamically registered routes for a tenant
+func (gw *Gateway) MountTenantDynamicRoutes(tenantName, mountPath string) error {
+	if gw.routeRegistry == nil {
+		return fmt.Errorf("dynamic route registry not initialized")
+	}
+	return gw.routeRegistry.MountTenantRoutes(tenantName, mountPath)
 }
 
 // extractHost extracts the hostname from a host header (removing port if present).
