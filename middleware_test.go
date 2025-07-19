@@ -10,7 +10,7 @@ import (
 
 func TestHostMiddleware(t *testing.T) {
 	gw := NewGateway(&Config{})
-	
+
 	tests := []struct {
 		name           string
 		allowedDomains []string
@@ -46,7 +46,7 @@ func TestHostMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			middleware := gw.HostMiddleware(tt.allowedDomains)
-			
+
 			handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte("allowed"))
@@ -91,8 +91,8 @@ func TestProxyMiddleware(t *testing.T) {
 
 func TestExtractHost(t *testing.T) {
 	tests := []struct {
-		name        string
-		hostHeader  string
+		name         string
+		hostHeader   string
 		expectedHost string
 	}{
 		{

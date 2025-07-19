@@ -41,7 +41,7 @@ func BenchmarkConcurrentRequests(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	
+
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			w := httptest.NewRecorder()
@@ -53,7 +53,7 @@ func BenchmarkConcurrentRequests(b *testing.B) {
 // BenchmarkMemoryUsage measures memory allocation patterns
 func BenchmarkMemoryUsage(b *testing.B) {
 	gw := NewGateway(testConfig)
-	
+
 	var m1, m2 runtime.MemStats
 	runtime.GC()
 	runtime.ReadMemStats(&m1)
@@ -70,7 +70,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 
 	runtime.GC()
 	runtime.ReadMemStats(&m2)
-	
+
 	b.ReportMetric(float64(m2.Alloc-m1.Alloc)/float64(b.N), "bytes/op")
 }
 
@@ -90,9 +90,9 @@ func BenchmarkConfigLoad(b *testing.B) {
 // BenchmarkHealthCheck tests health endpoint performance
 func BenchmarkHealthCheck(b *testing.B) {
 	gw := NewGateway(testConfig)
-	
+
 	req := httptest.NewRequest("GET", "/admin/health", nil)
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
 
@@ -102,10 +102,10 @@ func BenchmarkHealthCheck(b *testing.B) {
 	}
 }
 
-// BenchmarkTenantLookup tests tenant router lookup performance  
+// BenchmarkTenantLookup tests tenant router lookup performance
 func BenchmarkTenantLookup(b *testing.B) {
 	gw := NewGateway(testConfig)
-	
+
 	b.ResetTimer()
 	b.ReportAllocs()
 

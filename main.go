@@ -1,3 +1,10 @@
+// Package main implements Keystone Gateway, a lightweight reverse proxy with
+// multi-tenant routing support, health checking, and load balancing capabilities.
+//
+// The gateway supports three routing modes:
+// - Host-based routing using domain names
+// - Path-based routing using URL prefixes
+// - Hybrid routing combining both host and path matching
 package main
 
 // -------------------------
@@ -23,15 +30,33 @@ import (
 )
 
 // -------------------------
-// 2. CONFIGURATION
+// 2. CONSTANTS
 // -------------------------
 
+const (
+	// Default timeouts
+	DefaultHealthCheckInterval = 10 * time.Second
+	DefaultHealthCheckTimeout  = 3 * time.Second
+	DefaultRequestTimeout      = 60 * time.Second
+
+	// Default server settings
+	DefaultListenAddress = ":8080"
+)
+
+// -------------------------
+// 3. CONFIGURATION
+// -------------------------
+
+// Config represents the main configuration structure for the gateway,
+// containing tenant definitions and admin settings.
 type Config struct {
 	Tenants       []Tenant `yaml:"tenants"`
 	AdminBasePath string   `yaml:"admin_base_path,omitempty"`
 	// Optional: Base path for admin endpoints, defaults to "/"
 }
 
+// Tenant represents a routing configuration for a specific application or service,
+// supporting host-based, path-based, or hybrid routing strategies.
 type Tenant struct {
 	Name       string    `yaml:"name"`
 	PathPrefix string    `yaml:"path_prefix,omitempty"`
@@ -40,6 +65,7 @@ type Tenant struct {
 	Services   []Service `yaml:"services"`
 }
 
+// Service represents a backend service endpoint with health check configuration.
 type Service struct {
 	Name   string `yaml:"name"`
 	URL    string `yaml:"url"`
@@ -47,43 +73,37 @@ type Service struct {
 }
 
 // -------------------------
-// 3. CORE TYPES
+// 4. CORE TYPES
 // -------------------------
 
+// Backend represents a proxied backend server with health status tracking.
 type Backend struct {
 	URL   *url.URL
 	Alive atomic.Bool
 }
 
+// TenantRouter manages load balancing and backend selection for a specific tenant.
 type TenantRouter struct {
 	Name     string
 	Backends []*Backend
 	RRIndex  uint64
 }
 
+// Gateway is the main reverse proxy instance that handles routing,
+// load balancing, and health checking for all configured tenants.
 type Gateway struct {
 	config        *Config
 	pathRouters   map[string]*TenantRouter
 	hostRouters   map[string]*TenantRouter
 	hybridRouters map[string]map[string]*TenantRouter
+	startTime     time.Time
 }
 
 // -------------------------
-// 4. API INTERFACES (für Lua später)
+// 5. HEALTH STATUS
 // -------------------------
 
-type GatewayAPI interface {
-	GetTenants() []Tenant
-	GetBackends(tenantName string) []*Backend
-	ReloadConfig() error
-	HealthCheck() HealthStatus
-}
-
-type RoutingAPI interface {
-	MatchRoute(host, path string) (*TenantRouter, string)
-	NextBackend(tenantName string) *Backend
-}
-
+// HealthStatus represents the current health status of the gateway and all tenants.
 type HealthStatus struct {
 	Status  string            `json:"status"`
 	Tenants map[string]string `json:"tenants"`
@@ -92,9 +112,11 @@ type HealthStatus struct {
 }
 
 // -------------------------
-// 5. CONFIGURATION MANAGEMENT
+// 6. CONFIGURATION MANAGEMENT
 // -------------------------
 
+// LoadConfig reads and parses a YAML configuration file, returning a validated Config instance.
+// Returns an error if the file cannot be read, parsed, or contains invalid tenant configurations.
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -140,15 +162,18 @@ func isValidDomain(domain string) bool {
 }
 
 // -------------------------
-// 6. GATEWAY CORE
+// 7. GATEWAY CORE
 // -------------------------
 
+// NewGateway creates a new Gateway instance from the provided configuration,
+// initializing all tenant routers and starting health check goroutines.
 func NewGateway(cfg *Config) *Gateway {
 	gw := &Gateway{
 		config:        cfg,
 		pathRouters:   make(map[string]*TenantRouter),
 		hostRouters:   make(map[string]*TenantRouter),
 		hybridRouters: make(map[string]map[string]*TenantRouter),
+		startTime:     time.Now(),
 	}
 
 	gw.initializeRouters()
@@ -206,7 +231,7 @@ func (gw *Gateway) registerTenantRoutes(tenant Tenant, tr *TenantRouter) {
 }
 
 // -------------------------
-// 7. ROUTING LOGIC
+// 8. ROUTING LOGIC
 // -------------------------
 
 func (gw *Gateway) MatchRoute(host, path string) (*TenantRouter, string) {
@@ -275,13 +300,13 @@ func extractHost(hostHeader string) string {
 }
 
 // -------------------------
-// 8. HEALTH CHECKS
+// 9. HEALTH CHECKS
 // -------------------------
 
 func (gw *Gateway) startHealthChecks(tenant Tenant, tr *TenantRouter) {
 	interval := time.Duration(tenant.Interval) * time.Second
 	if interval == 0 {
-		interval = 10 * time.Second
+		interval = DefaultHealthCheckInterval
 	}
 
 	ticker := time.NewTicker(interval)
@@ -303,7 +328,7 @@ func (gw *Gateway) startHealthChecks(tenant Tenant, tr *TenantRouter) {
 }
 
 func (gw *Gateway) checkBackendHealth(svc Service) bool {
-	client := &http.Client{Timeout: 3 * time.Second}
+	client := &http.Client{Timeout: DefaultHealthCheckTimeout}
 
 	healthURL := strings.TrimSuffix(svc.URL, "/") + "/" + strings.TrimPrefix(svc.Health, "/")
 
@@ -313,11 +338,11 @@ func (gw *Gateway) checkBackendHealth(svc Service) bool {
 	}
 	defer resp.Body.Close()
 
-	return resp.StatusCode < 400
+	return resp.StatusCode < http.StatusBadRequest
 }
 
 // -------------------------
-// 9. CHI MIDDLEWARE
+// 10. CHI MIDDLEWARE
 // -------------------------
 
 func (gw *Gateway) HostMiddleware(domains []string) func(http.Handler) http.Handler {
@@ -380,7 +405,7 @@ func (gw *Gateway) createProxy(backend *Backend, stripPrefix string) *httputil.R
 }
 
 // -------------------------
-// 10. HTTP HANDLERS
+// 11. HTTP HANDLERS
 // -------------------------
 
 func (gw *Gateway) ProxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -401,7 +426,7 @@ func (gw *Gateway) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // -------------------------
-// 11. API ENDPOINTS (für Management)
+// 12. API ENDPOINTS (for Management)
 // -------------------------
 
 func (gw *Gateway) HealthHandler(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +434,7 @@ func (gw *Gateway) HealthHandler(w http.ResponseWriter, r *http.Request) {
 		Status:  "healthy",
 		Tenants: make(map[string]string),
 		Version: "1.2.1",
-		Uptime:  "runtime", // TODO: Track actual uptime
+		Uptime:  time.Since(gw.startTime).String(),
 	}
 
 	for _, tenant := range gw.config.Tenants {
@@ -425,12 +450,18 @@ func (gw *Gateway) HealthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(status)
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		http.Error(w, "Failed to encode health status", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (gw *Gateway) TenantsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(gw.config.Tenants)
+	if err := json.NewEncoder(w).Encode(gw.config.Tenants); err != nil {
+		http.Error(w, "Failed to encode tenants data", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (gw *Gateway) getTenantRouter(name string) *TenantRouter {
@@ -455,7 +486,7 @@ func (gw *Gateway) getTenantRouter(name string) *TenantRouter {
 }
 
 // -------------------------
-// 12. CHI ROUTER SETUP
+// 13. CHI ROUTER SETUP
 // -------------------------
 
 func (gw *Gateway) SetupRouter() *chi.Mux {
@@ -466,7 +497,7 @@ func (gw *Gateway) SetupRouter() *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(middleware.Timeout(DefaultRequestTimeout))
 
 	// Admin base path from config, defaulting to "/admin" if empty
 	basePath := gw.config.AdminBasePath
@@ -532,12 +563,12 @@ func (gw *Gateway) setupTenantRouting(r *chi.Mux) {
 }
 
 // -------------------------
-// 13. MAIN FUNCTION
+// 14. MAIN FUNCTION
 // -------------------------
 
 func main() {
 	cfgPath := flag.String("config", "config.yaml", "path to YAML config")
-	addr := flag.String("addr", ":8080", "listen address")
+	addr := flag.String("addr", DefaultListenAddress, "listen address")
 	flag.Parse()
 
 	cfg, err := LoadConfig(*cfgPath)
