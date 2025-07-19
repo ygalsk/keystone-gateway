@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keystone Gateway - Der intelligente Reverse Proxy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'keystone': '#2563eb',
+                        'keystone-dark': '#1d4ed8'
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <!-- Hero Section -->
+    <div class="min-h-screen flex flex-col justify-center items-center px-4">
+        <div class="max-w-4xl mx-auto text-center">
+            <!-- Logo/Title -->
+            <div class="mb-8">
+                <h1 class="text-5xl md:text-6xl font-bold text-keystone mb-4">
+                    Keystone Gateway
+                </h1>
+                <p class="text-xl md:text-2xl text-gray-600 font-light">
+                    Der intelligente Reverse Proxy für moderne DevOps-Teams
+                </p>
+            </div>
+
+            <!-- Status Badge -->
+            <div class="mb-12">
+                <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                    <span class="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                    Gateway läuft erfolgreich
+                </span>
+            </div>
+
+            <!-- Key Features -->
+            <div class="grid md:grid-cols-3 gap-8 mb-12">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-keystone/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-keystone" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">Blitzschnell</h3>
+                    <p class="text-gray-600">300+ req/sec mit <5ms Latenz</p>
+                </div>
+                
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-keystone/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-keystone" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">Einfach</h3>
+                    <p class="text-gray-600">YAML-Konfiguration, Single Binary</p>
+                </div>
+                
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-keystone/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg class="w-8 h-8 text-keystone" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-lg font-semibold mb-2">Erweiterbar</h3>
+                    <p class="text-gray-600">Optional: Lua-Scripts für CI/CD</p>
+                </div>
+            </div>
+
+            <!-- Quick Start -->
+            <div class="bg-white rounded-lg shadow-lg p-8 text-left max-w-2xl mx-auto mb-12">
+                <h3 class="text-lg font-semibold mb-4 text-center">Quick Start</h3>
+                <div class="space-y-4">
+                    <div>
+                        <p class="text-sm text-gray-600 mb-2">1. Konfiguration erstellen:</p>
+                        <div class="bg-gray-100 rounded p-3 text-sm font-mono">
+                            <div class="text-gray-500"># config.yaml</div>
+                            <div>tenants:</div>
+                            <div class="ml-2">- name: "my-app"</div>
+                            <div class="ml-4">domains: ["app.example.com"]</div>
+                            <div class="ml-4">services:</div>
+                            <div class="ml-6">- name: "backend"</div>
+                            <div class="ml-8">url: "http://localhost:3000"</div>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-600 mb-2">2. Gateway starten:</p>
+                        <div class="bg-gray-900 text-green-400 rounded p-3 text-sm font-mono">
+                            keystone-gateway -config config.yaml -addr :8080
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CTA Buttons -->
+            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <a href="https://github.com/ygalsk/keystone-gateway" 
+                   class="bg-keystone hover:bg-keystone-dark text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"></path>
+                    </svg>
+                    GitHub
+                </a>
+                <a href="/health" 
+                   class="border border-keystone text-keystone hover:bg-keystone hover:text-white px-8 py-3 rounded-lg font-medium transition-colors">
+                    Health Check
+                </a>
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-16 pt-8 border-t border-gray-200">
+                <p class="text-gray-500 text-sm">
+                    Made with ❤️ for the DevOps community · 
+                    <span class="text-keystone font-medium">v1.3.0</span>
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
