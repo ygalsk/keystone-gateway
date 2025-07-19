@@ -23,7 +23,7 @@ YELLOW := \033[1;33m
 RED := \033[0;31m
 NC := \033[0m
 
-.PHONY: help dev test build docker run stop clean deps lint fmt check deploy-prod logs
+.PHONY: help dev test build docker docker-chi docker-lua deploy-core deploy-full deploy-prod deploy-swarm scale run stop clean deps lint fmt check logs status
 
 # Default target
 help: ## Show this help message
@@ -104,11 +104,25 @@ build-all-platforms: ## Build for multiple platforms
 	@echo "$(GREEN)✓ Multi-platform builds completed$(NC)"
 
 # Docker operations
-docker: ## Build Docker image
-	@echo "$(CYAN)→ Building Docker image...$(NC)"
-	@docker build -t $(DOCKER_IMAGE) .
-	@docker tag $(DOCKER_IMAGE) chi-stone:latest
-	@echo "$(GREEN)✓ Docker image built: $(DOCKER_IMAGE)$(NC)"
+docker: ## Build both Docker images
+	@echo "$(CYAN)→ Building Docker images...$(NC)"
+	@docker build -f deployments/docker/chi-stone.Dockerfile -t chi-stone:$(VERSION) .
+	@docker build -f deployments/docker/lua-stone.Dockerfile -t lua-stone:$(VERSION) .
+	@docker tag chi-stone:$(VERSION) chi-stone:latest
+	@docker tag lua-stone:$(VERSION) lua-stone:latest
+	@echo "$(GREEN)✓ Docker images built: chi-stone:$(VERSION), lua-stone:$(VERSION)$(NC)"
+
+docker-chi: ## Build chi-stone Docker image only
+	@echo "$(CYAN)→ Building chi-stone Docker image...$(NC)"
+	@docker build -f deployments/docker/chi-stone.Dockerfile -t chi-stone:$(VERSION) .
+	@docker tag chi-stone:$(VERSION) chi-stone:latest
+	@echo "$(GREEN)✓ Chi-stone image built$(NC)"
+
+docker-lua: ## Build lua-stone Docker image only
+	@echo "$(CYAN)→ Building lua-stone Docker image...$(NC)"
+	@docker build -f deployments/docker/lua-stone.Dockerfile -t lua-stone:$(VERSION) .
+	@docker tag lua-stone:$(VERSION) lua-stone:latest
+	@echo "$(GREEN)✓ Lua-stone image built$(NC)"
 
 # Local development server
 run: build ## Run the gateway locally with development config
@@ -140,34 +154,87 @@ test-local: build ## Run local test with minimal mock backends
 	@echo "$(GREEN)✓ Local test completed$(NC)"
 
 # Production deployment (simplified)
-deploy-prod: build docker ## Deploy to production environment
-	@echo "$(CYAN)→ Deploying to production...$(NC)"
+# Docker Compose deployment options
+deploy-core: docker ## Deploy core services only (chi-stone)
+	@echo "$(CYAN)→ Deploying core services...$(NC)"
+	@docker-compose -f deployments/docker/docker-compose.core.yml down --remove-orphans || true
+	@docker-compose -f deployments/docker/docker-compose.core.yml up -d --build
+	@echo "$(GREEN)✓ Core services deployed$(NC)"
+
+deploy-full: docker ## Deploy full stack (chi-stone + lua-stone)
+	@echo "$(CYAN)→ Deploying full stack...$(NC)"
+	@docker-compose -f deployments/docker/docker-compose.full.yml down --remove-orphans || true
+	@docker-compose -f deployments/docker/docker-compose.full.yml up -d --build
+	@echo "$(GREEN)✓ Full stack deployed$(NC)"
+
+deploy-prod: docker ## Deploy production environment with monitoring
+	@echo "$(CYAN)→ Deploying production environment...$(NC)"
 	@echo "$(YELLOW)Warning: This will replace the current production deployment$(NC)"
 	@read -p "Continue? [y/N] " -n 1 -r; echo; \
 	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-		docker-compose -f deployments/docker/docker-compose.simple.yml down --remove-orphans || true; \
-		docker-compose -f deployments/docker/docker-compose.simple.yml up -d --build; \
+		docker-compose -f deployments/docker/docker-compose.production.yml down --remove-orphans || true; \
+		docker-compose -f deployments/docker/docker-compose.production.yml up -d --build; \
 		echo "$(GREEN)✓ Production deployment completed$(NC)"; \
+		echo "$(CYAN)→ Access points:$(NC)"; \
+		echo "  Gateway: http://localhost:8080"; \
+		echo "  Lua Engine: http://localhost:8081"; \
+		echo "  Prometheus: http://localhost:9090"; \
+		echo "  Grafana: http://localhost:3000 (admin/changeme)"; \
 	else \
 		echo "$(YELLOW)Deployment cancelled$(NC)"; \
 	fi
 
+# Docker Swarm deployment
+deploy-swarm: docker ## Deploy to Docker Swarm cluster
+	@echo "$(CYAN)→ Deploying to Docker Swarm...$(NC)"
+	@docker swarm init 2>/dev/null || echo "Swarm already initialized"
+	@docker stack deploy -c deployments/docker/docker-compose.swarm.yml keystone-gateway
+	@echo "$(GREEN)✓ Swarm deployment completed$(NC)"
+	@echo "$(CYAN)→ Stack services:$(NC)"
+	@docker stack services keystone-gateway
+
+# Simple service management - let chi-stone + lua-stone handle the logic
+scale: ## Scale chi-stone replicas
+	@echo "$(CYAN)→ Scaling chi-stone...$(NC)"
+	@docker-compose -f deployments/docker/docker-compose.full.yml up -d --scale chi-stone=3
+	@echo "$(GREEN)✓ Chi-stone scaled to 3 replicas$(NC)"
+
 # Utilities
 logs: ## Show application logs (Docker)
-	@docker-compose -f deployments/docker/docker-compose.simple.yml logs -f keystone-gateway || echo "$(RED)No running containers found$(NC)"
+	@echo "$(CYAN)→ Available log sources:$(NC)"
+	@echo "1. Core (chi-stone only)"
+	@echo "2. Full (chi-stone + lua-stone)"
+	@echo "3. Production (all services + monitoring)"
+	@read -p "Select option [1-3]: " -n 1 -r; echo; \
+	case $$REPLY in \
+		1) docker-compose -f deployments/docker/docker-compose.core.yml logs -f chi-stone || echo "$(RED)No core services running$(NC)";; \
+		2) docker-compose -f deployments/docker/docker-compose.full.yml logs -f || echo "$(RED)No full stack running$(NC)";; \
+		3) docker-compose -f deployments/docker/docker-compose.production.yml logs -f || echo "$(RED)No production stack running$(NC)";; \
+		*) echo "$(RED)Invalid option$(NC)";; \
+	esac
 
 stop: ## Stop all running services
 	@echo "$(CYAN)→ Stopping services...$(NC)"
-	@docker-compose -f deployments/docker/docker-compose.simple.yml down --remove-orphans || true
+	@docker-compose -f deployments/docker/docker-compose.core.yml down --remove-orphans 2>/dev/null || true
+	@docker-compose -f deployments/docker/docker-compose.full.yml down --remove-orphans 2>/dev/null || true
+	@docker-compose -f deployments/docker/docker-compose.production.yml down --remove-orphans 2>/dev/null || true
 	@pkill -f chi-stone || true
+	@pkill -f lua-stone || true
 	@docker stop test-api 2>/dev/null || true
 	@echo "$(GREEN)✓ Services stopped$(NC)"
 
 status: ## Show running services status
 	@echo "$(CYAN)→ Service Status:$(NC)"
-	@docker-compose -f deployments/docker/docker-compose.simple.yml ps 2>/dev/null || echo "No Docker services running"
+	@echo "Core Services:"
+	@docker-compose -f deployments/docker/docker-compose.core.yml ps 2>/dev/null || echo "  No core services running"
 	@echo ""
-	@echo "$(CYAN)→ Local Process:$(NC)"
+	@echo "Full Stack:"
+	@docker-compose -f deployments/docker/docker-compose.full.yml ps 2>/dev/null || echo "  No full stack running"
+	@echo ""
+	@echo "Production Stack:"
+	@docker-compose -f deployments/docker/docker-compose.production.yml ps 2>/dev/null || echo "  No production stack running"
+	@echo ""
+	@echo "$(CYAN)→ Local Processes:$(NC)"
 	@pgrep -f chi-stone && echo "Gateway process running" || echo "No local gateway process"
 
 clean: stop ## Clean up build artifacts and containers
