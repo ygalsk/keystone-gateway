@@ -28,6 +28,8 @@ import (
 
 type Config struct {
     Tenants []Tenant `yaml:"tenants"`
+		AdminBasePath string   `yaml:"admin_base_path,omitempty"`
+		// Optional: Base path for admin endpoints, defaults to "/"
 }
 
 type Tenant struct {
@@ -466,8 +468,14 @@ func (gw *Gateway) SetupRouter() *chi.Mux {
     r.Use(middleware.RequestID)
     r.Use(middleware.Timeout(60 * time.Second))
     
-    // Management API routes
-    r.Route("/admin", func(r chi.Router) {
+    // Admin base path from config, defaulting to "/admin" if empty
+    basePath := gw.config.AdminBasePath
+    if basePath == "" {
+        basePath = "/"
+    }
+
+    // Use basePath dynamically in Route
+    r.Route(basePath, func(r chi.Router) {
         r.Get("/health", gw.HealthHandler)
         r.Get("/tenants", gw.TenantsHandler)
         // TODO: Add more management endpoints
