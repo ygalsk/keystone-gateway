@@ -19,8 +19,14 @@ go.work
 
 # Build artifacts
 /keystone-gateway
+/chi-stone
+/lua-stone
+/gateway
+/lua-engine/lua-engine
 /dist/
 /build/
+/test-build
+*.backup
 
 # Configuration files with sensitive data
 *.env
