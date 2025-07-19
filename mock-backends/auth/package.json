@@ -1,0 +1,12 @@
+{
+  "name": "auth-backend",
+  "version": "1.0.0",
+  "description": "Mock Auth backend for Keystone Gateway testing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
