@@ -1,17 +1,87 @@
+# configs/production-test.yaml
+# Keystone Gateway Configuration for Real Domain Testing
+
 tenants:
-  - name: "acme-agency"
-    path_prefix: "/acme/"
-    health_interval: 10 # seconds
+  # Demo Application - Host-based routing
+  - name: demo
+    domains:
+      - demo.keystone-gateway.dev
+    health_interval: 15
     services:
-      - name: "webapp"
-        url: "http://test-backend-1:80"
-        health: "/health"
-      - name: "webapp2"
-        url: "http://test-backend-2:80"
-        health: "/health"
-  - name: "beta-shop"
-    path_prefix: "/beta/"
+      - name: demo-main
+        url: http://localhost:3001
+        health: /health
+      - name: demo-backup
+        url: http://localhost:3001
+        health: /health
+
+  # API Service - Host-based routing  
+  - name: api
+    domains:
+      - api.keystone-gateway.dev
+    health_interval: 10
     services:
-      - name: "shop"
-        url: "http://test-backend-3:80"
-        health: "/status"
+      - name: api-primary
+        url: http://localhost:3002
+        health: /health
+      - name: api-secondary
+        url: http://localhost:3002
+        health: /health
+
+  # Authentication Service - Host-based routing
+  - name: auth
+    domains:
+      - auth.keystone-gateway.dev
+    health_interval: 10
+    services:
+      - name: auth-service
+        url: http://localhost:3003
+        health: /health
+
+  # Status/Monitoring - Host-based routing
+  - name: status
+    domains:
+      - status.keystone-gateway.dev
+    health_interval: 20
+    services:
+      - name: status-service
+        url: http://localhost:3004
+        health: /health
+
+  # Grafana Monitoring - Host-based routing
+  - name: grafana
+    domains:
+      - grafana.keystone-gateway.dev
+    health_interval: 30
+    services:
+      - name: grafana-service
+        url: http://localhost:3005
+        health: /api/health
+
+  # Path-based routing examples
+  - name: api-v1
+    path_prefix: /api/v1/
+    health_interval: 10
+    services:
+      - name: api-v1-service
+        url: http://localhost:3002/v1
+        health: /health
+
+  - name: api-v2
+    path_prefix: /api/v2/
+    health_interval: 10
+    services:
+      - name: api-v2-service
+        url: http://localhost:3002/v2
+        health: /health
+
+  # Hybrid routing example (host + path)
+  # - name: api-admin
+  #   domains:
+  #     - api.keystone-gateway.dev
+  #   path_prefix: /admin/
+  #   health_interval: 15
+  #   services:
+  #     - name: api-admin-service
+  #       url: http://localhost:3002/admin
+  #       health: /health

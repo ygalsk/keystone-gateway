@@ -1,76 +1,772 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Keystone Gateway</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Keystone Gateway - The Definitive Reverse Proxy for KMUs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'blue-primary': '#1e40af',
+                        'blue-secondary': '#1d4ed8',
+                        'purple-primary': '#7c3aed',
+                        'purple-secondary': '#8b5cf6',
+                        'gray-dark': '#1f2937',
+                        'gray-darker': '#0f172a',
+                        'gray-light': '#374151'
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #1e40af 0%, #7c3aed 100%); }
+        .code-scroll { scrollbar-width: thin; scrollbar-color: #374151 #1f2937; }
+        .architecture-animation { animation: float 6s ease-in-out infinite; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
 </head>
-<body class="bg-gray-900 text-white font-sans">
+<body class="bg-white text-gray-900">
 
-  <!-- Hero -->
-  <section class="min-h-screen flex items-center justify-center text-center px-6">
-    <div>
-      <h1 class="text-4xl md:text-6xl font-bold mb-4">Keystone Gateway</h1>
-      <p class="text-xl md:text-2xl text-gray-300 mb-6">
-        Das smarte, leichtgewichtige Reverse Proxy Gateway für KMUs
-      </p>
-      <a href="#kontakt" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-semibold">Jetzt Kontakt aufnehmen</a>
-    </div>
-  </section>
+    <!-- Navigation -->
+    <nav class="bg-white/95 backdrop-blur-sm border-b border-gray-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-gradient-to-br from-blue-primary to-purple-primary rounded-lg flex items-center justify-center">
+                    <span class="text-white text-xl font-bold">K</span>
+                </div>
+                <div>
+                    <span class="text-xl font-bold text-gray-900">Keystone Gateway</span>
+                    <div class="text-xs text-gray-500 -mt-1">Simple Core + Optional Lua</div>
+                </div>
+            </div>
+            <div class="hidden md:flex space-x-8 items-center">
+                <a href="#philosophy" class="text-gray-600 hover:text-blue-primary transition-colors font-medium">Philosophy</a>
+                <a href="#architecture" class="text-gray-600 hover:text-blue-primary transition-colors font-medium">Architecture</a>
+                <a href="#roadmap" class="text-gray-600 hover:text-blue-primary transition-colors font-medium">Roadmap</a>
+                <a href="#quickstart" class="text-gray-600 hover:text-blue-primary transition-colors font-medium">Quick Start</a>
+                <a href="https://github.com/ygalsk/keystone-gateway" class="bg-gradient-to-r from-blue-primary to-purple-primary text-white px-5 py-2 rounded-lg hover:shadow-lg transition-all font-medium">
+                    GitHub
+                </a>
+            </div>
+        </div>
+    </nav>
 
-  <!-- Über -->
-  <section class="bg-gray-800 py-16 px-6">
-    <div class="max-w-4xl mx-auto text-center">
-      <h2 class="text-3xl font-bold mb-4">Was ist Keystone Gateway?</h2>
-      <p class="text-gray-300 text-lg">
-        Keystone Gateway ist ein in Go entwickeltes, konfigurierbares Reverse Proxy System mit Health-Checks, Load Balancing, Multi-Tenant-Funktion und YAML-Konfiguration – optimiert für pragmatische Infrastruktur bei Agenturen & KMUs.
-      </p>
-    </div>
-  </section>
+    <!-- Hero Section -->
+    <section class="gradient-bg py-24 relative overflow-hidden">
+        <div class="absolute inset-0 bg-black/10"></div>
+        <div class="max-w-7xl mx-auto px-6 text-center relative z-10">
+            <div class="mb-6">
+                <span class="bg-white/20 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm">
+                    🚀 v1.2.0 with Chi Router Coming Soon
+                </span>
+            </div>
+            <h1 class="text-6xl font-bold text-white mb-6 leading-tight">
+                The Definitive<br>
+                <span class="bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
+                    Reverse Proxy
+                </span><br>
+                for KMUs
+            </h1>
+            <p class="text-xl text-white/90 mb-8 max-w-3xl mx-auto leading-relaxed">
+                Simple by default, powerful when needed. Professional routing performance with optional Lua scripting. 
+                Built specifically for small businesses, agencies, and growing companies.
+            </p>
+            
+            <!-- Architecture Preview -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-2xl p-8 mb-8 max-w-4xl mx-auto">
+                <div class="text-white/80 text-sm mb-4 font-medium">Our Dual-Layer Philosophy</div>
+                <div class="flex flex-col md:flex-row items-center justify-center space-y-4 md:space-y-0 md:space-x-8">
+                    <div class="bg-white/20 rounded-lg p-4 text-center backdrop-blur-sm architecture-animation">
+                        <div class="text-white font-bold text-lg mb-2">🏗️ Simple Core</div>
+                        <div class="text-white/80 text-sm">
+                            Chi Router<br>
+                            YAML Config<br>
+                            Health Checks
+                        </div>
+                    </div>
+                    <div class="text-white/60 text-2xl">+</div>
+                    <div class="bg-white/20 rounded-lg p-4 text-center backdrop-blur-sm architecture-animation" style="animation-delay: -2s;">
+                        <div class="text-white font-bold text-lg mb-2">🌟 Optional Lua</div>
+                        <div class="text-white/80 text-sm">
+                            Rate Limiting<br>
+                            Authentication<br>
+                            Custom Logic
+                        </div>
+                    </div>
+                    <div class="text-white/60 text-2xl">=</div>
+                    <div class="bg-white/20 rounded-lg p-4 text-center backdrop-blur-sm architecture-animation" style="animation-delay: -4s;">
+                        <div class="text-white font-bold text-lg mb-2">🎯 Perfect Fit</div>
+                        <div class="text-white/80 text-sm">
+                            KMU Ready<br>
+                            Zero Complexity<br>
+                            Infinite Growth
+                        </div>
+                    </div>
+                </div>
+            </div>
 
-  <!-- Features -->
-  <section class="py-16 px-6">
-    <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-10">
-      <div>
-        <h3 class="text-xl font-semibold mb-2">✅ Health-basiertes Load Balancing</h3>
-        <p class="text-gray-400">Weiterleitung nur an gesunde Backends – mit eingebauten HTTP-Checks.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">📄 YAML-Konfiguration</h3>
-        <p class="text-gray-400">Einfach, lesbar, git-versionierbar – ideal für DevOps-Workflows.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">🔁 Multi-Tenant-Routing</h3>
-        <p class="text-gray-400">Pro Tenant eigene Routen, Healthchecks und Backends – per Path-Präfix.</p>
-      </div>
-      <div>
-        <h3 class="text-xl font-semibold mb-2">🧩 Integration mit Caddy & Prometheus</h3>
-        <p class="text-gray-400">TLS & Monitoring out of the box – für professionelle Deployments.</p>
-      </div>
-    </div>
-  </section>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="#quickstart" class="bg-white text-blue-primary px-8 py-4 rounded-xl hover:shadow-xl transition-all text-lg font-semibold">
+                    🚀 Get Started in 60 Seconds
+                </a>
+                <a href="#philosophy" class="bg-white/20 backdrop-blur-sm text-white px-8 py-4 rounded-xl hover:bg-white/30 transition-all text-lg font-semibold">
+                    📖 Learn Our Philosophy
+                </a>
+            </div>
+        </div>
+    </section>
 
-  <!-- Zielgruppe -->
-  <section class="bg-gray-800 py-16 px-6 text-center">
-    <h2 class="text-3xl font-bold mb-6">Für wen ist Keystone Gateway?</h2>
-    <p class="text-gray-300 text-lg max-w-2xl mx-auto mb-4">
-      Für Agenturen, KMUs und Startups, die moderne Infrastruktur brauchen – ohne Overhead.
-    </p>
-    <p class="text-gray-400">Keine Kubernetes-Monster. Einfach. Wartungsarm. Sicher.</p>
-  </section>
+    <!-- Core Philosophy -->
+    <section id="philosophy" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-6">
+                    "Keystone stays simple,<br>
+                    <span class="bg-gradient-to-r from-blue-primary to-purple-primary bg-clip-text text-transparent">
+                        complexity is optional"
+                    </span>
+                </h2>
+                <p class="text-xl text-gray-700 max-w-3xl mx-auto">
+                    Our core principle drives every decision. Start with a simple, reliable reverse proxy. 
+                    Add advanced features only when you need them, powered by community-driven Lua scripts.
+                </p>
+            </div>
 
-  <!-- Kontakt -->
-  <section id="kontakt" class="py-16 px-6 text-center">
-    <h2 class="text-3xl font-bold mb-4">Kontakt</h2>
-    <p class="text-gray-300 mb-2">📧 kontakt@keystone-gateway.dev</p>
-    <p class="text-gray-300 mb-6">🌍 GitHub: <a class="text-blue-500 underline" href="https://github.com/ygalsk" target="_blank">ygalsk</a></p>
-    <a href="mailto:kontakt@keystone-gateway.dev" class="bg-blue-600 hover:bg-blue-700 px-5 py-3 rounded-lg font-semibold">Jetzt schreiben</a>
-  </section>
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-6">Why This Approach Works</h3>
+                    <div class="space-y-6">
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span class="text-green-600 font-bold">✓</span>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-gray-900 mb-2">Perfect for KMUs</h4>
+                                <p class="text-gray-700">Small businesses get professional-grade performance without enterprise complexity.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span class="text-green-600 font-bold">✓</span>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-gray-900 mb-2">Zero Breaking Changes</h4>
+                                <p class="text-gray-700">Core simplicity ensures your configuration always works, version after version.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span class="text-green-600 font-bold">✓</span>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-gray-900 mb-2">Community Driven</h4>
+                                <p class="text-gray-700">Lua script repository lets you share and reuse advanced features across teams.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <span class="text-green-600 font-bold">✓</span>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-gray-900 mb-2">Performance First</h4>
+                                <p class="text-gray-700">Chi router provides 25% performance improvement over stdlib with zero config changes.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="bg-gray-50 rounded-2xl p-8">
+                    <h4 class="font-semibold text-gray-900 mb-4">Simple Core Example</h4>
+                    <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code class="language-yaml"># This just works - no complexity
+routes:
+  - path_prefix: "/api/"
+    backend: "http://localhost:3000"
+  - path_prefix: "/app/"
+    backend: "http://localhost:3001"
 
-  <footer class="bg-gray-900 py-6 text-center text-sm text-gray-500">
-    © 2025 Keystone Gateway – Daniel Kremer, Konstanz
-  </footer>
+# Optional: Add Lua superpowers
+lua_scripts:
+  - name: "rate_limiting"
+    script: "./scripts/rate_limit.lua"
+    routes: ["/api/"]</code></pre>
+                    <div class="mt-4 text-sm text-gray-600">
+                        💡 Core works perfectly without Lua. Add scripts only when you need advanced features.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dual Architecture -->
+    <section id="architecture" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-6">Dual-Layer Architecture</h2>
+                <p class="text-xl text-gray-700 max-w-3xl mx-auto">
+                    Professional performance meets ultimate flexibility. Choose your level of complexity.
+                </p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-12">
+                <!-- Core Layer -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-blue-primary rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                            <span class="text-white text-2xl font-bold">🏗️</span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900">Simple Core Layer</h3>
+                        <p class="text-gray-600 mt-2">Essential reverse proxy functionality only</p>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-blue-900 mb-2">⚡ Chi Router Performance</h4>
+                            <p class="text-blue-800 text-sm">200+ req/sec with professional routing patterns</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-blue-900 mb-2">🎯 Health-Based Load Balancing</h4>
+                            <p class="text-blue-800 text-sm">Intelligent routing only to healthy backends</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-blue-900 mb-2">📝 YAML Configuration</h4>
+                            <p class="text-blue-800 text-sm">Simple, human-readable configuration</p>
+                        </div>
+                        <div class="bg-blue-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-blue-900 mb-2">📦 Single Binary</h4>
+                            <p class="text-blue-800 text-sm">Zero dependencies, easy deployment</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lua Layer -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                    <div class="text-center mb-6">
+                        <div class="w-16 h-16 bg-purple-primary rounded-2xl mx-auto mb-4 flex items-center justify-center">
+                            <span class="text-white text-2xl font-bold">🌟</span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900">Optional Lua Layer</h3>
+                        <p class="text-gray-600 mt-2">Advanced features without core complexity</p>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-purple-900 mb-2">🔐 Authentication & Security</h4>
+                            <p class="text-purple-800 text-sm">JWT validation, rate limiting, IP whitelisting</p>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-purple-900 mb-2">📊 Advanced Monitoring</h4>
+                            <p class="text-purple-800 text-sm">Custom metrics, detailed logging, alerting</p>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-purple-900 mb-2">🔄 Request Transformation</h4>
+                            <p class="text-purple-800 text-sm">Header injection, request rewriting, response modification</p>
+                        </div>
+                        <div class="bg-purple-50 rounded-lg p-4">
+                            <h4 class="font-semibold text-purple-900 mb-2">🤝 Community Scripts</h4>
+                            <p class="text-purple-800 text-sm">Shared repository of battle-tested scripts</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Metrics -->
+            <div class="mt-16 bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                <h3 class="text-2xl font-bold text-gray-900 text-center mb-8">Performance Evolution</h3>
+                <div class="grid md:grid-cols-3 gap-8">
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-blue-primary mb-2">159 req/s</div>
+                        <div class="text-gray-600 font-medium mb-2">v1.1.x Baseline</div>
+                        <div class="text-sm text-gray-500">stdlib routing</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-green-600 mb-2">200+ req/s</div>
+                        <div class="text-gray-600 font-medium mb-2">v1.2.0 Chi Router</div>
+                        <div class="text-sm text-gray-500">+25% improvement</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-purple-primary mb-2">180+ req/s</div>
+                        <div class="text-gray-600 font-medium mb-2">v1.3.0 Lua Enabled</div>
+                        <div class="text-sm text-gray-500">minimal overhead</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Realistic Roadmap -->
+    <section id="roadmap" class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-6">Realistic Development Roadmap</h2>
+                <p class="text-xl text-gray-700 max-w-3xl mx-auto">
+                    From overambitious executive vision to achievable, philosophy-aligned development plan.
+                </p>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Phase 1 -->
+                <div class="bg-green-50 border border-green-200 rounded-2xl p-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-12 h-12 bg-green-600 rounded-xl flex items-center justify-center">
+                                <span class="text-white font-bold">1</span>
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold text-green-800">Chi Router Foundation</h3>
+                                <p class="text-green-700">v1.2.0 • 2-3 weeks • Ready to implement</p>
+                            </div>
+                        </div>
+                        <div class="bg-green-600 text-white px-4 py-2 rounded-lg font-medium">
+                            ✅ Ready
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-semibold text-green-800 mb-3">🎯 Goals</h4>
+                            <ul class="text-green-700 space-y-2">
+                                <li>• Professional routing performance (+25%)</li>
+                                <li>• Clean middleware architecture</li>
+                                <li>• Zero breaking changes</li>
+                                <li>• Preparation for Lua integration</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-green-800 mb-3">📊 Success Metrics</h4>
+                            <ul class="text-green-700 space-y-2">
+                                <li>• 200+ req/sec performance</li>
+                                <li>• Same configuration format</li>
+                                <li>• Cleaner codebase</li>
+                                <li>• Improved error handling</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 2 -->
+                <div class="bg-blue-50 border border-blue-200 rounded-2xl p-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                                <span class="text-white font-bold">2</span>
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold text-blue-800">Core Optimization</h3>
+                                <p class="text-blue-700">v1.2.1 • 1 week • Well-defined scope</p>
+                            </div>
+                        </div>
+                        <div class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium">
+                            🎯 Planned
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-semibold text-blue-800 mb-3">🔧 Optimizations</h4>
+                            <ul class="text-blue-700 space-y-2">
+                                <li>• Performance tuning and bug fixes</li>
+                                <li>• Enhanced monitoring and logging</li>
+                                <li>• Lua integration preparation hooks</li>
+                                <li>• Documentation improvements</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-blue-800 mb-3">🏗️ Architecture Prep</h4>
+                            <ul class="text-blue-700 space-y-2">
+                                <li>• Middleware hook interfaces</li>
+                                <li>• Script execution framework</li>
+                                <li>• Security sandbox preparation</li>
+                                <li>• Performance baseline establishment</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 3 -->
+                <div class="bg-purple-50 border border-purple-200 rounded-2xl p-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-12 h-12 bg-purple-600 rounded-xl flex items-center justify-center">
+                                <span class="text-white font-bold">3</span>
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold text-purple-800">Lua Extensibility</h3>
+                                <p class="text-purple-700">v1.3.0 • 4-6 weeks • Clear implementation path</p>
+                            </div>
+                        </div>
+                        <div class="bg-purple-600 text-white px-4 py-2 rounded-lg font-medium">
+                            🚀 Future
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-semibold text-purple-800 mb-3">🌟 Lua Features</h4>
+                            <ul class="text-purple-700 space-y-2">
+                                <li>• Optional Lua scripting engine</li>
+                                <li>• Sandboxed execution environment</li>
+                                <li>• Community script repository</li>
+                                <li>• Advanced features without core complexity</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-purple-800 mb-3">📦 Script Examples</h4>
+                            <ul class="text-purple-700 space-y-2">
+                                <li>• Rate limiting and throttling</li>
+                                <li>• JWT authentication</li>
+                                <li>• Request/response transformation</li>
+                                <li>• Custom monitoring and alerting</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Phase 4 -->
+                <div class="bg-orange-50 border border-orange-200 rounded-2xl p-8">
+                    <div class="flex items-center justify-between mb-6">
+                        <div class="flex items-center space-x-4">
+                            <div class="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
+                                <span class="text-white font-bold">4</span>
+                            </div>
+                            <div>
+                                <h3 class="text-2xl font-bold text-orange-800">Community & Ecosystem</h3>
+                                <p class="text-orange-700">v1.4.0+ • Ongoing • Sustainable long-term vision</p>
+                            </div>
+                        </div>
+                        <div class="bg-orange-600 text-white px-4 py-2 rounded-lg font-medium">
+                            🌱 Growing
+                        </div>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div>
+                            <h4 class="font-semibold text-orange-800 mb-3">🤝 Community</h4>
+                            <ul class="text-orange-700 space-y-2">
+                                <li>• Script marketplace and sharing</li>
+                                <li>• Community-driven development</li>
+                                <li>• Best practices documentation</li>
+                                <li>• Enterprise consulting services</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-orange-800 mb-3">🏢 Enterprise</h4>
+                            <ul class="text-orange-700 space-y-2">
+                                <li>• Advanced Lua script library</li>
+                                <li>• Professional support options</li>
+                                <li>• Custom feature development</li>
+                                <li>• Training and onboarding</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section id="quickstart" class="py-20 bg-gray-50">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-6">Get Started in 60 Seconds</h2>
+                <p class="text-xl text-gray-700 max-w-3xl mx-auto">
+                    From zero to production-ready reverse proxy in minutes. No complexity, just results.
+                </p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-12">
+                <!-- Docker Setup -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                    <div class="flex items-center space-x-3 mb-6">
+                        <div class="w-10 h-10 bg-blue-primary rounded-xl flex items-center justify-center">
+                            <span class="text-white text-xl">🐳</span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900">Docker Deployment</h3>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">1. Pull the image</h4>
+                            <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code>docker pull ygalsk/keystone-gateway:latest</code></pre>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">2. Create config.yaml</h4>
+                            <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code>routes:
+  - path_prefix: "/api/"
+    backend: "http://localhost:3000"</code></pre>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">3. Run the container</h4>
+                            <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code>docker run -d -p 8080:8080 \
+  -v $(pwd)/config.yaml:/app/config.yaml \
+  ygalsk/keystone-gateway:latest</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+                        <div class="text-green-800 font-medium mb-1">✅ Production Ready</div>
+                        <div class="text-green-700 text-sm">Health checks, graceful shutdown, and monitoring included out of the box.</div>
+                    </div>
+                </div>
+
+                <!-- Development Setup -->
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                    <div class="flex items-center space-x-3 mb-6">
+                        <div class="w-10 h-10 bg-purple-primary rounded-xl flex items-center justify-center">
+                            <span class="text-white text-xl">⚡</span>
+                        </div>
+                        <h3 class="text-2xl font-bold text-gray-900">Development Setup</h3>
+                    </div>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">1. Clone repository</h4>
+                            <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code>git clone https://github.com/ygalsk/keystone-gateway.git
+cd keystone-gateway</code></pre>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">2. Build and test</h4>
+                            <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code>make build
+make test</code></pre>
+                        </div>
+                        
+                        <div>
+                            <h4 class="font-semibold text-gray-900 mb-2">3. Run locally</h4>
+                            <pre class="bg-gray-900 text-gray-100 p-4 rounded-lg text-sm code-scroll overflow-x-auto"><code>./keystone-gateway -config=configs/config.yaml</code></pre>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div class="text-blue-800 font-medium mb-1">🔧 Developer Friendly</div>
+                        <div class="text-blue-700 text-sm">Hot reload, detailed logging, and comprehensive test suite included.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Complete Example -->
+            <div class="mt-12 bg-white rounded-2xl p-8 shadow-sm border border-gray-200">
+                <h3 class="text-2xl font-bold text-gray-900 mb-6 text-center">Complete Configuration Example</h3>
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <div>
+                        <h4 class="font-semibold text-gray-900 mb-4">🏗️ Simple Core (Always Works)</h4>
+                        <pre class="bg-gray-900 text-gray-100 p-6 rounded-lg text-sm code-scroll overflow-x-auto"><code class="language-yaml"># Simple, reliable configuration
+routes:
+  - path_prefix: "/api/"
+    backend: "http://web-server:8080"
+    health_check: "/health"
+  
+  - path_prefix: "/app/"
+    backend: "http://app-server:3000"
+    health_check: "/status"
+
+# Built-in monitoring
+monitoring:
+  enabled: true
+  port: 9090</code></pre>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-900 mb-4">🌟 Optional Lua Features</h4>
+                        <pre class="bg-gray-900 text-gray-100 p-6 rounded-lg text-sm code-scroll overflow-x-auto"><code class="language-yaml"># Add superpowers when needed
+lua_scripts:
+  - name: "rate_limiting"
+    script: "./scripts/rate_limit.lua"
+    routes: ["/api/"]
+    config:
+      max_requests: 100
+      window_seconds: 60
+  
+  - name: "jwt_auth"
+    script: "./scripts/jwt_verify.lua" 
+    routes: ["/admin/"]
+    config:
+      secret_key: "${JWT_SECRET}"</code></pre>
+                    </div>
+                </div>
+                <div class="mt-6 text-center">
+                    <div class="bg-gradient-to-r from-blue-50 to-purple-50 border border-gray-200 rounded-lg p-4">
+                        <div class="text-gray-800 font-medium mb-1">💡 Philosophy in Action</div>
+                        <div class="text-gray-700 text-sm">Core configuration is simple and always works. Lua scripts add advanced features without breaking the core.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Documentation & Resources -->
+    <section class="py-20">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl font-bold text-gray-900 mb-6">Documentation & Community</h2>
+                <p class="text-xl text-gray-700 max-w-3xl mx-auto">
+                    Everything you need to get started, scale up, and contribute back to the community.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 text-center">
+                    <div class="w-16 h-16 bg-blue-primary rounded-2xl mx-auto mb-6 flex items-center justify-center">
+                        <span class="text-white text-2xl">📚</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4">Architecture Guide</h3>
+                    <p class="text-gray-600 mb-6">Complete documentation of our dual-layer philosophy and technical implementation.</p>
+                    <a href="docs/README.md" class="bg-blue-primary text-white px-6 py-3 rounded-lg hover:bg-blue-secondary transition-colors font-medium inline-block">
+                        Read Docs →
+                    </a>
+                </div>
+
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 text-center">
+                    <div class="w-16 h-16 bg-purple-primary rounded-2xl mx-auto mb-6 flex items-center justify-center">
+                        <span class="text-white text-2xl">🌟</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4">Lua Script Library</h3>
+                    <p class="text-gray-600 mb-6">Community-driven collection of battle-tested Lua scripts for common use cases.</p>
+                    <a href="https://scripts.keystone-gateway.dev" class="bg-purple-primary text-white px-6 py-3 rounded-lg hover:bg-purple-secondary transition-colors font-medium inline-block">
+                        Browse Scripts →
+                    </a>
+                </div>
+
+                <div class="bg-white rounded-2xl p-8 shadow-sm border border-gray-200 text-center">
+                    <div class="w-16 h-16 bg-green-600 rounded-2xl mx-auto mb-6 flex items-center justify-center">
+                        <span class="text-white text-2xl">🤝</span>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-4">GitHub Community</h3>
+                    <p class="text-gray-600 mb-6">Join our open-source community. Contribute code, report issues, or share your use case.</p>
+                    <a href="https://github.com/ygalsk/keystone-gateway" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors font-medium inline-block">
+                        Contribute →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="gradient-bg py-20">
+        <div class="max-w-7xl mx-auto px-6 text-center">
+            <h2 class="text-4xl font-bold text-white mb-6">
+                Ready to Transform Your Infrastructure?
+            </h2>
+            <p class="text-xl text-white/90 mb-8 max-w-3xl mx-auto">
+                Join hundreds of KMUs and agencies who've simplified their reverse proxy setup with Keystone Gateway.
+                Start simple, scale smart.
+            </p>
+            
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+                <a href="https://github.com/ygalsk/keystone-gateway" class="bg-white text-blue-primary px-8 py-4 rounded-xl hover:shadow-xl transition-all text-lg font-semibold">
+                    🚀 Start Now - It's Free
+                </a>
+                <a href="mailto:daniel@keystone-gateway.dev" class="bg-white/20 backdrop-blur-sm text-white px-8 py-4 rounded-xl hover:bg-white/30 transition-all text-lg font-semibold">
+                    💬 Talk to Our Team
+                </a>
+            </div>
+
+            <div class="text-white/80 text-sm">
+                Open source • MIT License • Made with ❤️ for KMUs
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-darker text-white py-16">
+        <div class="max-w-7xl mx-auto px-6">
+            <div class="grid md:grid-cols-4 gap-8 mb-8">
+                <div>
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 bg-gradient-to-br from-blue-primary to-purple-primary rounded-lg flex items-center justify-center">
+                            <span class="text-white text-xl font-bold">K</span>
+                        </div>
+                        <span class="text-xl font-bold">Keystone Gateway</span>
+                    </div>
+                    <p class="text-gray-400 text-sm leading-relaxed">
+                        The definitive reverse proxy for KMUs. Simple by default, powerful when needed.
+                    </p>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Product</h4>
+                    <ul class="space-y-3 text-sm text-gray-400">
+                        <li><a href="#philosophy" class="hover:text-white transition-colors">Philosophy</a></li>
+                        <li><a href="#architecture" class="hover:text-white transition-colors">Architecture</a></li>
+                        <li><a href="#roadmap" class="hover:text-white transition-colors">Roadmap</a></li>
+                        <li><a href="docs/README.md" class="hover:text-white transition-colors">Documentation</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Community</h4>
+                    <ul class="space-y-3 text-sm text-gray-400">
+                        <li><a href="https://github.com/ygalsk/keystone-gateway" class="hover:text-white transition-colors">GitHub</a></li>
+                        <li><a href="https://github.com/ygalsk/keystone-gateway/issues" class="hover:text-white transition-colors">Issues</a></li>
+                        <li><a href="https://github.com/ygalsk/keystone-gateway/discussions" class="hover:text-white transition-colors">Discussions</a></li>
+                        <li><a href="https://scripts.keystone-gateway.dev" class="hover:text-white transition-colors">Script Library</a></li>
+                    </ul>
+                </div>
+                
+                <div>
+                    <h4 class="font-semibold mb-4">Support</h4>
+                    <ul class="space-y-3 text-sm text-gray-400">
+                        <li><a href="mailto:daniel@keystone-gateway.dev" class="hover:text-white transition-colors">Contact</a></li>
+                        <li><a href="docs/development/implementation-guide.md" class="hover:text-white transition-colors">Implementation Guide</a></li>
+                        <li><a href="docs/architecture/performance.md" class="hover:text-white transition-colors">Performance Guide</a></li>
+                        <li><a href="docs/development/chi-migration.md" class="hover:text-white transition-colors">Migration Guide</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-700 pt-8 text-center text-sm text-gray-400">
+                <p>&copy; 2025 Keystone Gateway. Made with ❤️ for KMUs. Open source under MIT License.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Add scroll-based animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        // Observe all sections for animation
+        document.querySelectorAll('section').forEach(section => {
+            section.style.opacity = '0';
+            section.style.transform = 'translateY(20px)';
+            section.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(section);
+        });
+
+        // Initialize first section as visible
+        document.querySelector('section').style.opacity = '1';
+        document.querySelector('section').style.transform = 'translateY(0)';
+    </script>
 
 </body>
 </html>

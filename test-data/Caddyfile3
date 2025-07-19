@@ -1,4 +1,0 @@
-:80 {
-    respond /status "Backend 3 healthy"
-    respond * "Hello from Beta Shop Backend"
-}
