@@ -154,8 +154,10 @@ ab -n 1000 -c 10 http://localhost:8080/admin/health
 
 ```
 keystone-gateway/
-├── main.go              # Main application entry point
-├── *_test.go           # Test files
+├── cmd/chi-stone/       # Main gateway binary entry point
+├── internal/            # Internal packages (config, routing, health, proxy)
+├── pkg/client/          # Public API packages
+├── test/               # All test files (unit, integration, e2e)
 ├── Makefile            # Development workflow
 ├── Dockerfile          # Container build
 ├── configs/            # Configuration examples
@@ -166,8 +168,10 @@ keystone-gateway/
 
 ### Key Files
 
-- **`main.go`**: Core gateway implementation (~500 lines)
-- **`main_test.go`**: Unit and integration tests  
+- **`cmd/chi-stone/main.go`**: Main application entry point (~280 lines)
+- **`internal/config/config.go`**: Configuration management
+- **`internal/routing/gateway.go`**: Core routing logic
+- **`test/integration/gateway_test.go`**: Integration tests  
 - **`Makefile`**: All development commands
 - **`DEVELOPMENT.md`**: Development workflow guide
 - **`configs/config.yaml`**: Development configuration
@@ -184,8 +188,8 @@ keystone-gateway/
 
 ### Code Organization
 
-- **Single file approach**: Keep core logic in `main.go`
-- **Clear separation**: Distinct functions for different concerns
+- **Modular packages**: Core logic separated into internal packages
+- **Clear separation**: Distinct packages for different concerns (config, routing, health, proxy)
 - **Minimal dependencies**: Only essential external packages
 - **Standard library first**: Prefer standard library when possible
 
@@ -200,8 +204,8 @@ keystone-gateway/
 
 ### Adding a New Configuration Option
 
-1. **Update structs**: Add field to appropriate struct in `main.go`
-2. **Add validation**: Include validation in `validateTenant()`
+1. **Update structs**: Add field to appropriate struct in `internal/config/config.go`
+2. **Add validation**: Include validation in `validateTenant()` in config package
 3. **Update docs**: Document in `docs/configuration.md`
 4. **Add tests**: Test new configuration option
 5. **Update examples**: Include in example configs

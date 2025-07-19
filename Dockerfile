@@ -30,7 +30,7 @@ RUN CGO_ENABLED=0 \
     -installsuffix cgo \
     -ldflags='-w -s -extldflags "-static"' \
     -o keystone-gateway \
-    main.go
+    .
 
 # Compress binary (optional, saves ~30% size)
 RUN upx --best --lzma keystone-gateway

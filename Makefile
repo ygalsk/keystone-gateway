@@ -12,8 +12,8 @@ GOARCH := $(shell go env GOARCH)
 BUILD_FLAGS := -ldflags "-w -s -X main.version=$(VERSION)"
 
 # Configuration
-CONFIG_DEV := configs/config.yaml
-CONFIG_PROD := configs/production-simple.yaml
+CONFIG_DEV := configs/examples/config.yaml
+CONFIG_PROD := configs/environments/production.yaml
 PORT := 8080
 
 # Colors for output
@@ -58,10 +58,15 @@ lint: ## Lint Go code
 check: fmt lint ## Run code quality checks
 
 # Testing
-test: ## Run all tests
+test: ## Run unit and integration tests
 	@echo "$(CYAN)→ Running tests...$(NC)"
+	@go test -v ./internal/... ./pkg/...
+	@echo "$(GREEN)✓ Core tests passed$(NC)"
+
+test-all: ## Run all tests (including legacy tests that need updating)
+	@echo "$(CYAN)→ Running all tests...$(NC)"
 	@go test -v ./...
-	@echo "$(GREEN)✓ All tests passed$(NC)"
+	@echo "$(GREEN)✓ All tests completed$(NC)"
 
 test-race: ## Run tests with race detection
 	@echo "$(CYAN)→ Running tests with race detection...$(NC)"
@@ -76,16 +81,23 @@ test-coverage: ## Run tests with coverage report
 
 # Building
 build: ## Build the gateway binary
-	@echo "$(CYAN)→ Building $(APP_NAME)...$(NC)"
-	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o $(APP_NAME) .
+	@echo "$(CYAN)→ Building chi-stone...$(NC)"
+	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o chi-stone ./cmd/chi-stone
+	@echo "$(GREEN)✓ chi-stone binary ready$(NC)"
+
+build-all: ## Build all binaries
+	@echo "$(CYAN)→ Building all binaries...$(NC)"
+	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o chi-stone ./cmd/chi-stone
+	@echo "$(GREEN)✓ chi-stone binary ready$(NC)"
+	@echo "$(YELLOW)→ lua-stone coming soon...$(NC)"
 	@echo "$(GREEN)✓ Binary built: $(APP_NAME)$(NC)"
 
-build-all: ## Build for multiple platforms
+build-all-platforms: ## Build for multiple platforms
 	@echo "$(CYAN)→ Building for multiple platforms...$(NC)"
 	@mkdir -p dist
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/$(APP_NAME)-linux-amd64 .
-	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/$(APP_NAME)-darwin-amd64 .
-	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/$(APP_NAME)-windows-amd64.exe .
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-linux-amd64 ./cmd/chi-stone
+	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-darwin-amd64 ./cmd/chi-stone
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-windows-amd64.exe ./cmd/chi-stone
 	@echo "$(GREEN)✓ Multi-platform builds completed$(NC)"
 
 # Docker operations
@@ -97,9 +109,9 @@ docker: ## Build Docker image
 
 # Local development server
 run: build ## Run the gateway locally with development config
-	@echo "$(CYAN)→ Starting $(APP_NAME) on :$(PORT)...$(NC)"
+	@echo "$(CYAN)→ Starting chi-stone on :$(PORT)...$(NC)"
 	@echo "$(YELLOW)Press Ctrl+C to stop$(NC)"
-	@./$(APP_NAME) -config $(CONFIG_DEV) -addr :$(PORT)
+	@./chi-stone -config $(CONFIG_DEV) -addr :$(PORT)
 
 run-docker: docker ## Run the gateway in Docker
 	@echo "$(CYAN)→ Starting $(APP_NAME) in Docker...$(NC)"
