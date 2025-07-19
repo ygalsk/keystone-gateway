@@ -1,127 +1,394 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Keystone Gateway - Der intelligente Reverse Proxy</title>
+    <title>Keystone Gateway - Smart. Simple. Grenzenlos.</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        'keystone': '#2563eb',
-                        'keystone-dark': '#1d4ed8'
+                        'keystone': {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e'
+                        }
+                    },
+                    animation: {
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'slide-up': 'slideUp 0.8s ease-out',
+                        'fade-in': 'fadeIn 1s ease-out'
                     }
                 }
             }
         }
     </script>
+    <style>
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #334155 50%, #475569 75%, #64748b 100%);
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .code-highlight {
+            background: linear-gradient(90deg, #1e293b, #334155, #1e293b);
+            background-size: 200% 100%;
+            animation: shimmer 3s ease-in-out infinite;
+        }
+        @keyframes shimmer {
+            0%, 100% { background-position: 200% 0; }
+            50% { background-position: -200% 0; }
+        }
+    </style>
 </head>
-<body class="bg-gray-50 text-gray-800">
-    <!-- Hero Section -->
-    <div class="min-h-screen flex flex-col justify-center items-center px-4">
-        <div class="max-w-4xl mx-auto text-center">
-            <!-- Logo/Title -->
-            <div class="mb-8">
-                <h1 class="text-5xl md:text-6xl font-bold text-keystone mb-4">
-                    Keystone Gateway
-                </h1>
-                <p class="text-xl md:text-2xl text-gray-600 font-light">
-                    Der intelligente Reverse Proxy für moderne DevOps-Teams
-                </p>
-            </div>
-
-            <!-- Status Badge -->
-            <div class="mb-12">
-                <span class="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                    <span class="w-2 h-2 bg-green-400 rounded-full mr-2"></span>
-                    Gateway läuft erfolgreich
-                </span>
-            </div>
-
-            <!-- Key Features -->
-            <div class="grid md:grid-cols-3 gap-8 mb-12">
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-keystone/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg class="w-8 h-8 text-keystone" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                        </svg>
+<body class="bg-slate-900 text-white overflow-x-hidden">
+    
+    <!-- Navigation -->
+    <nav class="fixed w-full z-50 glass-effect">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center space-x-2">
+                    <div class="w-8 h-8 bg-keystone-500 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold text-sm">K</span>
                     </div>
-                    <h3 class="text-lg font-semibold mb-2">Blitzschnell</h3>
-                    <p class="text-gray-600">300+ req/sec mit <5ms Latenz</p>
+                    <span class="font-bold text-xl">Keystone Gateway</span>
                 </div>
-                
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-keystone/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg class="w-8 h-8 text-keystone" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
-                        </svg>
-                    </div>
-                    <h3 class="text-lg font-semibold mb-2">Einfach</h3>
-                    <p class="text-gray-600">YAML-Konfiguration, Single Binary</p>
+                <div class="hidden md:flex space-x-8">
+                    <a href="#features" class="hover:text-keystone-400 transition-colors">Features</a>
+                    <a href="#lua-engine" class="hover:text-keystone-400 transition-colors">Lua Engine</a>
+                    <a href="#setup" class="hover:text-keystone-400 transition-colors">Setup</a>
+                    <a href="https://github.com/ygalsk/keystone-gateway" class="bg-keystone-600 hover:bg-keystone-700 px-4 py-2 rounded-lg transition-colors">GitHub</a>
                 </div>
-                
-                <div class="text-center">
-                    <div class="w-16 h-16 bg-keystone/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <svg class="w-8 h-8 text-keystone" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                        </svg>
-                    </div>
-                    <h3 class="text-lg font-semibold mb-2">Erweiterbar</h3>
-                    <p class="text-gray-600">Optional: Lua-Scripts für CI/CD</p>
-                </div>
-            </div>
-
-            <!-- Quick Start -->
-            <div class="bg-white rounded-lg shadow-lg p-8 text-left max-w-2xl mx-auto mb-12">
-                <h3 class="text-lg font-semibold mb-4 text-center">Quick Start</h3>
-                <div class="space-y-4">
-                    <div>
-                        <p class="text-sm text-gray-600 mb-2">1. Konfiguration erstellen:</p>
-                        <div class="bg-gray-100 rounded p-3 text-sm font-mono">
-                            <div class="text-gray-500"># config.yaml</div>
-                            <div>tenants:</div>
-                            <div class="ml-2">- name: "my-app"</div>
-                            <div class="ml-4">domains: ["app.example.com"]</div>
-                            <div class="ml-4">services:</div>
-                            <div class="ml-6">- name: "backend"</div>
-                            <div class="ml-8">url: "http://localhost:3000"</div>
-                        </div>
-                    </div>
-                    <div>
-                        <p class="text-sm text-gray-600 mb-2">2. Gateway starten:</p>
-                        <div class="bg-gray-900 text-green-400 rounded p-3 text-sm font-mono">
-                            keystone-gateway -config config.yaml -addr :8080
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CTA Buttons -->
-            <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
-                <a href="https://github.com/ygalsk/keystone-gateway" 
-                   class="bg-keystone hover:bg-keystone-dark text-white px-8 py-3 rounded-lg font-medium transition-colors inline-flex items-center">
-                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 0C4.477 0 0 4.484 0 10.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0110 4.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.203 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.942.359.31.678.921.678 1.856 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0020 10.017C20 4.484 15.522 0 10 0z" clip-rule="evenodd"></path>
-                    </svg>
-                    GitHub
-                </a>
-                <a href="/health" 
-                   class="border border-keystone text-keystone hover:bg-keystone hover:text-white px-8 py-3 rounded-lg font-medium transition-colors">
-                    Health Check
-                </a>
-            </div>
-
-            <!-- Footer -->
-            <div class="mt-16 pt-8 border-t border-gray-200">
-                <p class="text-gray-500 text-sm">
-                    Made with ❤️ for the DevOps community · 
-                    <span class="text-keystone font-medium">v1.3.0</span>
-                </p>
             </div>
         </div>
-    </div>
-</body>
-</html>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="min-h-screen gradient-bg flex items-center relative overflow-hidden">
+        <!-- Floating Elements -->
+        <div class="absolute inset-0 overflow-hidden">
+            <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-keystone-500/10 rounded-full blur-3xl animate-float"></div>
+            <div class="absolute bottom-1/4 right-1/4 w-48 h-48 bg-purple-500/10 rounded-full blur-3xl animate-float" style="animation-delay: -3s;"></div>
+            <div class="absolute top-3/4 left-1/2 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl animate-float" style="animation-delay: -1.5s;"></div>
+        </div>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div class="animate-slide-up">
+                    <h1 class="text-5xl lg:text-7xl font-bold mb-6 leading-tight">
+                        <span class="bg-gradient-to-r from-keystone-400 to-purple-400 bg-clip-text text-transparent">Smart.</span><br>
+                        <span class="bg-gradient-to-r from-purple-400 to-emerald-400 bg-clip-text text-transparent">Simple.</span><br>
+                        <span class="bg-gradient-to-r from-emerald-400 to-keystone-400 bg-clip-text text-transparent">Grenzenlos.</span>
+                    </h1>
+                    <p class="text-xl lg:text-2xl text-slate-300 mb-8 leading-relaxed">
+                        Der intelligente Reverse Proxy für KMUs – mit integrierter <span class="text-keystone-400 font-semibold">Lua Engine</span> für grenzenlose Anpassungsmöglichkeiten.
+                    </p>
+                    <div class="flex flex-col sm:flex-row gap-4">
+                        <a href="#setup" class="bg-keystone-600 hover:bg-keystone-700 px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-xl hover:shadow-keystone-500/25">
+                            Jetzt starten
+                        </a>
+                        <a href="https://github.com/ygalsk/keystone-gateway" class="border-2 border-keystone-400 hover:bg-keystone-400 hover:text-slate-900 px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105">
+                            GitHub ansehen
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Interactive Code Demo -->
+                <div class="animate-fade-in" style="animation-delay: 0.5s;">
+                    <div class="glass-effect rounded-2xl p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex space-x-2">
+                                <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                                <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                                <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                            </div>
+                            <span class="text-sm text-slate-400">keystone.yaml</span>
+                        </div>
+                        <div class="code-highlight rounded-lg p-4 font-mono text-sm">
+                            <pre class="text-emerald-400">
+<span class="text-keystone-400">tenants:</span>
+  - <span class="text-purple-400">name:</span> "my-app"
+    <span class="text-purple-400">path_prefix:</span> "/api/"
+    <span class="text-purple-400">lua_script:</span> |
+      <span class="text-yellow-400">-- Custom authentication</span>
+      <span class="text-slate-300">if not check_api_key(request.headers["X-API-Key"]) then
+        return reject(401, "Unauthorized")
+      end
+      
+      -- Rate limiting</span>
+      <span class="text-slate-300">if rate_limit_exceeded(client_ip, 100) then
+        return reject(429, "Too Many Requests")  
+      end</span>
+                            </pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-20 bg-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Warum <span class="text-keystone-400">Keystone Gateway?</span>
+                </h2>
+                <p class="text-xl text-slate-400 max-w-3xl mx-auto">
+                    Entwickelt für KMUs, die moderne Infrastruktur brauchen – ohne Komplexität.
+                </p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div class="glass-effect rounded-2xl p-8 hover:shadow-2xl hover:shadow-keystone-500/10 transition-all duration-300 group">
+                    <div class="w-16 h-16 bg-keystone-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">Health-basiertes Load Balancing</h3>
+                    <p class="text-slate-400">Automatische Weiterleitung nur an gesunde Backends. Null Downtime durch intelligente Failover-Logik.</p>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-8 hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-300 group">
+                    <div class="w-16 h-16 bg-purple-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2H4zm2 6a2 2 0 114 0 2 2 0 01-4 0zm8-2a2 2 0 100 4 2 2 0 000-4z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">Multi-Tenant Architecture</h3>
+                    <p class="text-slate-400">Pro Mandant eigene Routen und Services. Perfekt für Agenturen mit mehreren Kunden.</p>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-8 hover:shadow-2xl hover:shadow-emerald-500/10 transition-all duration-300 group">
+                    <div class="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">YAML-Konfiguration</h3>
+                    <p class="text-slate-400">Kein komplizierter JSON oder Caddyfile. Einfach, lesbar, git-versionierbar.</p>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-8 hover:shadow-2xl hover:shadow-yellow-500/10 transition-all duration-300 group">
+                    <div class="w-16 h-16 bg-yellow-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M13 7H7v6h6V7z"/>
+                            <path fill-rule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5v10h10V5H5z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">Go Performance</h3>
+                    <p class="text-slate-400">Blitzschnell, ressourcenschonend, single binary. Läuft überall ohne Dependencies.</p>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-8 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300 group">
+                    <div class="w-16 h-16 bg-indigo-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V8zm0 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">Monitoring & Metriken</h3>
+                    <p class="text-slate-400">Prometheus-Export, Grafana-ready. Detaillierte Performance-Überwachung out of the box.</p>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-8 hover:shadow-2xl hover:shadow-red-500/10 transition-all duration-300 group">
+                    <div class="w-16 h-16 bg-red-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-3a1 1 0 00-.867.5 1 1 0 11-1.731-1A3 3 0 0113 8a3.001 3.001 0 01-2 2.83V11a1 1 0 11-2 0v-1a1 1 0 011-1 1 1 0 100-2zm0 8a1 1 0 100-2 1 1 0 000 2z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold mb-4">Docker & Swarm Ready</h3>
+                    <p class="text-slate-400">Alpine-basiert, optimiert, production-ready. Einfache Deployment-Strategien.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Lua Engine Highlight -->
+    <section id="lua-engine" class="py-20 gradient-bg relative overflow-hidden">
+        <div class="absolute inset-0">
+            <div class="absolute top-0 left-1/3 w-96 h-96 bg-keystone-500/5 rounded-full blur-3xl"></div>
+            <div class="absolute bottom-0 right-1/3 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl"></div>
+        </div>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+            <div class="grid lg:grid-cols-2 gap-12 items-center">
+                <div>
+                    <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                        <span class="text-keystone-400">Lua Engine:</span><br>
+                        Grenzenlose Möglichkeiten
+                    </h2>
+                    <p class="text-xl text-slate-300 mb-8 leading-relaxed">
+                        Mit der integrierten Lua Engine wird Keystone Gateway zur programmierbaren Infrastruktur. 
+                        Schreibe Custom Logic direkt in der Konfiguration – ohne externe Dependencies.
+                    </p>
+                    
+                    <div class="space-y-6">
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-keystone-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2">Custom Authentication</h3>
+                                <p class="text-slate-400">JWT-Validierung, API-Key-Checks, OAuth-Flows – alles in Lua.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2">Rate Limiting & Throttling</h3>
+                                <p class="text-slate-400">Intelligente Rate Limits pro Client, IP oder API-Key.</p>
+                            </div>
+                        </div>
+                        
+                        <div class="flex items-start space-x-4">
+                            <div class="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-semibold mb-2">Request Transformation</h3>
+                                <p class="text-slate-400">Headers manipulieren, Payloads transformieren, Routing-Logic.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex space-x-2">
+                            <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                        </div>
+                        <span class="text-sm text-slate-400">lua-magic.lua</span>
+                    </div>
+                    <div class="bg-slate-900 rounded-lg p-6 font-mono text-sm overflow-x-auto">
+                        <pre class="text-slate-300">
+<span class="text-gray-500">-- JWT Token Validation</span>
+<span class="text-keystone-400">function</span> <span class="text-yellow-400">validate_jwt</span>(token)
+    <span class="text-purple-400">local</span> payload = jwt.decode(token, secret_key)
+    <span class="text-purple-400">if</span> payload.exp < os.time() <span class="text-purple-400">then</span>
+        <span class="text-purple-400">return</span> <span class="text-red-400">false</span>, <span class="text-green-400">"Token expired"</span>
+    <span class="text-purple-400">end</span>
+    <span class="text-purple-400">return</span> <span class="text-red-400">true</span>, payload
+<span class="text-purple-400">end</span>
+
+<span class="text-gray-500">-- Custom Rate Limiting</span>
+<span class="text-keystone-400">function</span> <span class="text-yellow-400">rate_limit</span>(client_ip, limit)
+    <span class="text-purple-400">local</span> current = redis.get(client_ip) <span class="text-purple-400">or</span> <span class="text-orange-400">0</span>
+    <span class="text-purple-400">if</span> current >= limit <span class="text-purple-400">then</span>
+        <span class="text-purple-400">return</span> <span class="text-red-400">false</span>
+    <span class="text-purple-400">end</span>
+    redis.incr(client_ip, <span class="text-orange-400">60</span>) <span class="text-gray-500">-- 60s TTL</span>
+    <span class="text-purple-400">return</span> <span class="text-red-400">true</span>
+<span class="text-purple-400">end</span>
+
+<span class="text-gray-500">-- Main Request Handler</span>
+<span class="text-purple-400">local</span> auth_header = request.headers[<span class="text-green-400">"Authorization"</span>]
+<span class="text-purple-400">local</span> valid, payload = validate_jwt(auth_header)
+
+<span class="text-purple-400">if</span> <span class="text-purple-400">not</span> valid <span class="text-purple-400">then</span>
+    <span class="text-purple-400">return</span> reject(<span class="text-orange-400">401</span>, <span class="text-green-400">"Unauthorized"</span>)
+<span class="text-purple-400">end</span>
+
+<span class="text-purple-400">if</span> <span class="text-purple-400">not</span> rate_limit(client_ip, <span class="text-orange-400">100</span>) <span class="text-purple-400">then</span>
+    <span class="text-purple-400">return</span> reject(<span class="text-orange-400">429</span>, <span class="text-green-400">"Too Many Requests"</span>)
+<span class="text-purple-400">end</span>
+
+<span class="text-gray-500">-- Add custom headers</span>
+request.headers[<span class="text-green-400">"X-User-ID"</span>] = payload.user_id
+request.headers[<span class="text-green-400">"X-Tenant"</span>] = payload.tenant
+                        </pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Setup -->
+    <section id="setup" class="py-20 bg-slate-800">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl lg:text-5xl font-bold mb-6">
+                    Setup in <span class="text-keystone-400">3 Minuten</span>
+                </h2>
+                <p class="text-xl text-slate-400">
+                    Ein Docker-Command und du bist ready to go.
+                </p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-12">
+                <div class="space-y-8">
+                    <div class="flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-keystone-500 rounded-xl flex items-center justify-center text-xl font-bold flex-shrink-0">
+                            1
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold mb-3">Repository klonen</h3>
+                            <div class="bg-slate-900 rounded-lg p-4 font-mono text-sm">
+                                <span class="text-emerald-400">git clone</span> <span class="text-slate-300">https://github.com/ygalsk/keystone-gateway.git</span><br>
+                                <span class="text-purple-400">cd</span> <span class="text-slate-300">keystone-gateway</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-purple-500 rounded-xl flex items-center justify-center text-xl font-bold flex-shrink-0">
+                            2
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold mb-3">Konfiguration anpassen</h3>
+                            <p class="text-slate-400 mb-3">Bearbeite <code class="bg-slate-700 px-2 py-1 rounded">configs/gateway.yaml</code> nach deinen Bedürfnissen.</p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start space-x-4">
+                        <div class="w-12 h-12 bg-emerald-500 rounded-xl flex items-center justify-center text-xl font-bold flex-shrink-0">
+                            3
+                        </div>
+                        <div>
+                            <h3 class="text-2xl font-bold mb-3">Starten & läuft</h3>
+                            <div class="bg-slate-900 rounded-lg p-4 font-mono text-sm">
+                                <span class="text-emerald-400">make</span> <span class="text-slate-300">build && make start</span>
+                            </div>
+                            <p class="text-slate-400 mt-2">Gateway läuft auf <span class="text-keystone-400">localhost:8080</span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-effect rounded-2xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <span class="text-sm text-slate-400">Beispiel Konfiguration</span>
+                        <div class="flex space-x-2">
+                            <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                            <div class="w-3
