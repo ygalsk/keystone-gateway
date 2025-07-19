@@ -75,13 +75,15 @@ tenants:
         url: http://localhost:3002/v2
         health: /health
 
-  # Hybrid routing example (host + path)
-  # - name: api-admin
-  #   domains:
-  #     - api.keystone-gateway.dev
-  #   path_prefix: /admin/
-  #   health_interval: 15
-  #   services:
-  #     - name: api-admin-service
-  #       url: http://localhost:3002/admin
-  #       health: /health
+# Hybrid routing configuration (combines host and path matching):
+# Uncomment and modify the following example to enable hybrid routing
+#
+# - name: api-admin
+#   domains:
+#     - api.keystone-gateway.dev
+#   path_prefix: /admin/
+#   health_interval: 15
+#   services:
+#     - name: api-admin-service
+#       url: http://localhost:3002/admin
+#       health: /health

@@ -1,61 +1,52 @@
 # Keystone Gateway Documentation
 
-**Comprehensive documentation for the lightweight, extensible reverse proxy**
+**Lightweight, extensible reverse proxy for KMUs and DevOps teams**
+
+## Quick Start
+
+```bash
+# Get started immediately
+make dev          # Complete development workflow
+make run          # Run locally  
+make help         # See all commands
+```
+
+## Documentation
+
+### 📖 **User Guide**
+- **[Getting Started](getting-started.md)** - Installation and first setup
+- **[Configuration](configuration.md)** - YAML configuration guide
+- **[Deployment](deployment.md)** - Production deployment guide
+
+### 🔧 **Developer Guide**
+- **[Development](../DEVELOPMENT.md)** - Development workflow (Makefile-based)
+- **[API Reference](api-reference.md)** - HTTP endpoints and responses
+- **[Contributing](contributing.md)** - How to contribute to the project
+
+### 📋 **Operations**
+- **[Monitoring](monitoring.md)** - Health checks and observability
+- **[Troubleshooting](troubleshooting.md)** - Common issues and solutions
+- **[Performance](performance.md)** - Optimization and benchmarks
+
+### 📚 **Archive**
+- **[archive/](archive/)** - Legacy documentation and historical plans
 
 ---
 
-## 🎯 **Quick Navigation**
+## Core Features
 
-### **📋 Planning & Vision**
-- **[roadmap.md](roadmap.md)** - Realistic development roadmap with Lua-scripting vision
-- **[releases/changelog.md](releases/changelog.md)** - Version history and changes
+- **Multi-tenant Routing**: Host-based, path-based, and hybrid routing
+- **Health-aware Load Balancing**: Round-robin with automatic failover
+- **Simple Configuration**: Zero-code setup via YAML
+- **Built-in Monitoring**: Health and tenant endpoints
+- **Docker-ready**: Complete containerization
+- **Single Binary**: Statically compiled with minimal dependencies
 
-### **🏗️ Architecture & Design**
-- **[architecture/framework-analysis.md](architecture/framework-analysis.md)** - Chi Router integration analysis
-- **[architecture/decisions.md](architecture/decisions.md)** - Strategic architectural decisions
-- **[architecture/performance.md](architecture/performance.md)** - Performance benchmarks and optimization
+## Support
 
-### **⚡ Development & Implementation** 
-- **[development/chi-migration.md](development/chi-migration.md)** - Chi Router migration plan
-- **[development/implementation-guide.md](development/implementation-guide.md)** - Technical implementation details
-- **[development/version-matrix.md](development/version-matrix.md)** - Feature matrix across versions
-
-### **📚 Archive**
-- **[archive/](archive/)** - Legacy documents and outdated roadmaps
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/your-org/keystone-gateway/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/your-org/keystone-gateway/discussions)
 
 ---
 
-## 🚀 **Start Here**
-
-### **👥 For Product Managers**
-1. Read **[roadmap.md](roadmap.md)** for development strategy
-2. Check **[releases/changelog.md](releases/changelog.md)** for current status
-
-### **🏗️ For Architects**  
-1. Review **[architecture/decisions.md](architecture/decisions.md)** for design rationale
-2. Study **[architecture/framework-analysis.md](architecture/framework-analysis.md)** for Chi Router benefits
-
-### **💻 For Developers**
-1. Start with **[development/chi-migration.md](development/chi-migration.md)** for implementation
-2. Use **[development/implementation-guide.md](development/implementation-guide.md)** for technical details
-3. Reference **[architecture/performance.md](architecture/performance.md)** for benchmarking
-
-### **📊 For DevOps Teams**
-1. Check **[roadmap.md](roadmap.md)** for Lua scripting roadmap
-2. Review **[architecture/performance.md](architecture/performance.md)** for scaling info
-
----
-
-## 🎯 **Documentation Philosophy**
-
-Our documentation follows the same principles as Keystone Gateway:
-
-- **🎯 Simplicity First**: Clear, concise, actionable
-- **⚡ Performance Focus**: No fluff, direct information
-- **🔧 Maintainability**: Well-organized, easy to update
-- **🏢 User-Focused**: Written for KMUs and DevOps teams
-- **📦 Self-Contained**: Everything you need in one place
-
----
-
-*Last updated: July 19, 2025*
+*Documentation follows the same principles as Keystone Gateway: Simple, focused, and practical.*

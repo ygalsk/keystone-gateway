@@ -1,0 +1,72 @@
+# Keystone Gateway - Core Services Only
+# Minimal Docker Compose for essential development and production
+
+version: '3.8'
+
+services:
+  # Keystone Gateway - Main Application
+  keystone-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: keystone-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs/config.yaml:/app/configs/config.yaml:ro
+    environment:
+      - ENV=production
+      - LOG_LEVEL=info
+    networks:
+      - keystone-net
+    depends_on:
+      - demo-backend
+      - api-backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/admin/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Demo Backend (Essential for testing)
+  demo-backend:
+    image: nginx:alpine
+    container_name: keystone-demo
+    ports:
+      - "3001:80"
+    volumes:
+      - ./mock-backends/demo:/usr/share/nginx/html:ro
+    networks:
+      - keystone-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # API Backend (Essential for testing)
+  api-backend:
+    image: node:18-alpine
+    container_name: keystone-api
+    ports:
+      - "3002:3000"
+    working_dir: /app
+    volumes:
+      - ./mock-backends/api:/app:ro
+    command: node server.js
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    networks:
+      - keystone-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  keystone-net:
+    driver: bridge
+    name: keystone-core-network
