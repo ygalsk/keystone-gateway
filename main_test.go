@@ -353,13 +353,13 @@ func TestProxyRouting(t *testing.T) {
 	}
 
 	gw := NewGateway(testCfg)
-	
+
 	// Verify router was created
 	router := gw.pathRouters["/test/"]
 	if router == nil {
 		t.Fatal("Test router not found")
 	}
-	
+
 	if len(router.Backends) == 0 {
 		t.Fatal("No backends found")
 	}
@@ -372,7 +372,7 @@ func TestProxyRouting(t *testing.T) {
 	if matchedRouter == nil {
 		t.Fatal("Route matching failed")
 	}
-	
+
 	if prefix != "/test/" {
 		t.Errorf("Expected prefix '/test/', got '%s'", prefix)
 	}
@@ -382,7 +382,7 @@ func TestProxyRouting(t *testing.T) {
 	if backend == nil {
 		t.Fatal("No backend available")
 	}
-	
+
 	if !backend.Alive.Load() {
 		t.Fatal("Backend not marked as alive")
 	}
