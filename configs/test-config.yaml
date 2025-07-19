@@ -1,3 +1,4 @@
+admin_base_path: "/admin"
 tenants:
   - name: "api-service"
     path_prefix: "/api/"
