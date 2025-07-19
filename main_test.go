@@ -372,7 +372,6 @@ func TestProxyRouting(t *testing.T) {
 	if matchedRouter == nil {
 		t.Fatal("Route matching failed")
 	}
-
 	if prefix != "/test/" {
 		t.Errorf("Expected prefix '/test/', got '%s'", prefix)
 	}

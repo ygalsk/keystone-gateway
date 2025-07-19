@@ -570,7 +570,6 @@ func main() {
 	cfgPath := flag.String("config", "config.yaml", "path to YAML config")
 	addr := flag.String("addr", DefaultListenAddress, "listen address")
 	flag.Parse()
-
 	cfg, err := LoadConfig(*cfgPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)

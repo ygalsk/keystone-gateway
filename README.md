@@ -215,10 +215,10 @@ MIT License - siehe [LICENSE](LICENSE) für Details.
 
 ## 🎯 Roadmap 2025
 
-- **Q3 2025**: Chi Router Integration + Performance (v1.2.1)
-- **Q4 2025**: Wildcard Domains + Monitoring (v1.2.2)
-- **Q1 2026**: Lua Scripting Engine (v1.3.0)
-- **Q2 2026**: Community Scripts & Ecosystem (v1.3.1+)
+- **Q3 2025**: Chi Router Integration + Performance (v1.3.0)
+- **Q4 2025**: Wildcard Domains + Monitoring (v1.4.0)
+- **Q1 2026**: Lua Scripting Engine (v2.0.0)
+- **Q2 2026**: Community Scripts & Ecosystem (v2.0.0+)
 
 **Vision**: Der einzige Reverse Proxy, den KMUs und DevOps-Teams jemals brauchen werden.
 
