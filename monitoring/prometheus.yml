@@ -1,0 +1,80 @@
+# Prometheus Configuration for Keystone Gateway Production
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: 'production'
+    service: 'keystone-gateway'
+
+# Alertmanager configuration (add when ready)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Load alerting rules (add when ready)
+# rule_files:
+#   - "alert_rules.yml"
+
+# Scrape configuration
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    
+  # Keystone Gateway metrics
+  - job_name: 'keystone-gateway'
+    static_configs:
+      - targets: ['keystone-gateway:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    
+  # Traefik reverse proxy metrics  
+  - job_name: 'traefik'
+    static_configs:
+      - targets: ['traefik:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    
+  # Redis metrics (if redis_exporter is added)
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+  #   scrape_interval: 30s
+    
+  # PostgreSQL metrics (if postgres_exporter is added)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #   scrape_interval: 30s
+    
+  # Node exporter for system metrics (if added)
+  # - job_name: 'node'
+  #   static_configs:
+  #     - targets: ['node-exporter:9100']
+  #   scrape_interval: 30s
+    
+  # Grafana metrics
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: '/metrics'
+    scrape_interval: 60s
+
+  # API Backend health checks
+  - job_name: 'api-backend-health'
+    static_configs:
+      - targets: ['api-backend:3000']
+    metrics_path: '/health'
+    scrape_interval: 30s
+    
+  # Auth Backend health checks  
+  - job_name: 'auth-backend-health'
+    static_configs:
+      - targets: ['auth-backend:3000']
+    metrics_path: '/health'
+    scrape_interval: 30s

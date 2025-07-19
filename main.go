@@ -508,6 +508,9 @@ func (gw *Gateway) setupTenantRouting(r *chi.Mux) {
 			r.Group(func(r chi.Router) {
 				r.Use(gw.HostMiddleware(tenant.Domains))
 				r.Use(gw.ProxyMiddleware(router, ""))
+				r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+					// Middleware handles everything
+				})
 				r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
 					// Middleware handles everything
 				})
@@ -523,11 +526,9 @@ func (gw *Gateway) setupTenantRouting(r *chi.Mux) {
 		}
 	}
 
-	// Fallback handler for unmatched routes
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		// Try our custom routing logic as fallback
-		gw.ProxyHandler(w, r)
-	})
+	// Catch-all handlers for tenant routing
+	r.HandleFunc("/", gw.ProxyHandler)
+	r.HandleFunc("/*", gw.ProxyHandler)
 }
 
 // -------------------------

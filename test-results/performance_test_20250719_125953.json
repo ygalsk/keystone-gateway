@@ -1,0 +1,23 @@
+{
+  "test_run": {
+    "timestamp": "2025-07-19T12:59:55+02:00",
+    "gateway_version": "1.2.1",
+    "test_duration": 60,
+    "config_file": "configs/production-test.yaml"
+  },
+  "tests": [
+    {
+      "name": "Production Tests",
+      "type": "production",
+      "status": "skipped",
+      "reason": "domains_not_reachable"
+    }
+  ],
+  "summary": {
+    "total_tests": 1,
+    "successful_tests": 0,
+    "failed_tests": 0,
+    "warning_tests": 0,
+    "gateway_memory_mb": 25
+  }
+}

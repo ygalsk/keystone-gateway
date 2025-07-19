@@ -98,7 +98,7 @@ cleanup() {
     
     # Stop Docker services
     log "Stopping Docker services..."
-    docker-compose down --remove-orphans --timeout 10 2>/dev/null || true
+    docker-compose -f docker-compose.backends.yml down --remove-orphans --timeout 10 2>/dev/null || true
     
     log "Cleanup completed"
 }
@@ -137,8 +137,8 @@ fi
 
 # Start Docker services
 log "🐳 Starting Docker backend services..."
-docker-compose down --remove-orphans 2>/dev/null || true
-docker-compose up -d --build --force-recreate
+docker-compose -f docker-compose.backends.yml down --remove-orphans 2>/dev/null || true
+docker-compose -f docker-compose.backends.yml up -d --build --force-recreate
 
 # Wait for services to be ready
 log "⏳ Waiting for backend services to initialize..."

@@ -1,0 +1,47 @@
+admin_base_path: "/admin"
+tenants:
+  - name: "demo"
+    domains:
+      - "demo.keystone-gateway.dev"
+    services:
+      - name: "demo-backend"
+        url: "http://demo-backend:80"
+        health: "/health"
+  
+  - name: "api"
+    domains:
+      - "api.keystone-gateway.dev"
+    services:
+      - name: "api-backend"
+        url: "http://api-backend:3000"
+        health: "/health"
+  
+  - name: "auth" 
+    domains:
+      - "auth.keystone-gateway.dev"
+    services:
+      - name: "auth-backend"
+        url: "http://auth-backend:3000"
+        health: "/health"
+  
+  - name: "status"
+    domains:
+      - "status.keystone-gateway.dev"
+    services:
+      - name: "status-backend"
+        url: "http://status-backend:80"
+        health: "/health"
+
+  - name: "path-api-v1"
+    path_prefix: "/api/v1/"
+    services:
+      - name: "api-backend"
+        url: "http://api-backend:3000"
+        health: "/health"
+
+  - name: "path-api-v2"
+    path_prefix: "/api/v2/"
+    services:
+      - name: "api-backend"
+        url: "http://api-backend:3000"
+        health: "/health"
