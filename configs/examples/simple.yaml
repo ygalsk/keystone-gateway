@@ -1,0 +1,18 @@
+# Simple Configuration Example
+# Basic single-tenant setup for development
+
+admin_base_path: "/admin"
+
+lua_routing:
+  enabled: true
+  scripts_dir: "./scripts"
+
+tenants:
+  - name: "api"
+    domains: ["localhost", "127.0.0.1"]
+    lua_routes: "basic-routes.lua"
+    health_interval: 30
+    services:
+      - name: "backend"
+        url: "http://localhost:3001"
+        health: "/health"
