@@ -14,7 +14,6 @@ import (
 type LuaRoutingConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	ScriptsDir string `yaml:"scripts_dir,omitempty"`
-	Timeout    string `yaml:"timeout,omitempty"`
 }
 
 // Config represents the main configuration structure for the gateway,
@@ -32,8 +31,7 @@ type Tenant struct {
 	PathPrefix string    `yaml:"path_prefix,omitempty"`
 	Domains    []string  `yaml:"domains,omitempty"`
 	Interval   int       `yaml:"health_interval"`
-	LuaScript  string    `yaml:"lua_script,omitempty"`
-	LuaRoutes  string    `yaml:"lua_routes,omitempty"` // New: Script for route definition
+	LuaRoutes  string    `yaml:"lua_routes,omitempty"` // Script for route definition
 	Services   []Service `yaml:"services"`
 }
 
@@ -58,7 +56,7 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	for _, tenant := range cfg.Tenants {
-		if err := validateTenant(tenant); err != nil {
+		if err := ValidateTenant(tenant); err != nil {
 			return nil, fmt.Errorf("invalid tenant %s: %w", tenant.Name, err)
 		}
 	}
@@ -66,8 +64,8 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// validateTenant validates a tenant configuration for correctness.
-func validateTenant(t Tenant) error {
+// ValidateTenant validates a tenant configuration for correctness.
+func ValidateTenant(t Tenant) error {
 	if len(t.Domains) == 0 && t.PathPrefix == "" {
 		return fmt.Errorf("must specify either domains or path_prefix")
 	}

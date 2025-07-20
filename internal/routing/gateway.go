@@ -3,7 +3,6 @@
 package routing
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -43,24 +42,6 @@ type Gateway struct {
 	routeRegistry *LuaRouteRegistry
 }
 
-
-// NewGateway creates a new Gateway instance from the provided configuration,
-// initializing all tenant routers and starting health check goroutines.
-func NewGateway(cfg *config.Config) *Gateway {
-	gw := &Gateway{
-		config:        cfg,
-		pathRouters:   make(map[string]*TenantRouter),
-		hostRouters:   make(map[string]*TenantRouter),
-		hybridRouters: make(map[string]map[string]*TenantRouter),
-		startTime:     time.Now(),
-	}
-
-	// ...removed legacy lua-stone client integration...
-
-	gw.initializeRouters()
-	return gw
-}
-
 // NewGatewayWithRouter creates a Gateway with an existing Chi router for dynamic routing
 func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 	gw := &Gateway{
@@ -71,8 +52,6 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 		startTime:     time.Now(),
 		routeRegistry: NewLuaRouteRegistry(router, nil),
 	}
-
-	// ...removed legacy lua-stone client integration...
 
 	gw.initializeRouters()
 	return gw
@@ -135,18 +114,8 @@ func (gw *Gateway) MatchRoute(host, path string) (*TenantRouter, string) {
 
 	// Priority 1: Hybrid routing (host + path)
 	if hostMap, exists := gw.hybridRouters[host]; exists {
-		var matched *TenantRouter
-		var matchedPrefix string
-
-		for prefix, router := range hostMap {
-			if strings.HasPrefix(path, prefix) && len(prefix) > len(matchedPrefix) {
-				matched = router
-				matchedPrefix = prefix
-			}
-		}
-
-		if matched != nil {
-			return matched, matchedPrefix
+		if matched, prefix := gw.findBestPathMatch(path, hostMap); matched != nil {
+			return matched, prefix
 		}
 	}
 
@@ -156,17 +125,7 @@ func (gw *Gateway) MatchRoute(host, path string) (*TenantRouter, string) {
 	}
 
 	// Priority 3: Path-only routing
-	var matched *TenantRouter
-	var matchedPrefix string
-
-	for prefix, router := range gw.pathRouters {
-		if strings.HasPrefix(path, prefix) && len(prefix) > len(matchedPrefix) {
-			matched = router
-			matchedPrefix = prefix
-		}
-	}
-
-	return matched, matchedPrefix
+	return gw.findBestPathMatch(path, gw.pathRouters)
 }
 
 // NextBackend returns the next healthy backend using round-robin algorithm.
@@ -226,27 +185,6 @@ func (gw *Gateway) GetRouteRegistry() *LuaRouteRegistry {
 	return gw.routeRegistry
 }
 
-// RegisterDynamicRoute registers a route via the dynamic route registry
-func (gw *Gateway) RegisterDynamicRoute(tenantName, method, pattern string, handler http.HandlerFunc) error {
-	if gw.routeRegistry == nil {
-		return fmt.Errorf("dynamic route registry not initialized")
-	}
-	return gw.routeRegistry.RegisterRoute(RouteDefinition{
-		TenantName: tenantName,
-		Method:     method,
-		Pattern:    pattern,
-		Handler:    handler,
-	})
-}
-
-// MountTenantDynamicRoutes mounts dynamically registered routes for a tenant
-func (gw *Gateway) MountTenantDynamicRoutes(tenantName, mountPath string) error {
-	if gw.routeRegistry == nil {
-		return fmt.Errorf("dynamic route registry not initialized")
-	}
-	return gw.routeRegistry.MountTenantRoutes(tenantName, mountPath)
-}
-
 // extractHost extracts the hostname from a host header (removing port if present).
 func ExtractHost(hostHeader string) string {
 	if colonIndex := strings.Index(hostHeader, ":"); colonIndex != -1 {
@@ -255,43 +193,23 @@ func ExtractHost(hostHeader string) string {
 	return hostHeader
 }
 
-// HostMiddleware validates that the request host matches one of the allowed domains
-func (gw *Gateway) HostMiddleware(domains []string) func(http.Handler) http.Handler {
-	domainMap := make(map[string]bool, len(domains))
-	for _, domain := range domains {
-		domainMap[domain] = true
+// findBestPathMatch finds the best matching path prefix from a router map
+func (gw *Gateway) findBestPathMatch(path string, routers map[string]*TenantRouter) (*TenantRouter, string) {
+	var matched *TenantRouter
+	var matchedPrefix string
+
+	for prefix, router := range routers {
+		if strings.HasPrefix(path, prefix) && len(prefix) > len(matchedPrefix) {
+			matched = router
+			matchedPrefix = prefix
+		}
 	}
 
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			host := ExtractHost(r.Host)
-			if domainMap[host] {
-				next.ServeHTTP(w, r)
-			} else {
-				http.NotFound(w, r)
-			}
-		})
-	}
+	return matched, matchedPrefix
 }
 
-// ProxyMiddleware handles proxying for a specific tenant router
-func (gw *Gateway) ProxyMiddleware(tr *TenantRouter, stripPrefix string) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			backend := tr.NextBackend()
-			if backend == nil {
-				http.Error(w, "No backend available", http.StatusBadGateway)
-				return
-			}
-
-			proxy := gw.createProxy(backend, stripPrefix)
-			proxy.ServeHTTP(w, r)
-		})
-	}
-}
-
-// createProxy creates a reverse proxy for the given backend
-func (gw *Gateway) createProxy(backend *GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
+// CreateProxy creates a reverse proxy for the given backend
+func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(backend.URL)
 
 	proxy.Director = func(req *http.Request) {

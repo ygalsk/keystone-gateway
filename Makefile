@@ -57,27 +57,42 @@ lint: ## Lint Go code
 
 check: fmt lint ## Run code quality checks
 
-# Testing
-test: ## Run unit and integration tests
-	@echo "$(CYAN)→ Running tests...$(NC)"
-	@go test -v ./internal/... ./pkg/...
-	@echo "$(GREEN)✓ Core tests passed$(NC)"
+# Testing - Streamlined and categorized
+test: ## Run fast unit tests only
+	@echo "$(CYAN)→ Running unit tests...$(NC)"
+	@go test -v ./internal/config ./internal/routing
+	@echo "$(GREEN)✓ Unit tests passed$(NC)"
 
-test-all: ## Run all tests (including legacy tests that need updating)
+test-integration: ## Run integration tests
+	@echo "$(CYAN)→ Running integration tests...$(NC)"
+	@go test -v ./test/integration/...
+	@echo "$(GREEN)✓ Integration tests passed$(NC)"
+
+test-all: ## Run all tests (unit + integration + e2e)
 	@echo "$(CYAN)→ Running all tests...$(NC)"
-	@go test -v ./...
+	@go test -v ./internal/... ./test/...
 	@echo "$(GREEN)✓ All tests completed$(NC)"
 
 test-race: ## Run tests with race detection
 	@echo "$(CYAN)→ Running tests with race detection...$(NC)"
-	@go test -race -v ./...
+	@go test -race -v ./internal/... ./test/...
 	@echo "$(GREEN)✓ Race tests passed$(NC)"
 
 test-coverage: ## Run tests with coverage report
 	@echo "$(CYAN)→ Running tests with coverage...$(NC)"
-	@go test -coverprofile=coverage.out ./...
+	@go test -coverprofile=coverage.out ./internal/... ./test/...
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)✓ Coverage report generated: coverage.html$(NC)"
+
+bench: ## Run benchmark tests
+	@echo "$(CYAN)→ Running benchmark tests...$(NC)"
+	@go test -bench=. -benchmem ./test/e2e/...
+	@echo "$(GREEN)✓ Benchmarks completed$(NC)"
+
+bench-compare: ## Compare benchmark results with baseline
+	@echo "$(CYAN)→ Running benchmark comparison...$(NC)"
+	@go test -bench=. -benchmem -count=5 ./test/e2e/... | tee bench-current.txt
+	@echo "$(GREEN)✓ Benchmark results saved to bench-current.txt$(NC)"
 
 # Building
 build: ## Build the gateway binary
@@ -85,33 +100,24 @@ build: ## Build the gateway binary
 	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o chi-stone ./cmd/chi-stone
 	@echo "$(GREEN)✓ chi-stone binary ready$(NC)"
 
-build-all: ## Build all binaries
-	@echo "$(CYAN)→ Building all binaries...$(NC)"
-	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o chi-stone ./cmd/chi-stone
-	@echo "$(GREEN)✓ chi-stone binary ready$(NC)"
-	@echo "$(YELLOW)lua-stone deprecated - using embedded Lua$(NC)"
+build-all: build ## Build all binaries (alias for build)
+	@echo "$(GREEN)✓ All binaries built$(NC)"
 
 build-all-platforms: ## Build for multiple platforms
 	@echo "$(CYAN)→ Building for multiple platforms...$(NC)"
 	@mkdir -p dist
-	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-linux-amd64 ./cmd/chi-stone
-	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-darwin-amd64 ./cmd/chi-stone
-	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/chi-stone-windows-amd64.exe ./cmd/chi-stone
-	@echo "$(YELLOW)lua-stone deprecated - single binary deployment$(NC)"
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/keystone-gateway-linux-amd64 ./cmd/chi-stone
+	@CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/keystone-gateway-darwin-amd64 ./cmd/chi-stone
+	@CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o dist/keystone-gateway-windows-amd64.exe ./cmd/chi-stone
+	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(BUILD_FLAGS) -o dist/keystone-gateway-linux-arm64 ./cmd/chi-stone
 	@echo "$(GREEN)✓ Multi-platform builds completed$(NC)"
 
 # Docker operations
-docker: ## Build both Docker images
-	@echo "$(CYAN)→ Building Docker images...$(NC)"
-	@docker build -f deployments/docker/chi-stone.Dockerfile -t chi-stone:$(VERSION) .
-	@docker tag chi-stone:$(VERSION) chi-stone:latest
-	@echo "$(GREEN)✓ Docker image built: chi-stone:$(VERSION)$(NC)"
-
-docker-chi: ## Build chi-stone Docker image only
-	@echo "$(CYAN)→ Building chi-stone Docker image...$(NC)"
-	@docker build -f deployments/docker/chi-stone.Dockerfile -t chi-stone:$(VERSION) .
-	@docker tag chi-stone:$(VERSION) chi-stone:latest
-	@echo "$(GREEN)✓ Chi-stone image built$(NC)"
+docker: ## Build Docker image
+	@echo "$(CYAN)→ Building Docker image...$(NC)"
+	@docker build -f deployments/docker/chi-stone.Dockerfile -t keystone-gateway:$(VERSION) .
+	@docker tag keystone-gateway:$(VERSION) keystone-gateway:latest
+	@echo "$(GREEN)✓ Docker image built: keystone-gateway:$(VERSION)$(NC)"
 
 
 # Local development server
@@ -121,10 +127,9 @@ run: build ## Run the gateway locally with development config
 	@./chi-stone -config $(CONFIG_DEV) -addr :$(PORT)
 
 run-docker: docker ## Run the gateway in Docker
-	docker-run: ## Run the gateway in Docker
-	@echo "$(CYAN)→ Running chi-stone in Docker...$(NC)"
-	@docker run --rm -p 8080:8080 --name chi-stone-dev $(DOCKER_IMAGE)
-	@echo "$(GREEN)✓ chi-stone started$(NC)"
+	@echo "$(CYAN)→ Running keystone-gateway in Docker...$(NC)"
+	@docker run --rm -p 8080:8080 --name keystone-gateway-dev keystone-gateway:$(VERSION)
+	@echo "$(GREEN)✓ keystone-gateway started$(NC)"
 
 # Quick testing with minimal backends
 test-local: build ## Run local test with minimal mock backends
@@ -151,7 +156,7 @@ deploy-core: docker ## Deploy core services only (chi-stone)
 	@docker-compose -f deployments/docker/docker-compose.core.yml up -d --build
 	@echo "$(GREEN)✓ Core services deployed$(NC)"
 
-deploy-full: docker ## Deploy full stack (chi-stone + lua-stone)
+deploy-full: docker ## Deploy full stack with monitoring
 	@echo "$(CYAN)→ Deploying full stack...$(NC)"
 	@docker-compose -f deployments/docker/docker-compose.full.yml down --remove-orphans || true
 	@docker-compose -f deployments/docker/docker-compose.full.yml up -d --build
@@ -167,9 +172,9 @@ deploy-prod: docker ## Deploy production environment with monitoring
 		echo "$(GREEN)✓ Production deployment completed$(NC)"; \
 		echo "$(CYAN)→ Access points:$(NC)"; \
 		echo "  Gateway: http://localhost:8080"; \
-		echo "  Lua Engine: http://localhost:8081"; \
 		echo "  Prometheus: http://localhost:9090"; \
-		echo "  Grafana: http://localhost:3000 (admin/changeme)"; \
+		echo "  Grafana: http://localhost:3000 (admin/admin)"; \
+		echo "  Loki: http://localhost:3100"; \
 	else \
 		echo "$(YELLOW)Deployment cancelled$(NC)"; \
 	fi
@@ -183,21 +188,21 @@ deploy-swarm: docker ## Deploy to Docker Swarm cluster
 	@echo "$(CYAN)→ Stack services:$(NC)"
 	@docker stack services keystone-gateway
 
-# Simple service management - let chi-stone + lua-stone handle the logic
-scale: ## Scale chi-stone replicas
-	@echo "$(CYAN)→ Scaling chi-stone...$(NC)"
-	@docker-compose -f deployments/docker/docker-compose.full.yml up -d --scale chi-stone=3
-	@echo "$(GREEN)✓ Chi-stone scaled to 3 replicas$(NC)"
+# Simple service management
+scale: ## Scale gateway replicas
+	@echo "$(CYAN)→ Scaling keystone-gateway...$(NC)"
+	@docker-compose -f deployments/docker/docker-compose.full.yml up -d --scale keystone-gateway=3
+	@echo "$(GREEN)✓ Keystone-gateway scaled to 3 replicas$(NC)"
 
 # Utilities
 logs: ## Show application logs (Docker)
 	@echo "$(CYAN)→ Available log sources:$(NC)"
-	@echo "1. Core (chi-stone only)"
-	@echo "2. Full (chi-stone + lua-stone)"
+	@echo "1. Core (gateway only)"
+	@echo "2. Full (gateway + monitoring)"
 	@echo "3. Production (all services + monitoring)"
 	@read -p "Select option [1-3]: " -n 1 -r; echo; \
 	case $$REPLY in \
-		1) docker-compose -f deployments/docker/docker-compose.core.yml logs -f chi-stone || echo "$(RED)No core services running$(NC)";; \
+		1) docker-compose -f deployments/docker/docker-compose.core.yml logs -f keystone-gateway || echo "$(RED)No core services running$(NC)";; \
 		2) docker-compose -f deployments/docker/docker-compose.full.yml logs -f || echo "$(RED)No full stack running$(NC)";; \
 		3) docker-compose -f deployments/docker/docker-compose.production.yml logs -f || echo "$(RED)No production stack running$(NC)";; \
 		*) echo "$(RED)Invalid option$(NC)";; \
@@ -231,7 +236,7 @@ clean: stop ## Clean up build artifacts and containers
 	@rm -f chi-stone
 	@rm -rf dist/
 	@rm -f coverage.out coverage.html
-	@docker image rm $(DOCKER_IMAGE) chi-stone:latest 2>/dev/null || true
+	@docker image rm keystone-gateway:$(VERSION) keystone-gateway:latest 2>/dev/null || true
 	@docker system prune -f
 	@echo "$(GREEN)✓ Cleanup completed$(NC)"
 

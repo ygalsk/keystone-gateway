@@ -4,17 +4,21 @@
 package routing
 
 import (
+	"fmt"
 	"net/http"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	lua "github.com/yuin/gopher-lua"
 )
 
-// LuaRouteRegistry manages dynamic route registration from Lua scripts
+// LuaRouteRegistry manages dynamic route registration from Lua scripts with thread safety
 type LuaRouteRegistry struct {
-	router      *chi.Mux
-	routeGroups map[string]*chi.Mux // tenant -> submux for tenant routes
-	Engine      interface {
+	router           *chi.Mux
+	routeGroups      map[string]*chi.Mux // tenant -> submux for tenant routes
+	registeredRoutes map[string]bool     // track registered routes to prevent duplicates
+	mu               sync.RWMutex        // protects routeGroups and registeredRoutes maps
+	Engine           interface {
 		GetScript(string) (string, bool)
 		SetupChiBindings(*lua.LState, string, string)
 	}
@@ -50,36 +54,37 @@ func NewLuaRouteRegistry(router *chi.Mux, engine interface {
 	SetupChiBindings(*lua.LState, string, string)
 }) *LuaRouteRegistry {
 	return &LuaRouteRegistry{
-		router:      router,
-		routeGroups: make(map[string]*chi.Mux),
-		Engine:      engine,
+		router:           router,
+		routeGroups:      make(map[string]*chi.Mux),
+		registeredRoutes: make(map[string]bool),
+		Engine:           engine,
 	}
 }
 
-// RegisterRoute registers a single route from a Lua script
+// RegisterRoute registers a single route from a Lua script with duplicate prevention
 func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
+	// Create unique route key
+	routeKey := fmt.Sprintf("%s:%s:%s", def.TenantName, def.Method, def.Pattern)
+
+	// Check if route already exists
+	r.mu.Lock()
+	if r.registeredRoutes[routeKey] {
+		r.mu.Unlock()
+		// Route already exists, skip registration
+		return nil
+	}
+	r.registeredRoutes[routeKey] = true
+	r.mu.Unlock()
+
 	// Get or create tenant submux
 	submux := r.getTenantSubmux(def.TenantName)
 
 	// Register the route with the appropriate method
-	switch def.Method {
-	case "GET":
-		submux.Get(def.Pattern, def.Handler)
-	case "POST":
-		submux.Post(def.Pattern, def.Handler)
-	case "PUT":
-		submux.Put(def.Pattern, def.Handler)
-	case "DELETE":
-		submux.Delete(def.Pattern, def.Handler)
-	case "PATCH":
-		submux.Patch(def.Pattern, def.Handler)
-	case "OPTIONS":
-		submux.Options(def.Pattern, def.Handler)
-	case "HEAD":
-		submux.Head(def.Pattern, def.Handler)
-	default:
-		submux.Method(def.Method, def.Pattern, def.Handler)
-	}
+	r.registerRouteByMethod(submux, RouteDefinition{
+		Method:  def.Method,
+		Pattern: def.Pattern,
+		Handler: def.Handler,
+	})
 
 	return nil
 }
@@ -97,8 +102,21 @@ func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
 	return nil
 }
 
-// RegisterRouteGroup registers a group of routes with shared middleware
+// RegisterRouteGroup registers a group of routes with shared middleware with duplicate prevention
 func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error {
+	// Create unique group key
+	groupKey := fmt.Sprintf("%s:group:%s", def.TenantName, def.Pattern)
+
+	// Check if group already exists
+	r.mu.Lock()
+	if r.registeredRoutes[groupKey] {
+		r.mu.Unlock()
+		// Group already exists, skip registration
+		return nil
+	}
+	r.registeredRoutes[groupKey] = true
+	r.mu.Unlock()
+
 	submux := r.getTenantSubmux(def.TenantName)
 
 	// Create route group with pattern and middleware
@@ -110,24 +128,7 @@ func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error {
 
 		// Register routes in the group
 		for _, route := range def.Routes {
-			switch route.Method {
-			case "GET":
-				gr.Get(route.Pattern, route.Handler)
-			case "POST":
-				gr.Post(route.Pattern, route.Handler)
-			case "PUT":
-				gr.Put(route.Pattern, route.Handler)
-			case "DELETE":
-				gr.Delete(route.Pattern, route.Handler)
-			case "PATCH":
-				gr.Patch(route.Pattern, route.Handler)
-			case "OPTIONS":
-				gr.Options(route.Pattern, route.Handler)
-			case "HEAD":
-				gr.Head(route.Pattern, route.Handler)
-			default:
-				gr.Method(route.Method, route.Pattern, route.Handler)
-			}
+			r.registerRouteByMethod(gr, route)
 		}
 
 		// Register subgroups recursively
@@ -168,11 +169,23 @@ func (r *LuaRouteRegistry) ListTenants() []string {
 
 // getTenantSubmux gets or creates a submux for a tenant
 func (r *LuaRouteRegistry) getTenantSubmux(tenantName string) *chi.Mux {
+	// Check if submux exists (read lock)
+	r.mu.RLock()
+	if submux, exists := r.routeGroups[tenantName]; exists {
+		r.mu.RUnlock()
+		return submux
+	}
+	r.mu.RUnlock()
+
+	// Create new submux for tenant (write lock)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Double-check pattern - another goroutine might have created it
 	if submux, exists := r.routeGroups[tenantName]; exists {
 		return submux
 	}
 
-	// Create new submux for tenant
 	submux := chi.NewMux()
 	r.routeGroups[tenantName] = submux
 	return submux
@@ -188,26 +201,8 @@ func (r *LuaRouteRegistry) registerSubgroup(parent chi.Router, def RouteGroupDef
 
 		// Register routes in the subgroup
 		for _, route := range def.Routes {
-			switch route.Method {
-			case "GET":
-				gr.Get(route.Pattern, route.Handler)
-			case "POST":
-				gr.Post(route.Pattern, route.Handler)
-			case "PUT":
-				gr.Put(route.Pattern, route.Handler)
-			case "DELETE":
-				gr.Delete(route.Pattern, route.Handler)
-			case "PATCH":
-				gr.Patch(route.Pattern, route.Handler)
-			case "OPTIONS":
-				gr.Options(route.Pattern, route.Handler)
-			case "HEAD":
-				gr.Head(route.Pattern, route.Handler)
-			default:
-				gr.Method(route.Method, route.Pattern, route.Handler)
-			}
+			r.registerRouteByMethod(gr, route)
 		}
-
 		// Register nested subgroups
 		for _, subgroup := range def.Subgroups {
 			r.registerSubgroup(gr, subgroup)
@@ -269,4 +264,26 @@ func (api *RouteRegistryAPI) Mount(tenantName, mountPath string) error {
 // Clear removes all routes for a tenant
 func (api *RouteRegistryAPI) Clear(tenantName string) {
 	api.registry.ClearTenantRoutes(tenantName)
+}
+
+// registerRouteByMethod consolidates the duplicate route registration logic
+func (r *LuaRouteRegistry) registerRouteByMethod(router chi.Router, route RouteDefinition) {
+	switch route.Method {
+	case "GET":
+		router.Get(route.Pattern, route.Handler)
+	case "POST":
+		router.Post(route.Pattern, route.Handler)
+	case "PUT":
+		router.Put(route.Pattern, route.Handler)
+	case "DELETE":
+		router.Delete(route.Pattern, route.Handler)
+	case "PATCH":
+		router.Patch(route.Pattern, route.Handler)
+	case "OPTIONS":
+		router.Options(route.Pattern, route.Handler)
+	case "HEAD":
+		router.Head(route.Pattern, route.Handler)
+	default:
+		router.Method(route.Method, route.Pattern, route.Handler)
+	}
 }

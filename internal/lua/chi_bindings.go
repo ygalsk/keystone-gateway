@@ -4,7 +4,6 @@ package lua
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 
 	lua "github.com/yuin/gopher-lua"
@@ -16,7 +15,7 @@ import (
 func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 	// Register Lua functions that can be called from scripts
 	L.SetGlobal("chi_route", L.NewFunction(func(L *lua.LState) int {
-		return e.luaChiRoute(L, tenantName)
+		return e.luaChiRoute(L, tenantName, scriptTag)
 	}))
 	L.SetGlobal("chi_middleware", L.NewFunction(func(L *lua.LState) int {
 		return e.luaChiMiddleware(L, tenantName)
@@ -24,11 +23,30 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 	L.SetGlobal("chi_group", L.NewFunction(func(L *lua.LState) int {
 		return e.luaChiGroup(L, tenantName)
 	}))
-	L.SetGlobal("log", L.NewFunction(e.luaLog))
+	L.SetGlobal("chi_param", L.NewFunction(func(L *lua.LState) int {
+		// This will be overridden in the actual handler context with real parameter values
+		requestTable := L.ToTable(1)
+		paramName := L.ToString(2)
+
+		if requestTable != nil {
+			if paramsTable := requestTable.RawGetString("params"); paramsTable != lua.LNil {
+				if paramTable, ok := paramsTable.(*lua.LTable); ok {
+					if param := paramTable.RawGetString(paramName); param != lua.LNil {
+						L.Push(param)
+						return 1
+					}
+				}
+			}
+		}
+
+		// Default fallback
+		L.Push(lua.LString(""))
+		return 1
+	}))
 }
 
 // luaChiRoute handles route registration from Lua: chi_route(method, pattern, handler)
-func (e *Engine) luaChiRoute(L *lua.LState, tenantName string) int {
+func (e *Engine) luaChiRoute(L *lua.LState, tenantName, scriptTag string) int {
 	method := L.ToString(1)
 	pattern := L.ToString(2)
 	handlerFunc := L.ToFunction(3)
@@ -38,31 +56,26 @@ func (e *Engine) luaChiRoute(L *lua.LState, tenantName string) int {
 		return 0
 	}
 
-	// Create efficient Go HTTP handler that reuses the current Lua function
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		// Create lightweight response wrapper
-		respWriter := &luaResponseWriter{w: w}
-		respTable := createLuaResponse(L, respWriter)
-		reqTable := createLuaRequest(L, r)
+	// Extract the Lua function source code for later execution
+	functionName := fmt.Sprintf("handler_%s_%s_%d", method, pattern, L.GetTop())
+	L.SetGlobal(functionName, handlerFunc)
 
-		// Call the Lua handler function directly
-		err := L.CallByParam(lua.P{
-			Fn:      handlerFunc,
-			NRet:    0,
-			Protect: true,
-		}, respTable, reqTable)
-
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Lua handler error: %v", err), http.StatusInternalServerError)
-		}
+	// Get the script content for this handler
+	scriptContent, exists := e.GetScript(scriptTag)
+	if !exists {
+		L.RaiseError("Script not found: %s", scriptTag)
+		return 0
 	}
+
+	// Create a thread-safe handler using the state pool
+	luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, e.statePool, e)
 
 	// Register the route with the simplified registry
 	err := e.routeRegistry.RegisterRoute(routing.RouteDefinition{
 		TenantName: tenantName,
 		Method:     method,
 		Pattern:    pattern,
-		Handler:    handler,
+		Handler:    luaHandler.ServeHTTP,
 	})
 	if err != nil {
 		L.RaiseError("Failed to register route: %v", err)
@@ -81,29 +94,34 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, tenantName string) int {
 		return 0
 	}
 
-	// Create Go middleware that calls the Lua function
+	// Create Go middleware that calls the Lua function using state pool for safety
 	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Create Lua request wrapper
+			// Use state pool for thread-safe middleware execution
+			L := e.statePool.Get()
+			defer e.statePool.Put(L)
+
+			// Execute middleware function with proper context
+			respWriter := &luaResponseWriter{w: w}
+			respTable := createLuaResponse(L, respWriter)
 			reqTable := createLuaRequest(L, r)
 
-			// Create Lua response wrapper
-			respWrapper := &luaResponseWriter{w: w, L: L}
-			respTable := createLuaResponse(L, respWrapper)
-
-			// Create next function for Lua
+			// Create next function wrapper
 			nextFunc := L.NewFunction(func(L *lua.LState) int {
 				next.ServeHTTP(w, r)
 				return 0
 			})
 
-			// Call the Lua middleware function
-			if err := L.CallByParam(lua.P{
+			// Call middleware function
+			err := L.CallByParam(lua.P{
 				Fn:      middlewareFunc,
 				NRet:    0,
 				Protect: true,
-			}, respTable, reqTable, nextFunc); err != nil {
-				http.Error(w, fmt.Sprintf("Lua middleware error: %v", err), http.StatusInternalServerError)
+			}, nextFunc, respTable, reqTable)
+
+			if err != nil {
+				// On error, continue to next handler
+				next.ServeHTTP(w, r)
 			}
 		})
 	}
@@ -146,130 +164,4 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 	}
 
 	return 0
-}
-
-// luaLog provides logging from Lua scripts
-func (e *Engine) luaLog(L *lua.LState) int {
-	message := L.ToString(1)
-	fmt.Printf("[Lua] %s\n", message)
-	return 0
-}
-
-// luaResponseWriter wraps http.ResponseWriter for Lua integration
-type luaResponseWriter struct {
-	w http.ResponseWriter
-	L *lua.LState
-}
-
-// createLuaRequest creates a Lua table representing an HTTP request
-func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
-	reqTable := L.NewTable()
-
-	// Basic request info
-	reqTable.RawSetString("method", lua.LString(r.Method))
-	reqTable.RawSetString("url", lua.LString(r.URL.String()))
-	reqTable.RawSetString("path", lua.LString(r.URL.Path))
-	reqTable.RawSetString("host", lua.LString(r.Host))
-
-	// Headers
-	headersTable := L.NewTable()
-	for key, values := range r.Header {
-		if len(values) > 0 {
-			headersTable.RawSetString(key, lua.LString(values[0]))
-		}
-	}
-	reqTable.RawSetString("headers", headersTable)
-
-	// URL parameters (would be populated by Chi)
-	paramsTable := L.NewTable()
-	reqTable.RawSetString("params", paramsTable)
-
-	// Body content storage
-	var bodyContent string
-	if r.Body != nil {
-		body, err := io.ReadAll(r.Body)
-		if err == nil {
-			bodyContent = string(body)
-		}
-	}
-
-	// Helper methods with colon syntax support
-	headerFunc := L.NewFunction(func(L *lua.LState) int {
-		startIdx := 1
-		if L.GetTop() > 1 && L.Get(1) == reqTable {
-			startIdx = 2
-		}
-		headerName := L.ToString(startIdx)
-		headerValue := r.Header.Get(headerName)
-		L.Push(lua.LString(headerValue))
-		return 1
-	})
-
-	// Add body() method for colon syntax support
-	bodyFunc := L.NewFunction(func(L *lua.LState) int {
-		L.Push(lua.LString(bodyContent))
-		return 1
-	})
-
-	reqTable.RawSetString("header", headerFunc)
-	reqTable.RawSetString("body", bodyFunc)
-
-	return reqTable
-}
-
-// createLuaResponse creates a Lua table representing an HTTP response with colon method support
-func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
-	respTable := L.NewTable()
-
-	// Create method functions that work with both colon and dot syntax
-	writeFunc := L.NewFunction(func(L *lua.LState) int {
-		// Skip 'self' parameter if called with colon syntax
-		startIdx := 1
-		if L.GetTop() > 1 && L.Get(1) == respTable {
-			startIdx = 2
-		}
-		content := L.ToString(startIdx)
-		w.w.Write([]byte(content))
-		return 0
-	})
-
-	headerFunc := L.NewFunction(func(L *lua.LState) int {
-		startIdx := 1
-		if L.GetTop() > 2 && L.Get(1) == respTable {
-			startIdx = 2
-		}
-		key := L.ToString(startIdx)
-		value := L.ToString(startIdx + 1)
-		w.w.Header().Set(key, value)
-		return 0
-	})
-
-	statusFunc := L.NewFunction(func(L *lua.LState) int {
-		startIdx := 1
-		if L.GetTop() > 1 && L.Get(1) == respTable {
-			startIdx = 2
-		}
-		statusCode := L.ToInt(startIdx)
-		w.w.WriteHeader(statusCode)
-		return 0
-	})
-
-	jsonFunc := L.NewFunction(func(L *lua.LState) int {
-		startIdx := 1
-		if L.GetTop() > 1 && L.Get(1) == respTable {
-			startIdx = 2
-		}
-		jsonContent := L.ToString(startIdx)
-		w.w.Header().Set("Content-Type", "application/json")
-		w.w.Write([]byte(jsonContent))
-		return 0
-	})
-
-	// Set methods on table
-	respTable.RawSetString("write", writeFunc)
-	respTable.RawSetString("header", headerFunc)
-	respTable.RawSetString("status", statusFunc)
-	respTable.RawSetString("json", jsonFunc)
-
-	return respTable
 }

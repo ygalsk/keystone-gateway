@@ -1,0 +1,1 @@
+- write a new and improved README aswell as documentation, rite new docs while following best pratices aswell as KISS

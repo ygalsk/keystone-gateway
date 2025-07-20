@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,16 +20,9 @@ import (
 
 // Constants for the application
 const (
-	// Default timeouts
-	DefaultHealthCheckInterval = 10 * time.Second
-	DefaultHealthCheckTimeout  = 3 * time.Second
-	DefaultRequestTimeout      = 60 * time.Second
-
-	// Default server settings
-	DefaultListenAddress = ":8080"
-
-	// Version
-	Version = "1.2.1"
+	DefaultRequestTimeout = 60 * time.Second
+	DefaultListenAddress  = ":8080"
+	Version               = "1.2.1"
 )
 
 // HealthStatus represents the current health status of the gateway and all tenants.
@@ -46,13 +37,6 @@ type HealthStatus struct {
 type Application struct {
 	gateway   *routing.Gateway
 	luaEngine *lua.Engine // New: embedded Lua engine for route definition
-}
-
-// NewApplication creates a new application instance
-func NewApplication(cfg *config.Config) *Application {
-	return &Application{
-		gateway: routing.NewGateway(cfg),
-	}
 }
 
 // NewApplicationWithLuaRouting creates an application with embedded Lua routing
@@ -130,39 +114,9 @@ func (app *Application) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proxy := app.createProxy(backend, stripPrefix)
+	proxy := app.gateway.CreateProxy(backend, stripPrefix)
 	proxy.ServeHTTP(w, r)
 }
-
-// createProxy creates a reverse proxy for the given backend
-func (app *Application) createProxy(backend *routing.GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
-	proxy := httputil.NewSingleHostReverseProxy(backend.URL)
-
-	proxy.Director = func(req *http.Request) {
-		req.URL.Scheme = backend.URL.Scheme
-		req.URL.Host = backend.URL.Host
-
-		if stripPrefix != "" {
-			newPath := strings.TrimPrefix(req.URL.Path, stripPrefix)
-			if newPath == "" {
-				newPath = "/"
-			}
-			req.URL.Path = newPath
-		}
-
-		// Merge query parameters
-		if backend.URL.RawQuery == "" || req.URL.RawQuery == "" {
-			req.URL.RawQuery = backend.URL.RawQuery + req.URL.RawQuery
-		} else {
-			req.URL.RawQuery = backend.URL.RawQuery + "&" + req.URL.RawQuery
-		}
-	}
-
-	return proxy
-}
-
-
-
 
 // SetupRouter configures and returns the main router
 func (app *Application) SetupRouter() *chi.Mux {
@@ -198,25 +152,32 @@ func (app *Application) setupAdminRoutes(r *chi.Mux) {
 
 // setupTenantRouting configures tenant-specific routing
 func (app *Application) setupTenantRouting(r *chi.Mux) {
-	// Check if we should use Lua-based routing
+	// Use Lua-based routing if available
 	if app.luaEngine != nil {
 		app.setupLuaBasedRouting(r)
 		return
 	}
 
-	// ...removed legacy static routing fallback...
+	// Fallback to catch-all handlers
+	r.HandleFunc("/", app.ProxyHandler)
+	r.HandleFunc("/*", app.ProxyHandler)
 }
 
 // setupLuaBasedRouting sets up routing using Lua scripts
 func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 	cfg := app.gateway.GetConfig()
 
+	// Execute and mount Lua route scripts for all tenants
 	for _, tenant := range cfg.Tenants {
-		// Execute Lua route scripts if specified
 		if tenant.LuaRoutes != "" {
 			log.Printf("Executing Lua route script '%s' for tenant: %s", tenant.LuaRoutes, tenant.Name)
 			if err := app.luaEngine.ExecuteRouteScript(tenant.LuaRoutes, tenant.Name); err != nil {
 				log.Printf("Failed to execute Lua route script '%s' for tenant %s: %v", tenant.LuaRoutes, tenant.Name, err)
+				continue
+			}
+
+			if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, "/"); err != nil {
+				log.Printf("Failed to mount routes for tenant %s: %v", tenant.Name, err)
 			}
 		}
 	}
@@ -224,91 +185,6 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 	// Add catch-all handlers for fallback
 	r.HandleFunc("/", app.ProxyHandler)
 	r.HandleFunc("/*", app.ProxyHandler)
-}
-
-// setupStaticRouting sets up the original static routing for all tenants
-func (app *Application) setupStaticRouting(r *chi.Mux) {
-	cfg := app.gateway.GetConfig()
-	for _, tenant := range cfg.Tenants {
-		router := app.gateway.GetTenantRouter(tenant.Name)
-		if router == nil {
-			continue
-		}
-
-		if len(tenant.Domains) > 0 && tenant.PathPrefix != "" {
-			// Hybrid routing
-			r.Route(tenant.PathPrefix, func(r chi.Router) {
-				r.Use(app.gateway.HostMiddleware(tenant.Domains))
-				r.Use(app.gateway.ProxyMiddleware(router, tenant.PathPrefix))
-				r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-					// Middleware handles everything
-				})
-			})
-		} else if len(tenant.Domains) > 0 {
-			// Host-only routing
-			r.Group(func(r chi.Router) {
-				r.Use(app.gateway.HostMiddleware(tenant.Domains))
-				r.Use(app.gateway.ProxyMiddleware(router, ""))
-				r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-					// Middleware handles everything
-				})
-				r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-					// Middleware handles everything
-				})
-			})
-		} else if tenant.PathPrefix != "" {
-			// Path-only routing
-			r.Route(tenant.PathPrefix, func(r chi.Router) {
-				r.Use(app.gateway.ProxyMiddleware(router, tenant.PathPrefix))
-				r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-					// Middleware handles everything
-				})
-			})
-		}
-	}
-
-	// Catch-all handlers for tenant routing
-	r.HandleFunc("/", app.ProxyHandler)
-	r.HandleFunc("/*", app.ProxyHandler)
-}
-
-// setupStaticRoutingForTenant sets up static routing for a single tenant
-func (app *Application) setupStaticRoutingForTenant(r *chi.Mux, tenant config.Tenant) {
-	router := app.gateway.GetTenantRouter(tenant.Name)
-	if router == nil {
-		return
-	}
-
-	if len(tenant.Domains) > 0 && tenant.PathPrefix != "" {
-		// Hybrid routing
-		r.Route(tenant.PathPrefix, func(r chi.Router) {
-			r.Use(app.gateway.HostMiddleware(tenant.Domains))
-			r.Use(app.gateway.ProxyMiddleware(router, tenant.PathPrefix))
-			r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-				// Middleware handles everything
-			})
-		})
-	} else if len(tenant.Domains) > 0 {
-		// Host-only routing
-		r.Group(func(r chi.Router) {
-			r.Use(app.gateway.HostMiddleware(tenant.Domains))
-			r.Use(app.gateway.ProxyMiddleware(router, ""))
-			r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-				// Middleware handles everything
-			})
-			r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-				// Middleware handles everything
-			})
-		})
-	} else if tenant.PathPrefix != "" {
-		// Path-only routing
-		r.Route(tenant.PathPrefix, func(r chi.Router) {
-			r.Use(app.gateway.ProxyMiddleware(router, tenant.PathPrefix))
-			r.HandleFunc("/*", func(w http.ResponseWriter, r *http.Request) {
-				// Middleware handles everything
-			})
-		})
-	}
 }
 
 func main() {
@@ -321,19 +197,14 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Choose routing mode based on configuration
-	var app *Application
-	var router *chi.Mux
-
-	if cfg.LuaRouting != nil && cfg.LuaRouting.Enabled {
-		// Use embedded Lua routing
-		router = chi.NewRouter()
-		app = NewApplicationWithLuaRouting(cfg, router)
-		app.setupBaseMiddleware(router)
-		app.setupAdminRoutes(router)
-		app.setupTenantRouting(router)
-		log.Printf("Using embedded Lua routing mode")
+	if cfg.LuaRouting == nil || !cfg.LuaRouting.Enabled {
+		log.Fatal("Lua routing must be enabled")
 	}
+
+	// Create application with Lua routing
+	router := chi.NewRouter()
+	app := NewApplicationWithLuaRouting(cfg, router)
+	router = app.SetupRouter()
 
 	log.Printf("Keystone Gateway v%s (Chi Router) listening on %s", Version, *addr)
 	if err := http.ListenAndServe(*addr, router); err != nil {

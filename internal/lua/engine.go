@@ -4,9 +4,9 @@
 package lua
 
 import (
+	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,6 +23,16 @@ const (
 	MaxScriptExecutionTime = 5 * time.Second
 	// MaxMemoryMB limits lua script memory usage (disabled for performance)
 	MaxMemoryMB = 10
+	// DefaultStatePoolSize is the default number of Lua states in the pool
+	DefaultStatePoolSize = 10
+	// LuaCallStackSize sets the call stack size for Lua states
+	LuaCallStackSize = 120
+	// LuaRegistrySize sets the registry size for Lua states
+	LuaRegistrySize = 120 * 20
+	// DefaultDirMode is the default permission for created directories
+	DefaultDirMode = 0755
+	// DefaultFileMode is the default permission for created files
+	DefaultFileMode = 0644
 )
 
 // Engine manages embedded Lua script execution and route registration
@@ -31,6 +41,7 @@ type Engine struct {
 	scripts       map[string]string         // script_tag -> script_content
 	router        *chi.Mux                  // Chi router for dynamic route registration
 	routeRegistry *routing.LuaRouteRegistry // Route registry for Lua integration
+	statePool     *LuaStatePool             // Pool of Lua states for thread safety
 }
 
 // GetScript returns the script content for a given scriptTag
@@ -44,14 +55,6 @@ func (e *Engine) RouteRegistry() *routing.LuaRouteRegistry {
 	return e.routeRegistry
 }
 
-// RouteRegistration represents a route registered by Lua
-type RouteRegistration struct {
-	Method      string
-	Pattern     string
-	HandlerFunc func(w http.ResponseWriter, r *http.Request)
-	Middleware  []func(http.Handler) http.Handler
-}
-
 // NewEngine creates a new embedded Lua engine
 func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 	engine := &Engine{
@@ -60,16 +63,37 @@ func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 		router:     router,
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router, engine)
+
+	// Create Lua state pool for thread-safe request handling - prevents segfaults
+	engine.statePool = NewLuaStatePool(DefaultStatePoolSize, func() *lua.LState {
+		L := lua.NewState(lua.Options{
+			CallStackSize: LuaCallStackSize,
+			RegistrySize:  LuaRegistrySize,
+		})
+		// Setup basic Lua bindings for each state
+		engine.setupBasicBindings(L)
+		return L
+	})
+
 	engine.loadScripts()
 	return engine
+}
+
+// setupBasicBindings sets up basic Lua functions that all states need
+func (e *Engine) setupBasicBindings(L *lua.LState) {
+	// Add basic logging function
+	L.SetGlobal("log", L.NewFunction(func(L *lua.LState) int {
+		message := L.ToString(1)
+		log.Printf("[Lua] %s", message)
+		return 0
+	}))
 }
 
 // loadScripts loads all .lua files from the scripts directory
 func (e *Engine) loadScripts() {
 	if _, err := os.Stat(e.scriptsDir); os.IsNotExist(err) {
 		log.Printf("Scripts directory %s does not exist, creating...", e.scriptsDir)
-		os.MkdirAll(e.scriptsDir, 0755)
-		e.createExampleRouteScript()
+		os.MkdirAll(e.scriptsDir, DefaultDirMode)
 		return
 	}
 
@@ -96,32 +120,37 @@ func (e *Engine) loadScripts() {
 }
 
 // ExecuteRouteScript executes a Lua script that registers routes with Chi for a specific tenant
+// This version prevents segfaults by using proper state management and isolation
 func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
 	script, exists := e.scripts[scriptTag]
 	if !exists {
 		return fmt.Errorf("no route script found for tag: %s", scriptTag)
 	}
 
-	// Create isolated Lua state
+	// Create isolated Lua state - this prevents shared state segfaults
 	L := lua.NewState(lua.Options{
-		CallStackSize: 120,
-		RegistrySize:  120 * 20,
+		CallStackSize: LuaCallStackSize,
+		RegistrySize:  LuaRegistrySize,
 	})
 	defer L.Close()
 
-	// Setup timeout
-	ctx := make(chan bool, 1)
-	go func() {
-		time.Sleep(MaxScriptExecutionTime)
-		ctx <- true
-	}()
+	// Setup basic bindings first
+	e.setupBasicBindings(L)
 
 	// Setup Lua environment with Chi bindings
 	e.SetupChiBindings(L, scriptTag, tenantName)
 
-	// Execute script with timeout protection
+	// Execute script with timeout protection using context
+	ctx, cancel := context.WithTimeout(context.Background(), MaxScriptExecutionTime)
+	defer cancel()
+
 	done := make(chan error, 1)
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				done <- fmt.Errorf("panic during script execution: %v", r)
+			}
+		}()
 		err := L.DoString(script)
 		done <- err
 	}()
@@ -129,11 +158,11 @@ func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
 	select {
 	case err := <-done:
 		if err != nil {
-			return fmt.Errorf("script execution failed: %w", err)
+			return fmt.Errorf("Lua script execution failed: %w", err)
 		}
 		return nil
-	case <-ctx:
-		return fmt.Errorf("script execution timeout after %v", MaxScriptExecutionTime)
+	case <-ctx.Done():
+		return fmt.Errorf("Lua script execution timeout after %v", MaxScriptExecutionTime)
 	}
 }
 
@@ -153,67 +182,7 @@ func (e *Engine) GetLoadedScripts() []string {
 	return scripts
 }
 
-// createExampleRouteScript creates an example Lua script for route registration
-func (e *Engine) createExampleRouteScript() {
-	exampleScript := `-- Example Dynamic Route Registration Script
--- This script demonstrates how to register custom routes with Chi router
-
--- Register a simple GET route
-chi_route("GET", "/api/v1/health", function(w, r)
-	w:header("Content-Type", "application/json")
-	w:write('{"status":"healthy","service":"example"}')
-end)
-
--- Register a route with path parameters
-chi_route("GET", "/api/v1/users/{id}", function(w, r)
-	local user_id = chi_param(r, "id")
-	w:header("Content-Type", "application/json")
-	w:write('{"user_id":"' .. user_id .. '","name":"User ' .. user_id .. '"}')
-end)
-
--- Register middleware for all routes under /api/v1/
-chi_middleware("/api/v1/*", function(next)
-	return function(w, r)
-		-- Add custom headers
-		w:header("X-API-Version", "v1")
-		w:header("X-Powered-By", "Lua-Keystone")
-		next(w, r)
-	end
-end)
-
--- Register a route group with shared middleware
-chi_group("/api/v1/admin", function()
-	-- Auth middleware for admin routes
-	chi_middleware("/*", function(next)
-		return function(w, r)
-			local auth_header = r:header("Authorization")
-			if not auth_header or auth_header ~= "Bearer admin-token" then
-				w:status(401)
-				w:write("Unauthorized")
-				return
-			end
-			next(w, r)
-		end
-	end)
-	
-	-- Admin-only routes
-	chi_route("GET", "/stats", function(w, r)
-		w:header("Content-Type", "application/json") 
-		w:write('{"requests":1234,"uptime":"24h"}')
-	end)
-	
-	chi_route("POST", "/reload", function(w, r)
-		-- Trigger script reload (this would be implemented)
-		w:write("Scripts reloaded")
-	end)
-end)
-
-log("Route registration complete for example tenant")`
-
-	examplePath := filepath.Join(e.scriptsDir, "example.lua")
-	if err := os.WriteFile(examplePath, []byte(exampleScript), 0644); err != nil {
-		log.Printf("Failed to create example route script: %v", err)
-	} else {
-		log.Printf("Created example route script at: %s", examplePath)
-	}
+// GetScriptMap returns the scripts map for testing purposes
+func (e *Engine) GetScriptMap() map[string]string {
+	return e.scripts
 }
