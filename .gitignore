@@ -64,3 +64,5 @@ Thumbs.db
 # Local development
 /tmp/
 /temp/
+
+/todos/worktrees/

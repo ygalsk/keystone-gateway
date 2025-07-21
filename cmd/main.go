@@ -134,6 +134,11 @@ func (app *Application) setupBaseMiddleware(r *chi.Mux) {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
+	
+	// Add host-based routing middleware if we have host-based tenants
+	if app.luaEngine != nil {
+		r.Use(app.hostBasedRoutingMiddleware())
+	}
 }
 
 // setupAdminRoutes configures the admin API endpoints
@@ -167,7 +172,7 @@ func (app *Application) setupTenantRouting(r *chi.Mux) {
 func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 	cfg := app.gateway.GetConfig()
 
-	// Execute and mount Lua route scripts for all tenants
+	// Execute Lua route scripts for all tenants first
 	for _, tenant := range cfg.Tenants {
 		if tenant.LuaRoutes != "" {
 			log.Printf("Executing Lua route script '%s' for tenant: %s", tenant.LuaRoutes, tenant.Name)
@@ -175,9 +180,27 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 				log.Printf("Failed to execute Lua route script '%s' for tenant %s: %v", tenant.LuaRoutes, tenant.Name, err)
 				continue
 			}
+		}
+	}
 
-			if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, "/"); err != nil {
-				log.Printf("Failed to mount routes for tenant %s: %v", tenant.Name, err)
+	// Mount path-based tenant routes only (host-based handled by middleware)
+	for _, tenant := range cfg.Tenants {
+		if tenant.LuaRoutes != "" {
+			if len(tenant.Domains) > 0 {
+				// Host-based routing: handled by middleware, just log
+				log.Printf("Tenant %s configured for host-based routing with domains: %v", tenant.Name, tenant.Domains)
+			} else if tenant.PathPrefix != "" {
+				// Path-based routing: mount at specific path prefix
+				log.Printf("Mounting tenant %s routes at path prefix: %s", tenant.Name, tenant.PathPrefix)
+				if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, tenant.PathPrefix); err != nil {
+					log.Printf("Failed to mount routes for tenant %s: %v", tenant.Name, err)
+				}
+			} else {
+				// Fallback: mount at root with warning about potential collisions
+				log.Printf("Warning: Tenant %s has no path prefix or domains - mounting at root may cause route collisions", tenant.Name)
+				if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, "/"); err != nil {
+					log.Printf("Failed to mount routes for tenant %s: %v", tenant.Name, err)
+				}
 			}
 		}
 	}
@@ -185,6 +208,41 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 	// Add catch-all handlers for fallback
 	r.HandleFunc("/", app.ProxyHandler)
 	r.HandleFunc("/*", app.ProxyHandler)
+}
+
+// hostBasedRoutingMiddleware creates middleware for host-based tenant routing
+func (app *Application) hostBasedRoutingMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check if this is a host-based tenant request
+			cfg := app.gateway.GetConfig()
+			registry := app.luaEngine.RouteRegistry()
+			
+			for _, tenant := range cfg.Tenants {
+				if len(tenant.Domains) > 0 {
+					for _, domain := range tenant.Domains {
+						if r.Host == domain || r.Host == domain+":"+app.port() {
+							// Found matching host-based tenant
+							submux := registry.GetTenantRoutes(tenant.Name)
+							if submux != nil {
+								log.Printf("Host-based routing: %s -> tenant %s", r.Host, tenant.Name)
+								submux.ServeHTTP(w, r)
+								return
+							}
+						}
+					}
+				}
+			}
+			
+			// No host-based match, continue to next handler
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// port extracts the port from the listen address (defaults to 8080)
+func (app *Application) port() string {
+	return "8080" // Default port - could be enhanced to parse from listen address
 }
 
 func main() {

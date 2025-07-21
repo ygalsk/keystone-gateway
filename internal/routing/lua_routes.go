@@ -142,7 +142,11 @@ func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error {
 
 // MountTenantRoutes mounts all routes for a tenant under a specific path
 func (r *LuaRouteRegistry) MountTenantRoutes(tenantName, mountPath string) error {
-	if submux, exists := r.routeGroups[tenantName]; exists {
+	r.mu.RLock()
+	submux, exists := r.routeGroups[tenantName]
+	r.mu.RUnlock()
+	
+	if exists {
 		r.router.Mount(mountPath, submux)
 	}
 	return nil
