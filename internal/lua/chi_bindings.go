@@ -15,7 +15,7 @@ import (
 func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 	// Register Lua functions that can be called from scripts
 	L.SetGlobal("chi_route", L.NewFunction(func(L *lua.LState) int {
-		return e.luaChiRoute(L, tenantName, scriptTag)
+		return e.luaChiRoute(L, scriptTag, tenantName)
 	}))
 	L.SetGlobal("chi_middleware", L.NewFunction(func(L *lua.LState) int {
 		return e.luaChiMiddleware(L, tenantName)
@@ -46,7 +46,7 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 }
 
 // luaChiRoute handles route registration from Lua: chi_route(method, pattern, handler)
-func (e *Engine) luaChiRoute(L *lua.LState, tenantName, scriptTag string) int {
+func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
 	method := L.ToString(1)
 	pattern := L.ToString(2)
 	handlerFunc := L.ToFunction(3)
@@ -68,7 +68,7 @@ func (e *Engine) luaChiRoute(L *lua.LState, tenantName, scriptTag string) int {
 	}
 
 	// Create a thread-safe handler using the state pool
-	luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, e.statePool, e)
+	luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, scriptTag, e.statePool, e)
 
 	// Register the route with the simplified registry
 	err := e.routeRegistry.RegisterRoute(routing.RouteDefinition{

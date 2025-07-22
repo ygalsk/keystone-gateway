@@ -1,56 +1,38 @@
 # Project: Keystone Gateway
-
-A high-performance, programmable reverse proxy and API gateway written in Go with embedded Lua scripting capabilities. Designed for multi-tenant environments where different applications or services need dynamic routing with programmable behavior.
+High-performance, programmable reverse proxy and API gateway with embedded Lua scripting for dynamic multi-tenant routing.
 
 ## Features
-
-- **Multi-tenant routing**: Host-based, path-based, and hybrid routing strategies
-- **Embedded Lua scripting**: Define HTTP routes and middleware dynamically without recompilation  
-- **Load balancing & health monitoring**: Round-robin load balancing with automatic backend health checking
-- **Thread-safe Lua execution**: State pooling prevents segfaults in concurrent environments
-- **Admin API**: Health endpoints and tenant management for monitoring and debugging
-- **Configuration-driven**: YAML-based configuration with hot-reloadable Lua scripts
+- Multi-tenant routing (host-based, path-based, hybrid strategies)
+- Embedded Lua scripting engine for dynamic route definition
+- Load balancing with round-robin and health checking
+- Admin API for health monitoring and tenant management
+- Thread-safe Lua state pools for concurrent execution
+- TLS/HTTPS support and comprehensive request handling
 
 ## Tech Stack
-
-- **Language**: Go 1.19+ (Go 1.21+ recommended, current dev: 1.23.5)
-- **Web Framework**: Chi Router v5.2.2 with built-in middleware
-- **Scripting**: Embedded Lua via gopher-lua v1.1.1 with custom Chi bindings
-- **Configuration**: YAML v3.0.1 for declarative setup
-- **Code Quality**: golangci-lint, gosec, Trivy security scanning
-- **CI/CD**: GitHub Actions with cross-platform builds and container support
+- **Languages**: Go (1.19+), Lua (embedded via gopher-lua)
+- **Frameworks**: Chi Router v5.2.2, net/http reverse proxy
+- **Build**: Makefile, Go modules, golangci-lint
+- **Testing**: Go testing package with 3-tier structure (unit/integration/e2e)
+- **CI/CD**: GitHub Actions with multi-platform builds, security scanning
 
 ## Structure
-
-- `/cmd/main.go` - Main application entry point
-- `/internal/config/` - YAML configuration parsing and validation
-- `/internal/routing/` - Gateway routing logic, load balancing, tenant management  
-- `/internal/lua/` - Embedded Lua scripting engine with Chi bindings
-- `/configs/` - Configuration files and examples
-- `/scripts/` - Lua scripts for dynamic route definitions
-- `/test/` - Test organization (unit, integration, e2e, fixtures, mocks)
+- `/cmd/main.go` - Application entry point and HTTP handlers
+- `/internal/config/` - YAML configuration management
+- `/internal/lua/` - Embedded Lua engine with Chi bindings
+- `/internal/routing/` - Gateway routing and load balancing
+- `/scripts/` - Lua routing scripts (*.lua files)
+- `/configs/examples/` - Sample configurations
+- `/tests/` - Three-tier test suite (unit, integration, e2e)
 
 ## Architecture
-
-**Request Flow**: HTTP Requests → Chi Router → Lua Route Registry → Tenant Routers → Backend Services
-
-**Core Components**:
-- **Gateway**: Reverse proxy with multi-tenant routing and load balancing
-- **Lua Engine**: Dynamic route/middleware definition via embedded scripting
-- **Route Registry**: Per-tenant route isolation using Chi submuxes
-- **Health Monitor**: Backend health checking with automatic failover
+Layered architecture with HTTP layer (Chi), Application layer (Gateway), Multi-tenant routing, and embedded Lua scripting. Components interact through request flow: Chi router → middleware → tenant matching → Lua execution → backend selection → reverse proxy.
 
 ## Commands
-
-- **Build**: `go build -o keystone-gateway ./cmd/`
-- **Test**: `go test ./...` (test structure exists, files need implementation)
-- **Lint**: `golangci-lint run`
-- **Run**: `./keystone-gateway -config config.yaml`
+- Build: `make build`
+- Test: `make test` (also `test-unit`, `test-integration`, `test-e2e`)
+- Lint: `make lint`
+- Dev/Run: `make run`
 
 ## Testing
-
-Test directory structure is organized with `/test/{unit,integration,e2e,fixtures,mocks}/` but no actual `*_test.go` files exist yet. Tests need to be implemented using Go's standard testing package with race detection and coverage reporting.
-
-## Editor
-
-- Open folder: [PENDING USER INPUT]
+Uses Go's built-in testing package with table-driven tests, httptest for HTTP mocking, temporary directories for isolation, and comprehensive coverage reporting. Test data stored in `/testdata/` with sample configs and Lua scripts.

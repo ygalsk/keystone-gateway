@@ -134,7 +134,7 @@ func (app *Application) setupBaseMiddleware(r *chi.Mux) {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
-	
+
 	// Add host-based routing middleware if we have host-based tenants
 	if app.luaEngine != nil {
 		r.Use(app.hostBasedRoutingMiddleware())
@@ -172,7 +172,12 @@ func (app *Application) setupTenantRouting(r *chi.Mux) {
 func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 	cfg := app.gateway.GetConfig()
 
-	// Execute Lua route scripts for all tenants first
+	// Execute global Lua scripts first (applies to all tenants)
+	if err := app.luaEngine.ExecuteGlobalScripts(); err != nil {
+		log.Printf("Failed to execute global scripts: %v", err)
+	}
+
+	// Execute Lua route scripts for all tenants
 	for _, tenant := range cfg.Tenants {
 		if tenant.LuaRoutes != "" {
 			log.Printf("Executing Lua route script '%s' for tenant: %s", tenant.LuaRoutes, tenant.Name)
@@ -217,7 +222,7 @@ func (app *Application) hostBasedRoutingMiddleware() func(http.Handler) http.Han
 			// Check if this is a host-based tenant request
 			cfg := app.gateway.GetConfig()
 			registry := app.luaEngine.RouteRegistry()
-			
+
 			for _, tenant := range cfg.Tenants {
 				if len(tenant.Domains) > 0 {
 					for _, domain := range tenant.Domains {
@@ -233,7 +238,7 @@ func (app *Application) hostBasedRoutingMiddleware() func(http.Handler) http.Han
 					}
 				}
 			}
-			
+
 			// No host-based match, continue to next handler
 			next.ServeHTTP(w, r)
 		})
@@ -265,7 +270,16 @@ func main() {
 	router = app.SetupRouter()
 
 	log.Printf("Keystone Gateway v%s (Chi Router) listening on %s", Version, *addr)
-	if err := http.ListenAndServe(*addr, router); err != nil {
-		log.Fatal(err)
+
+	// Start server with TLS support if configured
+	if cfg.TLS != nil && cfg.TLS.Enabled {
+		log.Printf("Starting server with TLS enabled")
+		if err := http.ListenAndServeTLS(*addr, cfg.TLS.CertFile, cfg.TLS.KeyFile, router); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if err := http.ListenAndServe(*addr, router); err != nil {
+			log.Fatal(err)
+		}
 	}
 }

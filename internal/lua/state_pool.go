@@ -119,6 +119,7 @@ type LuaHandler struct {
 	scriptKey    string
 	functionName string
 	tenantName   string
+	scriptTag    string
 	pool         *LuaStatePool
 	engine       interface {
 		SetupChiBindings(*lua.LState, string, string)
@@ -126,7 +127,7 @@ type LuaHandler struct {
 }
 
 // NewLuaHandler creates a new thread-safe Lua handler with script pre-compilation
-func NewLuaHandler(scriptContent, functionName, tenantName string, pool *LuaStatePool, engine interface {
+func NewLuaHandler(scriptContent, functionName, tenantName, scriptTag string, pool *LuaStatePool, engine interface {
 	SetupChiBindings(*lua.LState, string, string)
 }) *LuaHandler {
 	scriptKey := fmt.Sprintf("%s_%s", tenantName, functionName)
@@ -138,6 +139,7 @@ func NewLuaHandler(scriptContent, functionName, tenantName string, pool *LuaStat
 		scriptKey:    scriptKey,
 		functionName: functionName,
 		tenantName:   tenantName,
+		scriptTag:    scriptTag,
 		pool:         pool,
 		engine:       engine,
 	}
@@ -184,9 +186,9 @@ func (h *LuaHandler) executeScriptWithTimeout(ctx context.Context, L *lua.LState
 
 // executeLuaScript executes the actual Lua script and calls the handler function
 func (h *LuaHandler) executeLuaScript(L *lua.LState, script *CompiledScript, w http.ResponseWriter, r *http.Request) error {
-	// Set up Chi bindings for this execution context
+	// Set up Chi bindings for this execution context with correct script tag
 	if h.engine != nil {
-		h.engine.SetupChiBindings(L, script.TenantName, script.TenantName)
+		h.engine.SetupChiBindings(L, h.scriptTag, h.tenantName)
 	}
 
 	// Execute script only once per state (not per request) to avoid re-compilation segfaults

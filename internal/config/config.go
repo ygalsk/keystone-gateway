@@ -12,8 +12,16 @@ import (
 
 // LuaRoutingConfig represents embedded Lua routing configuration
 type LuaRoutingConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	ScriptsDir string `yaml:"scripts_dir,omitempty"`
+	Enabled       bool     `yaml:"enabled"`
+	ScriptsDir    string   `yaml:"scripts_dir,omitempty"`
+	GlobalScripts []string `yaml:"global_scripts,omitempty"`
+}
+
+// TLSConfig represents TLS configuration for the gateway
+type TLSConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	CertFile string `yaml:"cert_file"`
+	KeyFile  string `yaml:"key_file"`
 }
 
 // Config represents the main configuration structure for the gateway,
@@ -22,6 +30,7 @@ type Config struct {
 	Tenants       []Tenant          `yaml:"tenants"`
 	AdminBasePath string            `yaml:"admin_base_path,omitempty"`
 	LuaRouting    *LuaRoutingConfig `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
+	TLS           *TLSConfig        `yaml:"tls,omitempty"`
 }
 
 // Tenant represents a routing configuration for a specific application or service,

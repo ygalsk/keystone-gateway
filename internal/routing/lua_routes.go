@@ -145,7 +145,7 @@ func (r *LuaRouteRegistry) MountTenantRoutes(tenantName, mountPath string) error
 	r.mu.RLock()
 	submux, exists := r.routeGroups[tenantName]
 	r.mu.RUnlock()
-	
+
 	if exists {
 		r.router.Mount(mountPath, submux)
 	}

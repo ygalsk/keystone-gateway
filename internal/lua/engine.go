@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -38,16 +39,44 @@ const (
 // Engine manages embedded Lua script execution and route registration
 type Engine struct {
 	scriptsDir    string
-	scripts       map[string]string         // script_tag -> script_content
+	scriptPaths   map[string]string         // script_tag -> file_path
+	globalPaths   map[string]string         // global_script_tag -> file_path
+	scriptCache   map[string]string         // script_tag -> cached_content
+	globalCache   map[string]string         // global_script_tag -> cached_content
+	cacheMutex    sync.RWMutex              // Protects cache access
 	router        *chi.Mux                  // Chi router for dynamic route registration
 	routeRegistry *routing.LuaRouteRegistry // Route registry for Lua integration
 	statePool     *LuaStatePool             // Pool of Lua states for thread safety
 }
 
-// GetScript returns the script content for a given scriptTag
+// GetScript returns the script content for a given scriptTag, loading it if necessary
 func (e *Engine) GetScript(scriptTag string) (string, bool) {
-	script, ok := e.scripts[scriptTag]
-	return script, ok
+	e.cacheMutex.RLock()
+	if script, cached := e.scriptCache[scriptTag]; cached {
+		e.cacheMutex.RUnlock()
+		return script, true
+	}
+	e.cacheMutex.RUnlock()
+
+	// Check if we have the path for this script
+	path, exists := e.scriptPaths[scriptTag]
+	if !exists {
+		return "", false
+	}
+
+	// Load the script content
+	content, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("Failed to load script %s: %v", scriptTag, err)
+		return "", false
+	}
+
+	// Cache the loaded content
+	e.cacheMutex.Lock()
+	e.scriptCache[scriptTag] = string(content)
+	e.cacheMutex.Unlock()
+
+	return string(content), true
 }
 
 // RouteRegistry returns the route registry for mounting tenant routes
@@ -58,9 +87,12 @@ func (e *Engine) RouteRegistry() *routing.LuaRouteRegistry {
 // NewEngine creates a new embedded Lua engine
 func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 	engine := &Engine{
-		scriptsDir: scriptsDir,
-		scripts:    make(map[string]string),
-		router:     router,
+		scriptsDir:  scriptsDir,
+		scriptPaths: make(map[string]string),
+		globalPaths: make(map[string]string),
+		scriptCache: make(map[string]string),
+		globalCache: make(map[string]string),
+		router:      router,
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router, engine)
 
@@ -75,7 +107,7 @@ func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 		return L
 	})
 
-	engine.loadScripts()
+	engine.loadScriptPaths()
 	return engine
 }
 
@@ -89,8 +121,8 @@ func (e *Engine) setupBasicBindings(L *lua.LState) {
 	}))
 }
 
-// loadScripts loads all .lua files from the scripts directory
-func (e *Engine) loadScripts() {
+// loadScriptPaths discovers and maps script files without loading content
+func (e *Engine) loadScriptPaths() {
 	if _, err := os.Stat(e.scriptsDir); os.IsNotExist(err) {
 		log.Printf("Scripts directory %s does not exist, creating...", e.scriptsDir)
 		os.MkdirAll(e.scriptsDir, DefaultDirMode)
@@ -102,15 +134,17 @@ func (e *Engine) loadScripts() {
 			return err
 		}
 
-		content, err := os.ReadFile(path)
-		if err != nil {
-			log.Printf("Failed to read script %s: %v", path, err)
-			return nil
-		}
+		scriptName := strings.TrimSuffix(filepath.Base(path), ".lua")
 
-		tenantName := strings.TrimSuffix(filepath.Base(path), ".lua")
-		e.scripts[tenantName] = string(content)
-		log.Printf("Loaded route script: %s", tenantName)
+		// Check if this is a global script (global-*.lua)
+		if strings.HasPrefix(scriptName, "global-") {
+			globalScriptName := strings.TrimPrefix(scriptName, "global-")
+			e.globalPaths[globalScriptName] = path
+			log.Printf("Discovered global script: %s at %s", globalScriptName, path)
+		} else {
+			e.scriptPaths[scriptName] = path
+			log.Printf("Discovered route script: %s at %s", scriptName, path)
+		}
 		return nil
 	})
 
@@ -122,7 +156,7 @@ func (e *Engine) loadScripts() {
 // ExecuteRouteScript executes a Lua script that registers routes with Chi for a specific tenant
 // This version prevents segfaults by using proper state management and isolation
 func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
-	script, exists := e.scripts[scriptTag]
+	script, exists := e.GetScript(scriptTag)
 	if !exists {
 		return fmt.Errorf("no route script found for tag: %s", scriptTag)
 	}
@@ -166,23 +200,106 @@ func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
 	}
 }
 
-// ReloadScripts reloads all Lua scripts from disk
-func (e *Engine) ReloadScripts() error {
-	e.scripts = make(map[string]string)
-	e.loadScripts()
+// getGlobalScript loads a global script by name
+func (e *Engine) getGlobalScript(scriptTag string) (string, bool) {
+	e.cacheMutex.RLock()
+	if script, cached := e.globalCache[scriptTag]; cached {
+		e.cacheMutex.RUnlock()
+		return script, true
+	}
+	e.cacheMutex.RUnlock()
+
+	// Check if we have the path for this global script
+	path, exists := e.globalPaths[scriptTag]
+	if !exists {
+		return "", false
+	}
+
+	// Load the script content
+	content, err := os.ReadFile(path)
+	if err != nil {
+		log.Printf("Failed to load global script %s: %v", scriptTag, err)
+		return "", false
+	}
+
+	// Cache the loaded content
+	e.cacheMutex.Lock()
+	e.globalCache[scriptTag] = string(content)
+	e.cacheMutex.Unlock()
+
+	return string(content), true
+}
+
+// ExecuteGlobalScripts executes all global scripts that apply to all tenants
+func (e *Engine) ExecuteGlobalScripts() error {
+	for globalScriptName := range e.globalPaths {
+		script, exists := e.getGlobalScript(globalScriptName)
+		if !exists {
+			log.Printf("Failed to load global script: %s", globalScriptName)
+			continue
+		}
+		// Create isolated Lua state - this prevents shared state segfaults
+		L := lua.NewState(lua.Options{
+			CallStackSize: LuaCallStackSize,
+			RegistrySize:  LuaRegistrySize,
+		})
+		defer L.Close()
+
+		// Setup basic bindings first
+		e.setupBasicBindings(L)
+
+		// Setup Lua environment with Chi bindings for global scope
+		e.SetupChiBindings(L, globalScriptName, "global")
+
+		// Execute script with timeout protection using context
+		ctx, cancel := context.WithTimeout(context.Background(), MaxScriptExecutionTime)
+		defer cancel()
+
+		done := make(chan error, 1)
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					done <- fmt.Errorf("panic during global script execution: %v", r)
+				}
+			}()
+			err := L.DoString(script)
+			done <- err
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				return fmt.Errorf("global Lua script '%s' execution failed: %w", globalScriptName, err)
+			}
+		case <-ctx.Done():
+			return fmt.Errorf("global Lua script '%s' execution timeout after %v", globalScriptName, MaxScriptExecutionTime)
+		}
+	}
 	return nil
 }
 
-// GetLoadedScripts returns list of loaded script names
+// ReloadScripts clears the cache and reloads script paths from disk
+func (e *Engine) ReloadScripts() error {
+	e.cacheMutex.Lock()
+	e.scriptCache = make(map[string]string)
+	e.globalCache = make(map[string]string)
+	e.cacheMutex.Unlock()
+	e.scriptPaths = make(map[string]string)
+	e.globalPaths = make(map[string]string)
+	e.loadScriptPaths()
+	return nil
+}
+
+// GetLoadedScripts returns list of available script names
 func (e *Engine) GetLoadedScripts() []string {
-	scripts := make([]string, 0, len(e.scripts))
-	for name := range e.scripts {
+	scripts := make([]string, 0, len(e.scriptPaths))
+	for name := range e.scriptPaths {
 		scripts = append(scripts, name)
 	}
 	return scripts
 }
 
-// GetScriptMap returns the scripts map for testing purposes
+// GetScriptMap returns the script paths map for testing purposes
 func (e *Engine) GetScriptMap() map[string]string {
-	return e.scripts
+	return e.scriptPaths
 }
