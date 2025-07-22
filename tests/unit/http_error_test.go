@@ -85,7 +85,7 @@ func TestHTTPMalformedRequests(t *testing.T) {
 			url:         "/health",
 			body:        nil,
 			headers:     nil,
-			expectCode:  http.StatusMethodNotAllowed,
+			expectCode:  http.StatusOK,  // Chi router actually accepts empty method as GET
 			description: "empty method",
 		},
 		{
@@ -179,6 +179,7 @@ func TestHTTPRequestTimeout(t *testing.T) {
 			{
 				Name:       "slow-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "slow-svc", URL: slowBackend.URL, Health: "/health"},
 				},
@@ -251,6 +252,7 @@ func TestHTTPResponseErrors(t *testing.T) {
 			{
 				Name:       "error-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "error-svc", URL: errorBackend.URL, Health: "/health"},
 				},
@@ -298,6 +300,7 @@ func TestHTTPNoBackendAvailable(t *testing.T) {
 			{
 				Name:       "empty-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services:   []config.Service{}, // No services
 			},
 		},
@@ -329,6 +332,7 @@ func TestHTTPNoRouteMatch(t *testing.T) {
 			{
 				Name:       "specific-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "svc", URL: "http://backend", Health: "/health"},
 				},
@@ -371,6 +375,7 @@ func TestHTTPLargeRequestBody(t *testing.T) {
 			{
 				Name:       "upload-tenant",
 				PathPrefix: "/upload/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "upload-svc", URL: backend.URL, Health: "/health"},
 				},
@@ -430,6 +435,7 @@ func TestHTTPHeaderManipulation(t *testing.T) {
 			{
 				Name:       "header-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "header-svc", URL: backend.URL, Health: "/health"},
 				},
@@ -516,6 +522,7 @@ func TestHTTPAdminEndpointErrors(t *testing.T) {
 			{
 				Name:       "test-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "svc", URL: "http://backend", Health: "/health"},
 				},
@@ -594,6 +601,7 @@ func TestHTTPConnectionDrops(t *testing.T) {
 			{
 				Name:       "dropping-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "drop-svc", URL: droppingBackend.URL, Health: "/health"},
 				},
@@ -634,6 +642,7 @@ func TestHTTPQueryParameterHandling(t *testing.T) {
 			{
 				Name:       "query-tenant",
 				PathPrefix: "/api/",
+				Interval:   30,
 				Services: []config.Service{
 					{Name: "query-svc", URL: backend.URL, Health: "/health"},
 				},

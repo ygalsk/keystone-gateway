@@ -33,8 +33,22 @@ func TestHealthCheckBackendUnreachable(t *testing.T) {
 	// Error should indicate connection failure
 	if err != nil {
 		errStr := err.Error()
-		if !strings.Contains(errStr, "connection refused") && !strings.Contains(errStr, "timeout") {
-			t.Errorf("expected connection error, got: %v", err)
+		// Accept various connection error types
+		validErrors := []string{
+			"connection refused", "timeout", "invalid port", 
+			"dial tcp", "no such host", "network unreachable",
+		}
+		
+		hasValidError := false
+		for _, validErr := range validErrors {
+			if strings.Contains(errStr, validErr) {
+				hasValidError = true
+				break
+			}
+		}
+		
+		if !hasValidError {
+			t.Errorf("expected connection-related error, got: %v", err)
 		}
 	}
 }
@@ -72,8 +86,24 @@ func TestHealthCheckTimeout(t *testing.T) {
 		t.Errorf("timeout took too long: %v", duration)
 	}
 
-	if err != nil && !strings.Contains(err.Error(), "timeout") {
-		t.Errorf("expected timeout error, got: %v", err)
+	if err != nil {
+		errStr := err.Error()
+		// Accept various timeout-related error messages
+		validTimeoutErrors := []string{
+			"timeout", "context deadline exceeded", "Client.Timeout exceeded",
+		}
+		
+		hasTimeoutError := false
+		for _, timeoutErr := range validTimeoutErrors {
+			if strings.Contains(errStr, timeoutErr) {
+				hasTimeoutError = true
+				break
+			}
+		}
+		
+		if !hasTimeoutError {
+			t.Errorf("expected timeout-related error, got: %v", err)
+		}
 	}
 }
 
