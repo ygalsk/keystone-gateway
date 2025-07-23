@@ -3,6 +3,8 @@
 package lua
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 
@@ -55,6 +57,14 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
 		L.ArgError(1, "chi_route requires method, pattern, and handler function")
 		return 0
 	}
+	
+	// Check if we're inside a group context
+	if groupPattern := L.GetGlobal("__current_group_pattern"); groupPattern != lua.LNil {
+		if groupStr := groupPattern.String(); groupStr != "" {
+			// Prepend group pattern to route pattern
+			pattern = groupStr + pattern
+		}
+	}
 
 	// Extract the Lua function source code for later execution
 	functionName := fmt.Sprintf("handler_%s_%s_%d", method, pattern, L.GetTop())
@@ -96,8 +106,10 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 		return 0
 	}
 
-	// Store the middleware function with a global name for later access
-	funcName := fmt.Sprintf("middleware_%s_%s_%d", tenantName, pattern, L.GetTop())
+	// Store the middleware function with a predictable global name
+	// Use a simple hash based approach to make it unique but predictable
+	h := md5.Sum([]byte(fmt.Sprintf("%s_%s", tenantName, pattern)))
+	funcName := fmt.Sprintf("middleware_%s", hex.EncodeToString(h[:])[:8])
 	L.SetGlobal(funcName, middlewareFunc)
 	
 	// Get the script content for this middleware
@@ -153,8 +165,8 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 				Protect: true,
 			}, respTable, reqTable, nextFunc)
 
-			// Only call next handler if Lua middleware called next()
-			if err != nil || nextCalled {
+			// Only call next handler if Lua middleware called next() and no error occurred
+			if err == nil && nextCalled {
 				next.ServeHTTP(w, r)
 			}
 		})
@@ -183,18 +195,23 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 		return 0
 	}
 
-	// Simplified group implementation
-	groupDef := routing.RouteGroupDefinition{
-		TenantName: tenantName,
-		Pattern:    pattern,
-		Middleware: []func(http.Handler) http.Handler{},
-		Routes:     []routing.RouteDefinition{},
-		Subgroups:  []routing.RouteGroupDefinition{},
-	}
-
-	err := e.routeRegistry.RegisterRouteGroup(groupDef)
+	// Execute the setup function to collect group routes and middleware
+	// Save current group context
+	oldGroupContext := L.GetGlobal("__current_group_pattern")
+	L.SetGlobal("__current_group_pattern", lua.LString(pattern))
+	
+	// Execute the setup function
+	err := L.CallByParam(lua.P{
+		Fn:      setupFunc,
+		NRet:    0,
+		Protect: true,
+	})
+	
+	// Restore previous group context
+	L.SetGlobal("__current_group_pattern", oldGroupContext)
+	
 	if err != nil {
-		L.RaiseError("Failed to register route group: %v", err)
+		L.RaiseError("Failed to execute group setup function: %v", err)
 	}
 
 	return 0

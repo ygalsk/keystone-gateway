@@ -91,12 +91,15 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 	// Get or create tenant submux
 	submux := r.getTenantSubmux(def.TenantName)
 
+	// Apply matching middleware by wrapping the handler
+	wrappedHandler := r.applyMatchingMiddleware(def.Handler, def.TenantName, def.Pattern)
+
 	// Register the route with the appropriate method
 	r.registerRouteByMethod(submux, RouteDefinition{
 		TenantName: def.TenantName,
 		Method:     def.Method,
 		Pattern:    def.Pattern,
-		Handler:    def.Handler,
+		Handler:    wrappedHandler,
 	})
 
 	return nil
@@ -107,7 +110,7 @@ func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	
-	// Store the middleware definition for later application to matching routes
+	// Store the middleware definition for later application
 	r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
 	
 	return nil
@@ -204,6 +207,77 @@ func (r *LuaRouteRegistry) getTenantSubmux(tenantName string) *chi.Mux {
 	submux := chi.NewMux()
 	r.routeGroups[tenantName] = submux
 	return submux
+}
+
+// getMatchingMiddleware returns all middleware that matches the given route pattern
+func (r *LuaRouteRegistry) getMatchingMiddleware(tenantName, routePattern string) []func(http.Handler) http.Handler {
+	r.mu.RLock()
+	middlewares := r.middleware[tenantName]
+	r.mu.RUnlock()
+
+	var matching []func(http.Handler) http.Handler
+	for _, mw := range middlewares {
+		// Check if the route pattern matches the middleware pattern
+		if r.patternMatches(routePattern, mw.Pattern) {
+			matching = append(matching, mw.Middleware)
+		}
+	}
+	return matching
+}
+
+// wrapHandlerWithMiddleware wraps a handler with a chain of middleware
+func (r *LuaRouteRegistry) wrapHandlerWithMiddleware(handler http.HandlerFunc, middleware []func(http.Handler) http.Handler) http.HandlerFunc {
+	// Apply middleware in reverse order (last middleware wraps first)
+	wrapped := http.Handler(handler)
+	for i := len(middleware) - 1; i >= 0; i-- {
+		wrapped = middleware[i](wrapped)
+	}
+	return wrapped.ServeHTTP
+}
+
+// patternMatches checks if a route pattern matches a middleware pattern
+// For simplicity, we use basic pattern matching with wildcards
+func (r *LuaRouteRegistry) patternMatches(routePattern, middlewarePattern string) bool {
+	// Handle exact matches
+	if routePattern == middlewarePattern {
+		return true
+	}
+	
+	// Handle wildcard patterns (e.g., "/protected/*" matches "/protected/data")
+	if strings.HasSuffix(middlewarePattern, "/*") {
+		prefix := strings.TrimSuffix(middlewarePattern, "/*")
+		return strings.HasPrefix(routePattern, prefix)
+	}
+	
+	return false
+}
+
+// applyMatchingMiddleware wraps a handler with all matching middleware for the route
+func (r *LuaRouteRegistry) applyMatchingMiddleware(handler http.HandlerFunc, tenantName, routePattern string) http.HandlerFunc {
+	r.mu.RLock()
+	middlewares := r.middleware[tenantName]
+	r.mu.RUnlock()
+	
+	// Find matching middleware
+	var matchingMiddleware []func(http.Handler) http.Handler
+	for _, mw := range middlewares {
+		if r.patternMatches(routePattern, mw.Pattern) {
+			matchingMiddleware = append(matchingMiddleware, mw.Middleware)
+		}
+	}
+	
+	// If no middleware matches, return original handler
+	if len(matchingMiddleware) == 0 {
+		return handler
+	}
+	
+	// Apply middleware chain
+	wrapped := http.Handler(handler)
+	for i := len(matchingMiddleware) - 1; i >= 0; i-- {
+		wrapped = matchingMiddleware[i](wrapped)
+	}
+	
+	return wrapped.ServeHTTP
 }
 
 // registerSubgroup recursively registers subgroups
