@@ -51,7 +51,7 @@ func TestLuaStatePoolExhaustion(t *testing.T) {
 			t.Error("expected to receive valid state after returning one to pool")
 		}
 		pool.Put(state3)
-	case <-time.After(1 * time.Second):
+	case <-time.After(50 * time.Millisecond):
 		t.Error("expected to receive state after returning one to pool")
 	}
 

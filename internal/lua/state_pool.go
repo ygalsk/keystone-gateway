@@ -25,6 +25,7 @@ type LuaStatePool struct {
 	createState func() *lua.LState
 	mu          sync.Mutex
 	created     int
+	closed      bool
 	scripts     map[string]*CompiledScript // Pre-compiled scripts to avoid re-execution
 }
 
@@ -54,12 +55,14 @@ func (p *LuaStatePool) Get() *lua.LState {
 	default:
 		// Pool is empty, create new state if under limit
 		p.mu.Lock()
-		defer p.mu.Unlock()
 
 		if p.created < p.maxStates {
 			p.created++
-			return p.createState()
+			state := p.createState()
+			p.mu.Unlock()
+			return state
 		}
+		p.mu.Unlock()
 
 		// Wait for a state to become available
 		return <-p.pool
@@ -71,6 +74,16 @@ func (p *LuaStatePool) Put(L *lua.LState) {
 	if L == nil {
 		return
 	}
+
+	p.mu.Lock()
+	if p.closed {
+		// Pool is closed, just close the state
+		L.Close()
+		p.created--
+		p.mu.Unlock()
+		return
+	}
+	p.mu.Unlock()
 
 	select {
 	case p.pool <- L:
@@ -86,6 +99,10 @@ func (p *LuaStatePool) Put(L *lua.LState) {
 
 // Close closes all states in the pool
 func (p *LuaStatePool) Close() {
+	p.mu.Lock()
+	p.closed = true
+	p.mu.Unlock()
+	
 	close(p.pool)
 	for L := range p.pool {
 		L.Close()

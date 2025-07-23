@@ -1,38 +1,46 @@
 # Project: Keystone Gateway
-High-performance, programmable reverse proxy and API gateway with embedded Lua scripting for dynamic multi-tenant routing.
+A high-performance, programmable reverse proxy and API gateway written in Go with embedded Lua scripting for dynamic routing in multi-tenant environments.
 
 ## Features
-- Multi-tenant routing (host-based, path-based, hybrid strategies)
-- Embedded Lua scripting engine for dynamic route definition
-- Load balancing with round-robin and health checking
-- Admin API for health monitoring and tenant management
-- Thread-safe Lua state pools for concurrent execution
-- TLS/HTTPS support and comprehensive request handling
+- **Multi-tenant routing**: Host-based, path-based, and hybrid routing strategies
+- **Embedded Lua scripting**: Dynamic route definition without recompilation
+- **Load balancing**: Round-robin load balancing with health checking
+- **Admin API**: Health monitoring, tenant management, and real-time status
+- **High-performance architecture**: Built on Chi router with thread-safe design
+- **Flexible configuration**: YAML-based configuration with example templates
 
 ## Tech Stack
-- **Languages**: Go (1.19+), Lua (embedded via gopher-lua)
-- **Frameworks**: Chi Router v5.2.2, net/http reverse proxy
-- **Build**: Makefile, Go modules, golangci-lint
-- **Testing**: Go testing package with 3-tier structure (unit/integration/e2e)
-- **CI/CD**: GitHub Actions with multi-platform builds, security scanning
+- **Go 1.19+**: Primary backend language with Chi router
+- **Lua**: Embedded scripting via gopher-lua for dynamic routing
+- **Libraries**: go-chi/chi/v5, yuin/gopher-lua, gopkg.in/yaml.v3
+- **Build**: Go modules, Makefile automation
+- **Testing**: Built-in Go testing with unit/integration/e2e tests
+- **CI/CD**: GitHub Actions with security scanning and multi-platform builds
 
 ## Structure
-- `/cmd/main.go` - Application entry point and HTTP handlers
-- `/internal/config/` - YAML configuration management
-- `/internal/lua/` - Embedded Lua engine with Chi bindings
-- `/internal/routing/` - Gateway routing and load balancing
-- `/scripts/` - Lua routing scripts (*.lua files)
-- `/configs/examples/` - Sample configurations
-- `/tests/` - Three-tier test suite (unit, integration, e2e)
+- **cmd/**: Application entry point (main.go)
+- **internal/**: Core packages (config, lua, routing)
+- **configs/**: Configuration files and examples
+- **scripts/**: Lua route definition scripts
+- **tests/**: Test suites (unit/integration/e2e)
+- **testdata/**: Test fixtures and sample data
+- **bin/**: Built binaries
 
 ## Architecture
-Layered architecture with HTTP layer (Chi), Application layer (Gateway), Multi-tenant routing, and embedded Lua scripting. Components interact through request flow: Chi router → middleware → tenant matching → Lua execution → backend selection → reverse proxy.
+- **HTTP Layer**: Chi router with middleware stack
+- **Gateway Layer**: Multi-tenant routing and load balancing
+- **Lua Engine**: Thread-safe state pools for dynamic scripting
+- **Configuration**: YAML-based tenant and service management
 
 ## Commands
-- Build: `make build`
-- Test: `make test` (also `test-unit`, `test-integration`, `test-e2e`)
-- Lint: `make lint`
-- Dev/Run: `make run`
+- Build: `make build` or `go build -o bin/keystone-gateway cmd/main.go`
+- Test: `make test` or `go test ./tests/...`
+- Lint: `make lint` or `golangci-lint run`
+- Dev/Run: `make run` or `./bin/keystone-gateway -config config.yaml`
 
 ## Testing
-Uses Go's built-in testing package with table-driven tests, httptest for HTTP mocking, temporary directories for isolation, and comprehensive coverage reporting. Test data stored in `/testdata/` with sample configs and Lua scripts.
+- **Framework**: Go's built-in testing package with table-driven tests
+- **Organization**: Separate unit, integration, and e2e test directories
+- **Naming**: `*_test.go` files with `TestFunctionName` pattern
+- **Test data**: Located in `testdata/` with configs and Lua scripts
+- **Running**: Use `make test-unit`, `make test-integration`, `make test-e2e`

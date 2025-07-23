@@ -187,6 +187,14 @@ func (gw *Gateway) GetRouteRegistry() *LuaRouteRegistry {
 
 // extractHost extracts the hostname from a host header (removing port if present).
 func ExtractHost(hostHeader string) string {
+	// Handle IPv6 addresses wrapped in brackets: [::1]:8080 -> [::1]
+	if strings.HasPrefix(hostHeader, "[") {
+		if closeBracket := strings.Index(hostHeader, "]"); closeBracket != -1 {
+			return hostHeader[:closeBracket+1]
+		}
+	}
+	
+	// Handle IPv4 addresses or hostnames: example.com:8080 -> example.com  
 	if colonIndex := strings.Index(hostHeader, ":"); colonIndex != -1 {
 		return hostHeader[:colonIndex]
 	}
@@ -216,12 +224,25 @@ func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *htt
 		req.URL.Scheme = backend.URL.Scheme
 		req.URL.Host = backend.URL.Host
 
+		// Handle path stripping and backend path prepending
 		if stripPrefix != "" {
 			newPath := strings.TrimPrefix(req.URL.Path, stripPrefix)
 			if newPath == "" {
 				newPath = "/"
+			} else if !strings.HasPrefix(newPath, "/") {
+				newPath = "/" + newPath
 			}
 			req.URL.Path = newPath
+		}
+
+		// Prepend backend URL path if it exists
+		if backend.URL.Path != "" && backend.URL.Path != "/" {
+			backendPath := strings.TrimSuffix(backend.URL.Path, "/")
+			if req.URL.Path == "/" {
+				req.URL.Path = backendPath + "/"
+			} else {
+				req.URL.Path = backendPath + req.URL.Path
+			}
 		}
 
 		// Merge query parameters

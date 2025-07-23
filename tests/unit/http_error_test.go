@@ -42,6 +42,9 @@ func (app *mockApplication) TenantsHandler(w http.ResponseWriter, r *http.Reques
 func (app *mockApplication) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	router, stripPrefix := app.gateway.MatchRoute(r.Host, r.URL.Path)
 	if router == nil {
+		// Debug: log why route matching failed
+		t := testing.T{}
+		t.Logf("No route match for host=%q path=%q", r.Host, r.URL.Path)
 		http.NotFound(w, r)
 		return
 	}
@@ -264,7 +267,16 @@ func TestHTTPResponseErrors(t *testing.T) {
 	app := &mockApplication{
 		gateway: routing.NewGatewayWithRouter(cfg, router),
 	}
-	router.HandleFunc("/api/*", app.ProxyHandler)
+	
+	// Mark backend as healthy for testing
+	if tenantRouter := app.gateway.GetTenantRouter("error-tenant"); tenantRouter != nil {
+		if len(tenantRouter.Backends) > 0 {
+			tenantRouter.Backends[0].Alive.Store(true)
+		}
+	}
+	
+	// Handle all /api/ requests with proxy
+	router.HandleFunc("/api/{path:.*}", app.ProxyHandler)
 
 	testCases := []struct {
 		path        string

@@ -6,6 +6,7 @@ package routing
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/go-chi/chi/v5"
@@ -75,6 +76,15 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 	}
 	r.registeredRoutes[routeKey] = true
 	r.mu.Unlock()
+
+	// Validate route pattern before registration
+	if err := validateRoutePattern(def.Pattern); err != nil {
+		// Remove from registered routes since validation failed
+		r.mu.Lock()
+		delete(r.registeredRoutes, routeKey)
+		r.mu.Unlock()
+		return fmt.Errorf("invalid route pattern '%s': %w", def.Pattern, err)
+	}
 
 	// Get or create tenant submux
 	submux := r.getTenantSubmux(def.TenantName)
@@ -290,4 +300,34 @@ func (r *LuaRouteRegistry) registerRouteByMethod(router chi.Router, route RouteD
 	default:
 		router.Method(route.Method, route.Pattern, route.Handler)
 	}
+}
+
+// validateRoutePattern validates Chi router pattern format
+func validateRoutePattern(pattern string) error {
+	if pattern == "" {
+		return fmt.Errorf("route pattern cannot be empty")
+	}
+	
+	if !strings.HasPrefix(pattern, "/") {
+		return fmt.Errorf("route pattern must begin with '/'")
+	}
+	
+	// Check for unmatched parameter braces
+	braceCount := 0
+	for i, char := range pattern {
+		if char == '{' {
+			braceCount++
+		} else if char == '}' {
+			braceCount--
+			if braceCount < 0 {
+				return fmt.Errorf("unmatched closing brace '}' at position %d", i)
+			}
+		}
+	}
+	
+	if braceCount > 0 {
+		return fmt.Errorf("route param closing delimiter '}' is missing")
+	}
+	
+	return nil
 }
