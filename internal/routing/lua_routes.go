@@ -18,6 +18,7 @@ type LuaRouteRegistry struct {
 	router           *chi.Mux
 	routeGroups      map[string]*chi.Mux // tenant -> submux for tenant routes
 	registeredRoutes map[string]bool     // track registered routes to prevent duplicates
+	middleware       map[string][]MiddlewareDefinition // tenant -> middleware definitions
 	mu               sync.RWMutex        // protects routeGroups and registeredRoutes maps
 	Engine           interface {
 		GetScript(string) (string, bool)
@@ -58,6 +59,7 @@ func NewLuaRouteRegistry(router *chi.Mux, engine interface {
 		router:           router,
 		routeGroups:      make(map[string]*chi.Mux),
 		registeredRoutes: make(map[string]bool),
+		middleware:       make(map[string][]MiddlewareDefinition),
 		Engine:           engine,
 	}
 }
@@ -91,9 +93,10 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 
 	// Register the route with the appropriate method
 	r.registerRouteByMethod(submux, RouteDefinition{
-		Method:  def.Method,
-		Pattern: def.Pattern,
-		Handler: def.Handler,
+		TenantName: def.TenantName,
+		Method:     def.Method,
+		Pattern:    def.Pattern,
+		Handler:    def.Handler,
 	})
 
 	return nil
@@ -101,14 +104,12 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 
 // RegisterMiddleware registers middleware for a pattern from a Lua script
 func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
-	submux := r.getTenantSubmux(def.TenantName)
-
-	// Apply middleware to the pattern
-	submux.Group(func(gr chi.Router) {
-		gr.Use(def.Middleware)
-		// The actual routes will be registered later
-	})
-
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	
+	// Store the middleware definition for later application to matching routes
+	r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
+	
 	return nil
 }
 
@@ -282,24 +283,67 @@ func (api *RouteRegistryAPI) Clear(tenantName string) {
 
 // registerRouteByMethod consolidates the duplicate route registration logic
 func (r *LuaRouteRegistry) registerRouteByMethod(router chi.Router, route RouteDefinition) {
+	// Apply middleware that matches this route pattern
+	handler := r.applyMiddleware(route)
+	
 	switch route.Method {
 	case "GET":
-		router.Get(route.Pattern, route.Handler)
+		router.Get(route.Pattern, handler)
 	case "POST":
-		router.Post(route.Pattern, route.Handler)
+		router.Post(route.Pattern, handler)
 	case "PUT":
-		router.Put(route.Pattern, route.Handler)
+		router.Put(route.Pattern, handler)
 	case "DELETE":
-		router.Delete(route.Pattern, route.Handler)
+		router.Delete(route.Pattern, handler)
 	case "PATCH":
-		router.Patch(route.Pattern, route.Handler)
+		router.Patch(route.Pattern, handler)
 	case "OPTIONS":
-		router.Options(route.Pattern, route.Handler)
+		router.Options(route.Pattern, handler)
 	case "HEAD":
-		router.Head(route.Pattern, route.Handler)
+		router.Head(route.Pattern, handler)
 	default:
-		router.Method(route.Method, route.Pattern, route.Handler)
+		// Handle custom methods that Chi might not support
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					// Chi doesn't support this HTTP method, silently skip
+					fmt.Printf("Warning: HTTP method '%s' is not supported by Chi router\n", route.Method)
+				}
+			}()
+			router.Method(route.Method, route.Pattern, handler)
+		}()
 	}
+}
+
+// applyMiddleware applies middleware that matches the route pattern
+func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFunc {
+	r.mu.RLock()
+	middlewares := r.middleware[route.TenantName]
+	r.mu.RUnlock()
+	
+	var handler http.Handler = route.Handler
+	
+	// Apply middleware in reverse order (last registered middleware wraps first)
+	for i := len(middlewares) - 1; i >= 0; i-- {
+		mw := middlewares[i]
+		if r.routeMatchesPattern(route.Pattern, mw.Pattern) {
+			handler = mw.Middleware(handler)
+		}
+	}
+	
+	return handler.ServeHTTP
+}
+
+// routeMatchesPattern checks if a route pattern matches a middleware pattern
+func (r *LuaRouteRegistry) routeMatchesPattern(routePattern, middlewarePattern string) bool {
+	// Handle wildcard patterns like "/protected/*"
+	if strings.HasSuffix(middlewarePattern, "/*") {
+		prefix := strings.TrimSuffix(middlewarePattern, "/*")
+		return strings.HasPrefix(routePattern, prefix)
+	}
+	
+	// Exact match
+	return routePattern == middlewarePattern
 }
 
 // validateRoutePattern validates Chi router pattern format
