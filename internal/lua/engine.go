@@ -38,15 +38,16 @@ const (
 
 // Engine manages embedded Lua script execution and route registration
 type Engine struct {
-	scriptsDir    string
-	scriptPaths   map[string]string         // script_tag -> file_path
-	globalPaths   map[string]string         // global_script_tag -> file_path
-	scriptCache   map[string]string         // script_tag -> cached_content
-	globalCache   map[string]string         // global_script_tag -> cached_content
-	cacheMutex    sync.RWMutex              // Protects cache access
-	router        *chi.Mux                  // Chi router for dynamic route registration
-	routeRegistry *routing.LuaRouteRegistry // Route registry for Lua integration
-	statePool     *LuaStatePool             // Pool of Lua states for thread safety
+	scriptsDir      string
+	scriptPaths     map[string]string         // script_tag -> file_path
+	globalPaths     map[string]string         // global_script_tag -> file_path
+	scriptCache     map[string]string         // script_tag -> cached_content
+	globalCache     map[string]string         // global_script_tag -> cached_content
+	cacheMutex      sync.RWMutex              // Protects cache access
+	router          *chi.Mux                  // Chi router for dynamic route registration
+	routeRegistry   *routing.LuaRouteRegistry // Route registry for Lua integration
+	statePool       *LuaStatePool             // Pool of Lua states for thread safety
+	middlewareCache *MiddlewareCache          // Cache for middleware logic
 }
 
 // GetScript returns the script content for a given scriptTag, loading it if necessary
@@ -93,6 +94,9 @@ func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 		scriptCache: make(map[string]string),
 		globalCache: make(map[string]string),
 		router:      router,
+		middlewareCache: &MiddlewareCache{
+			cache: make(map[string]*MiddlewareLogic),
+		},
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router, engine)
 

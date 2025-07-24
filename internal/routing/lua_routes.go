@@ -28,17 +28,19 @@ type LuaRouteRegistry struct {
 
 // RouteDefinition represents a route registered by Lua
 type RouteDefinition struct {
-	TenantName string
-	Method     string
-	Pattern    string
-	Handler    http.HandlerFunc
+	TenantName   string
+	Method       string
+	Pattern      string
+	GroupPattern string // Group context (empty if global, "/api/v1" if in group)
+	Handler      http.HandlerFunc
 }
 
 // MiddlewareDefinition represents middleware registered by Lua
 type MiddlewareDefinition struct {
-	TenantName string
-	Pattern    string // Pattern to match for middleware (e.g., "/api/*")
-	Middleware func(http.Handler) http.Handler
+	TenantName   string
+	Pattern      string // Pattern to match for middleware (e.g., "/api/*")
+	GroupPattern string // Group context (empty if global, "/api/v1" if in group)
+	Middleware   func(http.Handler) http.Handler
 }
 
 // RouteGroupDefinition represents a route group registered by Lua
@@ -91,15 +93,14 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 	// Get or create tenant submux
 	submux := r.getTenantSubmux(def.TenantName)
 
-	// Apply matching middleware by wrapping the handler
-	wrappedHandler := r.applyMatchingMiddleware(def.Handler, def.TenantName, def.Pattern)
-
 	// Register the route with the appropriate method
+	// Note: middleware application is handled inside registerRouteByMethod via applyMiddleware
 	r.registerRouteByMethod(submux, RouteDefinition{
-		TenantName: def.TenantName,
-		Method:     def.Method,
-		Pattern:    def.Pattern,
-		Handler:    wrappedHandler,
+		TenantName:   def.TenantName,
+		Method:       def.Method,
+		Pattern:      def.Pattern,
+		GroupPattern: def.GroupPattern,
+		Handler:      def.Handler,
 	})
 
 	return nil
@@ -400,7 +401,7 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
 	// Apply middleware in reverse order (last registered middleware wraps first)
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		mw := middlewares[i]
-		if r.routeMatchesPattern(route.Pattern, mw.Pattern) {
+		if r.routeMatchesPattern(route, mw) {
 			handler = mw.Middleware(handler)
 		}
 	}
@@ -409,8 +410,25 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
 }
 
 // routeMatchesPattern checks if a route pattern matches a middleware pattern
-func (r *LuaRouteRegistry) routeMatchesPattern(routePattern, middlewarePattern string) bool {
-	// Handle wildcard patterns like "/protected/*"
+// considering group context for proper scoping
+func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware MiddlewareDefinition) bool {
+	// First check: middleware and route must be in the same group context
+	if middleware.GroupPattern != route.GroupPattern {
+		return false
+	}
+	
+	// If we're in a group, we need to handle the middleware pattern relative to the group
+	middlewarePattern := middleware.Pattern
+	routePattern := route.Pattern
+	
+	// If both are in a group, resolve the middleware pattern relative to the group
+	if middleware.GroupPattern != "" {
+		// For group middleware, the pattern is relative to the group
+		// e.g., group="/api/v1", middleware pattern="/*" should match "/api/v1/users"
+		middlewarePattern = middleware.GroupPattern + middleware.Pattern
+	}
+	
+	// Handle wildcard patterns like "/protected/*" or "/api/v1/*"
 	if strings.HasSuffix(middlewarePattern, "/*") {
 		prefix := strings.TrimSuffix(middlewarePattern, "/*")
 		return strings.HasPrefix(routePattern, prefix)

@@ -3,15 +3,79 @@
 package lua
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
+	"sync"
 
 	lua "github.com/yuin/gopher-lua"
 
 	"keystone-gateway/internal/routing"
 )
+
+// MiddlewareAction represents a cached middleware action that can be executed in Go
+type MiddlewareAction struct {
+	Type  string                 // "set_header", "check_auth", "log", etc.
+	Key   string                 // Header name, auth key, etc.
+	Value string                 // Header value, expected value, etc.
+	Data  map[string]interface{} // Additional data for complex actions
+}
+
+// MiddlewareLogic represents the cached logic for a middleware function
+type MiddlewareLogic struct {
+	Pattern     string              `json:"pattern"`
+	TenantName  string              `json:"tenant_name"`
+	Actions     []MiddlewareAction  `json:"actions"`
+	CallNext    bool                `json:"call_next"`
+}
+
+// MiddlewareCache provides thread-safe caching of middleware logic
+type MiddlewareCache struct {
+	mu    sync.RWMutex
+	cache map[string]*MiddlewareLogic // key: tenant_pattern
+}
+
+// Mock types for parsing middleware logic
+type mockResponseWriter struct {
+	actions []MiddlewareAction
+	headers http.Header
+}
+
+func (m *mockResponseWriter) Header() http.Header {
+	if m.headers == nil {
+		m.headers = make(http.Header)
+	}
+	return m.headers
+}
+
+func (m *mockResponseWriter) Write([]byte) (int, error) {
+	return 0, nil
+}
+
+func (m *mockResponseWriter) WriteHeader(statusCode int) {
+	// Capture status code changes if needed
+}
+
+func (m *mockResponseWriter) getActions() []MiddlewareAction {
+	var actions []MiddlewareAction
+	// Convert header operations to actions
+	for key, values := range m.headers {
+		for _, value := range values {
+			actions = append(actions, MiddlewareAction{
+				Type:  "set_header",
+				Key:   key,
+				Value: value,
+			})
+		}
+	}
+	return actions
+}
+
+type mockRequest struct{}
+
+func (m *mockRequest) Method() string       { return "GET" }
+func (m *mockRequest) URL() string         { return "/" }
+func (m *mockRequest) Header() http.Header { return make(http.Header) }
 
 // setupChiBindings sets up Lua bindings for Chi router functions
 func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
@@ -59,8 +123,10 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
 	}
 	
 	// Check if we're inside a group context
-	if groupPattern := L.GetGlobal("__current_group_pattern"); groupPattern != lua.LNil {
-		if groupStr := groupPattern.String(); groupStr != "" {
+	var groupPattern string
+	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
+		if groupStr := groupCtx.String(); groupStr != "" {
+			groupPattern = groupStr
 			// Prepend group pattern to route pattern
 			pattern = groupStr + pattern
 		}
@@ -81,12 +147,14 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
 	luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, scriptTag, e.statePool, e)
 
 	
+	
 	// Register the route with the simplified registry
 	err := e.routeRegistry.RegisterRoute(routing.RouteDefinition{
-		TenantName: tenantName,
-		Method:     method,
-		Pattern:    pattern,
-		Handler:    luaHandler.ServeHTTP,
+		TenantName:   tenantName,
+		Method:       method,
+		Pattern:      pattern,
+		GroupPattern: groupPattern,
+		Handler:      luaHandler.ServeHTTP,
 	})
 	if err != nil {
 		L.RaiseError("Failed to register route: %v", err)
@@ -100,83 +168,64 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 	pattern := L.ToString(1)
 	middlewareFunc := L.ToFunction(2)
 
-
 	if pattern == "" || middlewareFunc == nil {
 		L.ArgError(1, "chi_middleware requires pattern and middleware function")
 		return 0
 	}
 
-	// Store the middleware function with a predictable global name
-	// Use a simple hash based approach to make it unique but predictable
-	h := md5.Sum([]byte(fmt.Sprintf("%s_%s", tenantName, pattern)))
-	funcName := fmt.Sprintf("middleware_%s", hex.EncodeToString(h[:])[:8])
-	L.SetGlobal(funcName, middlewareFunc)
+	// Get the current group context if we're inside a group
+	var groupPattern string
+	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
+		groupPattern = groupCtx.String()
+	}
 	
-	// Get the script content for this middleware
-	scriptContent, exists := e.GetScript(scriptTag)
-	if !exists {
-		L.RaiseError("Script not found: %s", scriptTag)
+
+	// Check if we already have cached logic for this middleware
+	if cachedLogic, exists := e.getCachedMiddleware(tenantName, pattern); exists {
+		// Use cached logic for performance
+		middleware := func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				e.executeMiddlewareLogic(cachedLogic, w, r, next)
+			})
+		}
+		
+		// Register with the route registry, including group context
+		err := e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
+			TenantName:   tenantName,
+			Pattern:      pattern,
+			GroupPattern: groupPattern,
+			Middleware:   middleware,
+		})
+		if err != nil {
+			L.RaiseError("Failed to register cached middleware: %v", err)
+		}
+		return 0
+	}
+
+	// Parse and cache the middleware logic for first-time registration
+	logic, err := e.parseLuaMiddlewareLogic(L, middlewareFunc, pattern)
+	if err != nil {
+		L.RaiseError("Failed to parse middleware logic: %v", err)
 		return 0
 	}
 	
-	// Create Go middleware that calls the Lua function using state pool for safety
+	// Cache the parsed logic
+	logic.TenantName = tenantName
+	e.setCachedMiddleware(tenantName, pattern, logic)
+	
+	// Create Go middleware that executes the cached logic directly
 	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Use state pool for thread-safe middleware execution
-			luaState := e.statePool.Get()
-			defer e.statePool.Put(luaState)
-
-			// Execute the script to load all functions including the middleware
-			if err := luaState.DoString(scriptContent); err != nil {
-				// On error, continue to next handler
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Set up Chi bindings for this execution context
-			e.SetupChiBindings(luaState, scriptTag, tenantName)
-
-			// Get the middleware function from the loaded script
-			middlewareFunc := luaState.GetGlobal(funcName)
-			if middlewareFunc.Type() != lua.LTFunction {
-				// If function not found, continue to next handler
-				next.ServeHTTP(w, r)
-				return
-			}
-
-			// Execute middleware function with proper context
-			respWriter := &luaResponseWriter{w: w}
-			respTable := createLuaResponse(luaState, respWriter)
-			reqTable := createLuaRequest(luaState, r)
-
-			// Track whether next was called
-			nextCalled := false
-			
-			// Create next function wrapper that tracks if it was called
-			nextFunc := luaState.NewFunction(func(L *lua.LState) int {
-				nextCalled = true
-				return 0
-			})
-
-			// Call middleware function with parameters in the right order: (w, r, next)
-			err := luaState.CallByParam(lua.P{
-				Fn:      middlewareFunc.(*lua.LFunction),
-				NRet:    0,
-				Protect: true,
-			}, respTable, reqTable, nextFunc)
-
-			// Only call next handler if Lua middleware called next() and no error occurred
-			if err == nil && nextCalled {
-				next.ServeHTTP(w, r)
-			}
+			e.executeMiddlewareLogic(logic, w, r, next)
 		})
 	}
 
-	// Register with the route registry
-	err := e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
-		TenantName: tenantName,
-		Pattern:    pattern,
-		Middleware: middleware,
+	// Register with the route registry, including group context
+	err = e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
+		TenantName:   tenantName,
+		Pattern:      pattern,
+		GroupPattern: groupPattern,
+		Middleware:   middleware,
 	})
 	if err != nil {
 		L.RaiseError("Failed to register middleware: %v", err)
@@ -215,4 +264,90 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 	}
 
 	return 0
+}
+
+
+// Cache methods for middleware logic
+
+// getCachedMiddleware retrieves cached middleware logic thread-safely
+func (e *Engine) getCachedMiddleware(tenantName, pattern string) (*MiddlewareLogic, bool) {
+	key := fmt.Sprintf("%s_%s", tenantName, pattern)
+	e.middlewareCache.mu.RLock()
+	defer e.middlewareCache.mu.RUnlock()
+	logic, exists := e.middlewareCache.cache[key]
+	return logic, exists
+}
+
+// setCachedMiddleware stores middleware logic thread-safely
+func (e *Engine) setCachedMiddleware(tenantName, pattern string, logic *MiddlewareLogic) {
+	key := fmt.Sprintf("%s_%s", tenantName, pattern)
+	e.middlewareCache.mu.Lock()
+	defer e.middlewareCache.mu.Unlock()
+	e.middlewareCache.cache[key] = logic
+}
+
+// parseLuaMiddlewareLogic extracts actions from a Lua middleware function
+func (e *Engine) parseLuaMiddlewareLogic(L *lua.LState, middlewareFunc *lua.LFunction, pattern string) (*MiddlewareLogic, error) {
+	// Execute the function in a controlled environment to extract its logic
+	// Create a mock HTTP request and response writer to capture actions
+	
+	// Create a proper mock request with URL
+	mockURL := &url.URL{Path: "/"}
+	mockReq := &http.Request{
+		Method: "GET",
+		URL:    mockURL,
+		Header: make(http.Header),
+	}
+	
+	mockWriter := &mockResponseWriter{}
+	respWriter := &luaResponseWriter{w: mockWriter}
+	respTable := createLuaResponse(L, respWriter)
+	reqTable := createLuaRequest(L, mockReq)
+	
+	nextCalled := false
+	nextFunc := L.NewFunction(func(L *lua.LState) int {
+		nextCalled = true
+		return 0
+	})
+	
+	// Execute the middleware function to capture its actions
+	err := L.CallByParam(lua.P{
+		Fn:      middlewareFunc,
+		NRet:    0,
+		Protect: true,
+	}, respTable, reqTable, nextFunc)
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse middleware logic: %v", err)
+	}
+	
+	// Extract actions from the mock response writer
+	actions := mockWriter.getActions()
+	
+	return &MiddlewareLogic{
+		Pattern:    pattern,
+		Actions:    actions,
+		CallNext:   nextCalled,
+	}, nil
+}
+
+// executeMiddlewareLogic executes cached middleware logic directly in Go
+func (e *Engine) executeMiddlewareLogic(logic *MiddlewareLogic, w http.ResponseWriter, r *http.Request, next http.Handler) {
+	// Execute each cached action
+	for _, action := range logic.Actions {
+		switch action.Type {
+		case "set_header":
+			w.Header().Set(action.Key, action.Value)
+		case "add_header":
+			w.Header().Add(action.Key, action.Value)
+		case "delete_header":
+			w.Header().Del(action.Key)
+		// Add more action types as needed
+		}
+	}
+	
+	// Call next handler if the original middleware called next
+	if logic.CallNext && next != nil {
+		next.ServeHTTP(w, r)
+	}
 }

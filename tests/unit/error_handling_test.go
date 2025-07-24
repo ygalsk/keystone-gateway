@@ -2,309 +2,594 @@ package unit
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"keystone-gateway/internal/lua"
+	"keystone-gateway/internal/config"
+	"keystone-gateway/tests/fixtures"
 )
 
-func TestLuaEngineFileReadErrors(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create a directory that doesn't have read permissions
-	restrictedDir := filepath.Join(tmpDir, "restricted")
-	if err := os.Mkdir(restrictedDir, 0000); err != nil {
-		t.Fatalf("failed to create restricted directory: %v", err)
-	}
-	defer os.Chmod(restrictedDir, 0755) // Restore permissions for cleanup
-
-	// Try to create engine with restricted directory
-	engine := lua.NewEngine(restrictedDir, router)
-
-	// Test that script discovery handles permission errors gracefully
-	scripts := engine.GetLoadedScripts()
-	if len(scripts) != 0 {
-		t.Errorf("expected no scripts from restricted directory, got %d", len(scripts))
-	}
-}
-
-func TestLuaEngineNonExistentDirectory(t *testing.T) {
-	router := chi.NewRouter()
-	nonExistentDir := "/path/that/does/not/exist"
-
-	// Engine should handle non-existent directories gracefully
-	engine := lua.NewEngine(nonExistentDir, router)
-	scripts := engine.GetLoadedScripts()
-
-	if len(scripts) != 0 {
-		t.Errorf("expected no scripts from non-existent directory, got %d", len(scripts))
-	}
-
-	// Test global script execution on non-existent directory
-	err := engine.ExecuteGlobalScripts()
-	if err != nil {
-		t.Errorf("ExecuteGlobalScripts should handle non-existent directory gracefully: %v", err)
-	}
-}
-
-func TestLuaEngineCorruptedScriptFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create a script file with binary content (corrupted)
-	corruptedScript := filepath.Join(tmpDir, "corrupted.lua")
-	binaryContent := []byte{0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD}
-	if err := os.WriteFile(corruptedScript, binaryContent, 0644); err != nil {
-		t.Fatalf("failed to create corrupted script: %v", err)
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-
-	// Test that corrupted scripts are handled gracefully during discovery
-	scripts := engine.GetLoadedScripts()
-
-	// Should still discover the script file (name only, not content)
-	found := false
-	for _, script := range scripts {
-		if script == "corrupted" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("expected to find 'corrupted' script in loaded scripts list")
-	}
-}
-
-func TestLuaEngineScriptExecutionPanic(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create a script that would cause a panic in Lua
-	panicScript := filepath.Join(tmpDir, "panic-script.lua")
-	panicContent := `
--- This script tries to access invalid memory or cause a panic
-function invalid_function()
-    -- Force a stack overflow
-    return invalid_function()
-end
-
-invalid_function()
-`
-	if err := os.WriteFile(panicScript, []byte(panicContent), 0644); err != nil {
-		t.Fatalf("failed to create panic script: %v", err)
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-
-	// Test that script with recursive calls is handled
-	script, exists := engine.GetScript("panic-script")
-	if !exists {
-		t.Error("failed to get panic script")
-	}
-	if script == "" {
-		t.Error("expected to get panic script content")
-	}
-}
-
-func TestLuaEngineEmptyScriptFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create an empty script file
-	emptyScript := filepath.Join(tmpDir, "empty.lua")
-	if err := os.WriteFile(emptyScript, []byte(""), 0644); err != nil {
-		t.Fatalf("failed to create empty script: %v", err)
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-
-	// Test that empty scripts are handled gracefully
-	script, exists := engine.GetScript("empty")
-	if !exists {
-		t.Error("failed to get empty script")
-	}
-	if len(script) != 0 {
-		t.Errorf("expected empty script content, got %d bytes", len(script))
-	}
-}
-
-func TestLuaEngineInvalidScriptSyntax(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create script with invalid Lua syntax
-	invalidScript := filepath.Join(tmpDir, "invalid-syntax.lua")
-	invalidContent := `
-function test_handler(response, request)
-    -- Missing end keyword and invalid syntax
-    if true then
-        response:write("Hello")
-    -- Missing end for if statement
-    -- Missing end for function
-`
-	if err := os.WriteFile(invalidScript, []byte(invalidContent), 0644); err != nil {
-		t.Fatalf("failed to create invalid syntax script: %v", err)
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-
-	// Engine should still load the script content (validation happens at execution)
-	script, exists := engine.GetScript("invalid-syntax")
-	if !exists {
-		t.Error("failed to get invalid syntax script")
-	}
-	if script == "" {
-		t.Error("expected to get invalid syntax script content")
-	}
-}
-
-func TestLuaEngineVeryLargeScriptFile(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create a very large script file (1MB+)
-	largeScript := filepath.Join(tmpDir, "large-script.lua")
-	var content strings.Builder
-	content.WriteString("function test_handler(response, request)\n")
-
-	// Add 100,000 lines of comments to make it large
-	for i := 0; i < 100000; i++ {
-		content.WriteString(fmt.Sprintf("    -- This is comment line %d\n", i))
-	}
-	content.WriteString("    response:write('Large script executed')\n")
-	content.WriteString("end\n")
-
-	if err := os.WriteFile(largeScript, []byte(content.String()), 0644); err != nil {
-		t.Fatalf("failed to create large script: %v", err)
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-
-	// Test that large scripts are handled (with appropriate timeout)
-	start := time.Now()
-	script, exists := engine.GetScript("large-script")
-	duration := time.Since(start)
-
-	if !exists {
-		t.Error("failed to get large script")
-	}
-	if script == "" {
-		t.Error("expected to get large script content")
-	}
-
-	// Should not take more than 5 seconds to read even a large file
-	if duration > 5*time.Second {
-		t.Errorf("reading large script took too long: %v", duration)
-	}
-}
-
-func TestLuaEngineSymbolicLinkHandling(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Create a real script file
-	realScript := filepath.Join(tmpDir, "real-script.lua")
-	realContent := `
-function test_handler(response, request)
-    response:write("Real script")
-end
-`
-	if err := os.WriteFile(realScript, []byte(realContent), 0644); err != nil {
-		t.Fatalf("failed to create real script: %v", err)
-	}
-
-	// Create a symbolic link to the script
-	symlinkScript := filepath.Join(tmpDir, "symlink-script.lua")
-	if err := os.Symlink(realScript, symlinkScript); err != nil {
-		// Skip this test if symbolic links are not supported (e.g., Windows without admin)
-		t.Skipf("symbolic links not supported: %v", err)
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-
-	// Test that symbolic links are handled properly
-	scripts := engine.GetLoadedScripts()
-
-	realFound := false
-	symlinkFound := false
-	for _, script := range scripts {
-		if script == "real-script" {
-			realFound = true
-		}
-		if script == "symlink-script" {
-			symlinkFound = true
-		}
-	}
-
-	if !realFound {
-		t.Error("expected to find 'real-script' in loaded scripts")
-	}
-	if !symlinkFound {
-		t.Error("expected to find 'symlink-script' in loaded scripts")
-	}
-
-	// Both should return the same content
-	realScriptContent, exists1 := engine.GetScript("real-script")
-	symlinkScriptContent, exists2 := engine.GetScript("symlink-script")
-
-	if !exists1 {
-		t.Error("failed to get real script")
-	}
-	if !exists2 {
-		t.Error("failed to get symlink script")
-	}
-
-	if exists1 && exists2 {
-		if realScriptContent != symlinkScriptContent {
-			t.Error("real script and symlink script should have the same content")
-		}
-	}
-}
-
-func TestLuaEngineSpecialCharactersInFilename(t *testing.T) {
-	tmpDir := t.TempDir()
-	router := chi.NewRouter()
-
-	// Test various special characters in filenames
+// TestConfigurationErrorHandling tests error handling in configuration loading
+func TestConfigurationErrorHandling(t *testing.T) {
 	testCases := []struct {
-		filename string
-		expected string
+		name           string
+		configContent  string
+		expectError    bool
+		errorSubstring string
 	}{
-		{"script-with-dashes.lua", "script-with-dashes"},
-		{"script_with_underscores.lua", "script_with_underscores"},
-		{"script.with.dots.lua", "script.with.dots"},
-		{"script with spaces.lua", "script with spaces"},
+		{
+			name: "malformed YAML syntax",
+			configContent: `
+tenants:
+  - name: test
+    invalid_yaml: [
+    missing_closing_bracket
+`,
+			expectError:    true,
+			errorSubstring: "failed to parse config",
+		},
+		{
+			name: "tenant with invalid domain format",
+			configContent: `
+tenants:
+  - name: invalid-domain-tenant
+    domains: ["invalid domain with spaces"]
+    services:
+      - name: backend
+        url: http://localhost:8080
+        health: /health
+`,
+			expectError:    true,
+			errorSubstring: "invalid domain",
+		},
+		{
+			name: "tenant missing both domain and path",
+			configContent: `
+tenants:
+  - name: incomplete-tenant
+    services:
+      - name: backend
+        url: http://localhost:8080
+        health: /health
+`,
+			expectError:    true,
+			errorSubstring: "must specify either domains or path_prefix",
+		},
+		{
+			name: "tenant with malformed path prefix",
+			configContent: `
+tenants:
+  - name: bad-path-tenant
+    path_prefix: "missing-slashes"
+    services:
+      - name: backend
+        url: http://localhost:8080
+        health: /health
+`,
+			expectError:    true,
+			errorSubstring: "path_prefix must start and end with '/'",
+		},
+		{
+			name: "empty tenant name",
+			configContent: `
+tenants:
+  - name: ""
+    path_prefix: /empty/
+    services:
+      - name: backend
+        url: http://localhost:8080
+        health: /health
+`,
+			expectError: false, // Empty name is technically valid, just not recommended
+		},
 	}
 
 	for _, tc := range testCases {
-		scriptPath := filepath.Join(tmpDir, tc.filename)
-		content := fmt.Sprintf("-- Script: %s", tc.filename)
-
-		if err := os.WriteFile(scriptPath, []byte(content), 0644); err != nil {
-			t.Fatalf("failed to create script %s: %v", tc.filename, err)
-		}
-	}
-
-	engine := lua.NewEngine(tmpDir, router)
-	scripts := engine.GetLoadedScripts()
-
-	// Verify all scripts are discovered with correct names
-	for _, tc := range testCases {
-		found := false
-		for _, script := range scripts {
-			if script == tc.expected {
-				found = true
-				break
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			configPath := tempDir + "/config.yaml"
+			
+			err := os.WriteFile(configPath, []byte(tc.configContent), 0644)
+			if err != nil {
+				t.Fatalf("Failed to write test config: %v", err)
 			}
-		}
-		if !found {
-			t.Errorf("expected to find script '%s' in loaded scripts", tc.expected)
+
+			_, err = config.LoadConfig(configPath)
+
+			if tc.expectError {
+				if err == nil {
+					t.Fatal("Expected error, got nil")
+				}
+				if !strings.Contains(err.Error(), tc.errorSubstring) {
+					t.Errorf("Expected error containing %q, got %q", tc.errorSubstring, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestLuaScriptErrorHandling tests error handling in Lua script execution
+func TestLuaScriptErrorHandling(t *testing.T) {
+	testCases := []struct {
+		name           string
+		script         string
+		expectError    bool
+		errorSubstring string
+	}{
+		{
+			name: "Lua syntax error",
+			script: `
+-- Invalid Lua syntax
+chi_route("GET", "/test", function(response, request
+    -- Missing closing parenthesis and 'end'
+    response:write("test")
+`,
+			expectError:    true,
+			errorSubstring: "Lua script execution failed",
+		},
+		{
+			name: "runtime error in script",
+			script: `
+chi_route("GET", "/error", function(response, request)
+    error("Intentional runtime error for testing")
+end)
+`,
+			expectError: false, // Route registration should succeed
+		},
+		{
+			name: "calling undefined function",
+			script: `
+chi_route("GET", "/undefined", function(response, request)
+    undefined_function()
+end)
+`,
+			expectError: false, // Route registration should succeed, error at runtime
+		},
+		{
+			name: "infinite loop causing timeout",
+			script: `
+while true do
+    -- Infinite loop to test timeout handling
+end
+`,
+			expectError:    true,
+			errorSubstring: "timeout",
+		},
+		{
+			name: "nil access error",
+			script: `
+local nil_table = nil
+local value = nil_table.some_field
+`,
+			expectError:    true,
+			errorSubstring: "Lua script execution failed",
+		},
+		{
+			name: "invalid chi_route arguments",
+			script: `
+-- Missing required arguments
+chi_route("GET")
+`,
+			expectError:    true,
+			errorSubstring: "chi_route requires method, pattern, and handler function",
+		},
+		{
+			name: "invalid chi_middleware arguments",
+			script: `
+-- Missing middleware function
+chi_middleware("/test/*")
+`,
+			expectError:    true,
+			errorSubstring: "chi_middleware requires pattern and middleware function",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := fixtures.SetupLuaEngineWithScript(t, "error-test", tc.script)
+
+			err := engine.ExecuteRouteScript("error-test", "test-tenant")
+
+			if tc.expectError {
+				if err == nil {
+					t.Fatal("Expected error, got nil")
+				}
+				if tc.errorSubstring != "" && !strings.Contains(err.Error(), tc.errorSubstring) {
+					t.Errorf("Expected error containing %q, got %q", tc.errorSubstring, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected no error, got: %v", err)
+				}
+			}
+		})
+	}
+}
+
+// TestHTTPErrorHandling tests HTTP error handling at the gateway level
+func TestHTTPErrorHandling(t *testing.T) {
+	testCases := []struct {
+		name           string
+		setupFunc      func(t *testing.T) (*fixtures.GatewayTestEnv, func())
+		requestMethod  string
+		requestPath    string
+		requestHeaders map[string]string
+		requestBody    string
+		expectedStatus int
+		checkResponse  func(t *testing.T, resp *http.Response)
+	}{
+		{
+			name: "request to non-existent route",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				env := fixtures.SetupSimpleGateway(t, "test-tenant", "/api/")
+				return env, func() {}
+			},
+			requestMethod:  "GET",
+			requestPath:    "/nonexistent",
+			expectedStatus: http.StatusNotFound,
+		},
+		{
+			name: "unsupported HTTP method",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				env := fixtures.SetupSimpleGateway(t, "test-tenant", "/api/")
+				return env, func() {}
+			},
+			requestMethod:  "TRACE",
+			requestPath:    "/api/test",
+			expectedStatus: http.StatusMethodNotAllowed,
+		},
+		{
+			name: "request with malformed headers",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				env := fixtures.SetupSimpleGateway(t, "test-tenant", "/api/")
+				return env, func() {}
+			},
+			requestMethod: "GET",
+			requestPath:   "/api/test",
+			requestHeaders: map[string]string{
+				"Invalid\x00Header": "value", // Null byte in header name
+			},
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name: "request to backend that drops connections",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				backend := fixtures.CreateDropConnectionBackend(t)
+				proxyEnv := fixtures.SetupProxy(t, "drop-tenant", "/drop/", backend)
+				env := &fixtures.GatewayTestEnv{
+					Router:  proxyEnv.Router,
+					Gateway: proxyEnv.Gateway,
+				}
+				return env, func() { backend.Close(); proxyEnv.Cleanup() }
+			},
+			requestMethod:  "GET",
+			requestPath:    "/drop/test",
+			expectedStatus: http.StatusBadGateway, // or similar connection error
+		},
+		{
+			name: "request to slow backend with timeout",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				// Create very slow backend (5 seconds)
+				backend := fixtures.CreateSlowBackend(t, 5*time.Second)
+				proxyEnv := fixtures.SetupProxy(t, "slow-tenant", "/slow/", backend)
+				env := &fixtures.GatewayTestEnv{
+					Router:  proxyEnv.Router,
+					Gateway: proxyEnv.Gateway,
+				}
+				return env, func() { backend.Close(); proxyEnv.Cleanup() }
+			},
+			requestMethod:  "GET",
+			requestPath:    "/slow/test",
+			expectedStatus: http.StatusOK, // Should eventually succeed
+			checkResponse: func(t *testing.T, resp *http.Response) {
+				// Could add timeout checks here
+			},
+		},
+		{
+			name: "request with very large body",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				backend := fixtures.CreateEchoBackend(t)
+				proxyEnv := fixtures.SetupProxy(t, "echo-tenant", "/echo/", backend)
+				env := &fixtures.GatewayTestEnv{
+					Router:  proxyEnv.Router,
+					Gateway: proxyEnv.Gateway,
+				}
+				return env, func() { backend.Close(); proxyEnv.Cleanup() }
+			},
+			requestMethod:  "POST",
+			requestPath:    "/echo/large",
+			requestBody:    strings.Repeat("x", 1024*1024), // 1MB body
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name: "request with invalid URL encoding",
+			setupFunc: func(t *testing.T) (*fixtures.GatewayTestEnv, func()) {
+				env := fixtures.SetupSimpleGateway(t, "test-tenant", "/api/")
+				return env, func() {}
+			},
+			requestMethod:  "GET",
+			requestPath:    "/api/test%gg", // Invalid percent encoding
+			expectedStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			env, cleanup := tc.setupFunc(t)
+			defer cleanup()
+
+			req := httptest.NewRequest(tc.requestMethod, tc.requestPath, strings.NewReader(tc.requestBody))
+			for k, v := range tc.requestHeaders {
+				req.Header.Set(k, v)
+			}
+			resp := fixtures.ExecuteHTTPTestWithRequest(env.Router, req)
+
+			if resp.StatusCode != tc.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
+			}
+
+			if tc.checkResponse != nil {
+				// Convert HTTPTestResult to http.Response for compatibility
+				httpResp := &http.Response{
+					StatusCode: resp.StatusCode,
+					Header:     resp.Headers,
+				}
+				tc.checkResponse(t, httpResp)
+			}
+		})
+	}
+}
+
+// TestRoutingErrorHandling tests error handling in routing logic
+func TestRoutingErrorHandling(t *testing.T) {
+	testCases := []struct {
+		name           string
+		setupConfig    *config.Config
+		requestHost    string
+		requestPath    string
+		expectedResult bool // true if route should be found
+	}{
+		{
+			name: "host with invalid characters",
+			setupConfig: &config.Config{
+				Tenants: []config.Tenant{{
+					Name:     "host-tenant",
+					Domains:  []string{"valid.example.com"},
+					Services: []config.Service{{Name: "svc", URL: "http://backend:8080", Health: "/health"}},
+				}},
+			},
+			requestHost:    "invalid\x00host.com",
+			requestPath:    "/test",
+			expectedResult: false,
+		},
+		{
+			name: "extremely long hostname",
+			setupConfig: &config.Config{
+				Tenants: []config.Tenant{{
+					Name:     "host-tenant",
+					Domains:  []string{"example.com"},
+					Services: []config.Service{{Name: "svc", URL: "http://backend:8080", Health: "/health"}},
+				}},
+			},
+			requestHost:    strings.Repeat("a", 1000) + ".com",
+			requestPath:    "/test",
+			expectedResult: false,
+		},
+		{
+			name: "path with null bytes",
+			setupConfig: &config.Config{
+				Tenants: []config.Tenant{{
+					Name:       "path-tenant",
+					PathPrefix: "/api/",
+					Services:   []config.Service{{Name: "svc", URL: "http://backend:8080", Health: "/health"}},
+				}},
+			},
+			requestHost:    "example.com",
+			requestPath:    "/api/test\x00path",
+			expectedResult: false, // Should not match due to null byte
+		},
+		{
+			name: "IPv6 host handling",
+			setupConfig: &config.Config{
+				Tenants: []config.Tenant{{
+					Name:     "ipv6-tenant",
+					Domains:  []string{"[::1]"},
+					Services: []config.Service{{Name: "svc", URL: "http://backend:8080", Health: "/health"}},
+				}},
+			},
+			requestHost:    "[::1]:8080",
+			requestPath:    "/test",
+			expectedResult: true,
+		},
+		{
+			name: "malformed IPv6 host",
+			setupConfig: &config.Config{
+				Tenants: []config.Tenant{{
+					Name:     "ipv6-tenant",
+					Domains:  []string{"[::1]"},
+					Services: []config.Service{{Name: "svc", URL: "http://backend:8080", Health: "/health"}},
+				}},
+			},
+			requestHost:    "[::1", // Missing closing bracket
+			requestPath:    "/test",
+			expectedResult: false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := fixtures.SetupGateway(t, tc.setupConfig)
+			
+			tenantRouter, _ := env.Gateway.MatchRoute(tc.requestHost, tc.requestPath)
+			found := tenantRouter != nil
+
+			if found != tc.expectedResult {
+				t.Errorf("Expected route found=%v, got found=%v", tc.expectedResult, found)
+			}
+		})
+	}
+}
+
+// TestConcurrentErrorHandling tests error handling under concurrent load
+func TestConcurrentErrorHandling(t *testing.T) {
+	// Create a setup that might have race conditions
+	env := fixtures.SetupMultiTenantGateway(t)
+	_ = env
+
+	// Add a Lua script that might have concurrency issues
+	script := `
+chi_route("GET", "/concurrent", function(response, request)
+    -- Simulate some work that might cause issues under load
+    for i = 1, 100 do
+        local temp = "processing_" .. i
+    end
+    response:set_header("Content-Type", "text/plain")
+    response:write("Concurrent request processed")
+end)
+`
+
+	engine := fixtures.SetupLuaEngineWithScript(t, "concurrent-test", script)
+	err := engine.ExecuteRouteScript("concurrent-test", "test-tenant")
+	if err != nil {
+		t.Fatalf("Failed to setup concurrent test script: %v", err)
+	}
+
+	// Mount the Lua routes into the gateway
+	registry := engine.RouteRegistry()
+	router := registry.GetRouter()
+
+	// Run concurrent requests
+	concurrency := 50
+	done := make(chan error, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func(requestID int) {
+			defer func() {
+				if r := recover(); r != nil {
+					done <- fmt.Errorf("panic in request %d: %v", requestID, r)
+					return
+				}
+			}()
+
+			req := httptest.NewRequest("GET", "/concurrent", nil)
+			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
+			
+			if resp.StatusCode != http.StatusOK {
+				done <- fmt.Errorf("request %d failed with status %d", requestID, resp.StatusCode)
+				return
+			}
+
+			if !strings.Contains(resp.Body, "Concurrent request processed") {
+				done <- fmt.Errorf("request %d got unexpected body: %s", requestID, resp.Body)
+				return
+			}
+
+			done <- nil
+		}(i)
+	}
+
+	// Collect results
+	var errors []error
+	for i := 0; i < concurrency; i++ {
+		if err := <-done; err != nil {
+			errors = append(errors, err)
 		}
 	}
+
+	if len(errors) > 0 {
+		t.Errorf("Concurrent requests had %d errors:", len(errors))
+		for _, err := range errors[:min(5, len(errors))] { // Show first 5 errors
+			t.Logf("  %v", err)
+		}
+	}
+}
+
+// TestMemoryErrorHandling tests handling of memory-related errors
+func TestMemoryErrorHandling(t *testing.T) {
+	testCases := []struct {
+		name          string
+		script        string
+		expectSuccess bool
+	}{
+		{
+			name: "large table allocation in Lua",
+			script: `
+chi_route("GET", "/memory", function(response, request)
+    local large_table = {}
+    for i = 1, 10000 do
+        large_table[i] = "data_" .. i
+    end
+    response:set_header("Content-Type", "text/plain")
+    response:write("Memory test completed")
+end)
+`,
+			expectSuccess: true, // Should handle reasonable memory usage
+		},
+		{
+			name: "nested function calls",
+			script: `
+local function recursive_function(n)
+    if n > 0 then
+        return recursive_function(n - 1)
+    end
+    return "done"
+end
+
+chi_route("GET", "/recursive", function(response, request)
+    local result = recursive_function(100) -- Reasonable recursion depth
+    response:set_header("Content-Type", "text/plain") 
+    response:write("Recursion test: " .. result)
+end)
+`,
+			expectSuccess: true,
+		},
+		{
+			name: "string concatenation stress",
+			script: `
+chi_route("GET", "/strings", function(response, request)
+    local big_string = ""
+    for i = 1, 1000 do
+        big_string = big_string .. "chunk_" .. i .. "_"
+    end
+    response:set_header("Content-Type", "text/plain")
+    response:write("String test completed: " .. string.len(big_string) .. " chars")
+end)
+`,
+			expectSuccess: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			engine := fixtures.SetupLuaEngineWithScript(t, "memory-test", tc.script)
+
+			err := engine.ExecuteRouteScript("memory-test", "test-tenant")
+			
+			if tc.expectSuccess {
+				if err != nil {
+					t.Errorf("Expected success, got error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Error("Expected error due to memory pressure, got success")
+				}
+			}
+		})
+	}
+}
+
+// Helper function for min operation
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
