@@ -1,6 +1,7 @@
 package unit
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -73,7 +74,7 @@ func TestSlowBackendIntegration(t *testing.T) {
 	slowBackend := fixtures.CreateSlowBackend(t, 100*time.Millisecond)
 	defer slowBackend.Close()
 
-	env := fixtures.SetupProxy(t, "slow-tenant", "/slow/", slowBackend)
+	env := fixtures.SetupProxyWithHandler(t, "slow-tenant", "/slow/", "/slow/*", slowBackend)
 	defer env.Cleanup()
 
 	testCases := []struct {
@@ -293,7 +294,7 @@ func TestEchoBackendIntegration(t *testing.T) {
 // TestHeaderEchoBackendIntegration tests header echo backend functionality
 func TestHeaderEchoBackendIntegration(t *testing.T) {
 	headerEchoBackend := fixtures.CreateHeaderEchoBackend(t)
-	env := fixtures.SetupProxy(t, "header-echo-tenant", "/headers/", headerEchoBackend)
+	env := fixtures.SetupProxyWithHandler(t, "header-echo-tenant", "/headers/", "/headers/*", headerEchoBackend)
 	defer env.Cleanup()
 
 	testCases := []struct {
@@ -330,7 +331,9 @@ func TestHeaderEchoBackendIntegration(t *testing.T) {
 				if !strings.Contains(headers["Authorization"], "Bearer") {
 					t.Error("Authorization header not echoed correctly")
 				}
-				if headers["X-API-Key"] != "secret-api-key-123" {
+				// Check for X-API-Key header (case-insensitive due to HTTP canonical naming)
+				apiKey := headers["X-Api-Key"] // Go HTTP canonicalizes to this format
+				if apiKey != "secret-api-key-123" {
 					t.Error("API key header not echoed correctly")
 				}
 			},
@@ -365,13 +368,13 @@ func TestHeaderEchoBackendIntegration(t *testing.T) {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
 
-			// Check that response headers contain echoed request headers
-			responseHeaders := make(map[string]string)
-			for key, values := range resp.Headers {
-				if len(values) > 0 {
-					responseHeaders[key] = values[0]
-				}
+			// Parse JSON response body to get echoed headers
+			var responseHeaders map[string]string
+			if err := json.Unmarshal([]byte(resp.Body), &responseHeaders); err != nil {
+				t.Errorf("Failed to parse JSON response: %v", err)
+				return
 			}
+
 
 			tc.checkHeaders(t, responseHeaders)
 		})
@@ -381,7 +384,7 @@ func TestHeaderEchoBackendIntegration(t *testing.T) {
 // TestDropConnectionBackendIntegration tests connection dropping scenarios
 func TestDropConnectionBackendIntegration(t *testing.T) {
 	dropBackend := fixtures.CreateDropConnectionBackend(t)
-	env := fixtures.SetupProxy(t, "drop-tenant", "/drop/", dropBackend)
+	env := fixtures.SetupProxyWithHandler(t, "drop-tenant", "/drop/", "/drop/*", dropBackend)
 	defer env.Cleanup()
 
 	testCases := []struct {
@@ -439,31 +442,33 @@ func TestDropConnectionBackendIntegration(t *testing.T) {
 // TestCustomBackendBehavior tests custom backend behavior configuration
 func TestCustomBackendBehavior(t *testing.T) {
 	// Create custom backend with specific behaviors
+	// Note: The gateway strips the path prefix, so backend receives paths without /api/
 	behavior := fixtures.BackendBehavior{
 		ResponseMap: map[string]fixtures.BackendResponse{
-			"/api/users": {
+			"/users": {
 				StatusCode: http.StatusOK,
 				Headers:    map[string]string{"Content-Type": "application/json"},
 				Body:       `{"users": ["alice", "bob"]}`,
 			},
-			"/api/auth": {
+			"/auth": {
 				StatusCode: http.StatusUnauthorized,
 				Headers:    map[string]string{"WWW-Authenticate": "Bearer"},
 				Body:       `{"error": "unauthorized"}`,
 			},
-			"/api/slow": {
+			"/slow": {
 				StatusCode: http.StatusOK,
 				Headers:    map[string]string{"Content-Type": "text/plain"},
 				Body:       "slow response",
 				Delay:      200 * time.Millisecond,
 			},
 		},
+		DefaultCode: http.StatusOK,
 	}
 
 	customBackend := fixtures.CreateCustomBackend(t, behavior)
 	defer customBackend.Close()
 
-	env := fixtures.SetupProxy(t, "custom-tenant", "/api/", customBackend)
+	env := fixtures.SetupProxyWithHandler(t, "custom-tenant", "/api/", "/api/*", customBackend)
 	defer env.Cleanup()
 
 	testCases := []fixtures.HTTPTestCase{
@@ -549,7 +554,7 @@ func TestBackendIntegrationEdgeCases(t *testing.T) {
 					},
 				}
 				backend := fixtures.CreateCustomBackend(t, behavior)
-				env := fixtures.SetupProxy(t, "large-tenant", "/large/", backend)
+				env := fixtures.SetupProxyWithHandler(t, "large-tenant", "/large/", "/large/*", backend)
 				return env, func() { backend.Close(); env.Cleanup() }
 			},
 			testFunc: func(t *testing.T, env *fixtures.ProxyTestEnv) {
@@ -579,7 +584,7 @@ func TestBackendIntegrationEdgeCases(t *testing.T) {
 					},
 				}
 				backend := fixtures.CreateCustomBackend(t, behavior)
-				env := fixtures.SetupProxy(t, "special-tenant", "/special/", backend)
+				env := fixtures.SetupProxyWithHandler(t, "special-tenant", "/special/", "/special/*", backend)
 				return env, func() { backend.Close(); env.Cleanup() }
 			},
 			testFunc: func(t *testing.T, env *fixtures.ProxyTestEnv) {

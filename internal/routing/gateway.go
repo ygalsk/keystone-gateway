@@ -73,6 +73,12 @@ func (gw *Gateway) initializeRouters() {
 				continue
 			}
 
+			// Validate that the URL has the required components for a backend
+			if u.Scheme == "" || u.Host == "" {
+				log.Printf("Warning: invalid backend URL for service %s: missing scheme or host", svc.Name)
+				continue
+			}
+
 			backend := &GatewayBackend{URL: u}
 			backend.Alive.Store(false) // Start as unhealthy
 			tr.Backends = append(tr.Backends, backend)
@@ -110,6 +116,13 @@ func (gw *Gateway) registerTenantRoutes(tenant config.Tenant, tr *TenantRouter) 
 
 // MatchRoute finds the appropriate tenant router for a given host and path.
 func (gw *Gateway) MatchRoute(host, path string) (*TenantRouter, string) {
+	// Reject paths with null bytes
+	for _, char := range path {
+		if char == 0 {
+			return nil, ""
+		}
+	}
+	
 	host = ExtractHost(host)
 
 	// Priority 1: Hybrid routing (host + path)

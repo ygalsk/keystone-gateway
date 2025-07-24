@@ -80,6 +80,8 @@ func CreateErrorBackend(t *testing.T) *httptest.Server {
 		ResponseMap: map[string]BackendResponse{
 			"/500": {StatusCode: http.StatusInternalServerError, Body: "Internal Server Error"},
 			"/404": {StatusCode: http.StatusNotFound, Body: "Not Found"},
+			"/400": {StatusCode: http.StatusBadRequest, Body: "Bad Request"},
+			"/503": {StatusCode: http.StatusServiceUnavailable, Body: "Service Unavailable"},
 			"/timeout": {StatusCode: http.StatusRequestTimeout, Delay: 100 * time.Millisecond},
 			"/empty": {StatusCode: http.StatusOK, Body: ""},
 			"/large": {StatusCode: http.StatusOK, Body: strings.Repeat("x", 1024*1024)},
@@ -150,8 +152,7 @@ func CreateBodySizeBackend(t *testing.T) *httptest.Server {
 // CreateDropConnectionBackend creates a backend that drops connections
 func CreateDropConnectionBackend(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("partial response"))
+		// Don't write any response, just close the connection immediately
 		if hijacker, ok := w.(http.Hijacker); ok {
 			conn, _, err := hijacker.Hijack()
 			if err == nil {
@@ -159,6 +160,65 @@ func CreateDropConnectionBackend(t *testing.T) *httptest.Server {
 				return
 			}
 		}
-		w.Write([]byte(" complete"))
+		// If hijacking fails, return an error status
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("connection drop failed"))
+	}))
+}
+
+// CreateMethodAwareBackend creates a backend that handles HTTP methods appropriately
+func CreateMethodAwareBackend(t *testing.T) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only allow standard HTTP methods
+		allowedMethods := map[string]bool{
+			"GET":     true,
+			"POST":    true,
+			"PUT":     true,
+			"DELETE":  true,
+			"PATCH":   true,
+			"HEAD":    true,
+			"OPTIONS": true,
+		}
+		
+		if !allowedMethods[r.Method] {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			w.Write([]byte("Method not allowed"))
+			return
+		}
+		
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+}
+
+// CreateRestrictiveBackend creates a backend that only responds to specific paths
+func CreateRestrictiveBackend(t *testing.T) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Only respond to /test, not percent-encoded variations
+		if r.URL.Path == "/test" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+			return
+		}
+		
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("Not Found"))
+	}))
+}
+
+// CreateHealthAwareBackend creates a backend that responds to both API routes and health endpoint
+func CreateHealthAwareBackend(t *testing.T) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Handle /health at root level (before path stripping)
+		if r.URL.Path == "/health" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"healthy"}`))
+			return
+		}
+		
+		// Handle API routes (these come with stripped paths)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 	}))
 }

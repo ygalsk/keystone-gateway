@@ -2,6 +2,7 @@ package unit
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -89,17 +90,23 @@ end)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, _ := fixtures.SetupLuaEngineWithScript(t, "route-test", tc.script)
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
 
 			// Execute script to register routes
-			err := engine.ExecuteRouteScript("route-test", "test-tenant")
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
 			if err != nil {
 				t.Fatalf("Failed to execute route script: %v", err)
 			}
 
-			// Test the registered route
-			registry := engine.RouteRegistry()
-			router := registry.GetRouter()
+			// Mount the tenant routes on the main router
+			err = env.MountTenantRoutesAtRoot("test-tenant")
+			if err != nil {
+				t.Fatalf("Failed to mount tenant routes: %v", err)
+			}
+
+			// Test the registered route using the router from the environment
+			router := env.Router
 
 			testCase := fixtures.HTTPTestCase{
 				Name:           tc.name,
@@ -175,22 +182,29 @@ end)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, _ := fixtures.SetupLuaEngineWithScript(t, "param-test", tc.script)
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
 
-			err := engine.ExecuteRouteScript("param-test", "test-tenant")
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
 			if err != nil {
 				t.Fatalf("Failed to execute route script: %v", err)
 			}
 
-			registry := engine.RouteRegistry()
-			router := registry.GetRouter()
+			// Mount the tenant routes on the main router
+			err = env.MountTenantRoutesAtRoot("test-tenant")
+			if err != nil {
+				t.Fatalf("Failed to mount tenant routes: %v", err)
+			}
 
-			resp := fixtures.ExecuteHTTPTestWithRequest(t, router, "GET", tc.requestPath, nil, "")
+			router := env.Router
+
+			req := httptest.NewRequest("GET", tc.requestPath, nil)
+			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
 
-			body := fixtures.ReadResponseBody(t, resp)
+			body := resp.Body
 
 			// Verify each expected parameter appears in the response
 			for paramName, expectedValue := range tc.expectedParams {
@@ -299,22 +313,29 @@ end)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, _ := fixtures.SetupLuaEngineWithScript(t, "middleware-test", tc.script)
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
 
-			err := engine.ExecuteRouteScript("middleware-test", "test-tenant")
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
 			if err != nil {
 				t.Fatalf("Failed to execute middleware script: %v", err)
 			}
 
-			registry := engine.RouteRegistry()
-			router := registry.GetRouter()
+			// Mount the tenant routes on the main router
+			err = env.MountTenantRoutesAtRoot("test-tenant")
+			if err != nil {
+				t.Fatalf("Failed to mount tenant routes: %v", err)
+			}
+
+			router := env.Router
 
 			method := "GET"
 			if strings.Contains(tc.script, `"POST"`) {
 				method = "POST"
 			}
 
-			resp := fixtures.ExecuteHTTPTestWithRequest(t, router, method, tc.requestPath, nil, "")
+			req := httptest.NewRequest(method, tc.requestPath, nil)
+			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
 			
 			if resp.StatusCode != tc.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
@@ -322,14 +343,14 @@ end)
 
 			// Check that middleware headers are present
 			for headerName, expectedValue := range tc.expectedHeaders {
-				actualValue := resp.Header.Get(headerName)
+				actualValue := resp.Headers.Get(headerName)
 				if actualValue != expectedValue {
 					t.Errorf("Expected header %s=%s, got %s", headerName, expectedValue, actualValue)
 				}
 			}
 
 			if !tc.checkHeadersOnly {
-				body := fixtures.ReadResponseBody(t, resp)
+				body := resp.Body
 				if body == "" {
 					t.Error("Expected response body, got empty")
 				}
@@ -371,12 +392,12 @@ end)
 			name: "nested route group with middleware",
 			script: `
 chi_group("/api", function()
-    chi_middleware("/v2/*", function(response, request, next)
-        response:set_header("X-API-Version", "v2")
-        next()
-    end)
-    
     chi_group("/v2", function()
+        chi_middleware("/*", function(response, request, next)
+            response:set_header("X-API-Version", "v2")
+            next()
+        end)
+        
         chi_route("GET", "/data", function(response, request)
             response:set_header("Content-Type", "text/plain")
             response:write("API v2 data")
@@ -414,29 +435,35 @@ end)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, _ := fixtures.SetupLuaEngineWithScript(t, "group-test", tc.script)
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
 
-			err := engine.ExecuteRouteScript("group-test", "test-tenant")
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
 			if err != nil {
 				t.Fatalf("Failed to execute group script: %v", err)
 			}
 
-			registry := engine.RouteRegistry()
-			router := registry.GetRouter()
-
-			resp := fixtures.ExecuteHTTPTestWithRequest(t, router, "GET", tc.requestPath, nil, "")
-			
-			if resp.StatusCode != tc.expectedStatus {
-				t.Errorf("Expected status %d, got %d", resp.StatusCode)
+			// Mount the tenant routes on the main router
+			err = env.MountTenantRoutesAtRoot("test-tenant")
+			if err != nil {
+				t.Fatalf("Failed to mount tenant routes: %v", err)
 			}
 
-			body := fixtures.ReadResponseBody(t, resp)
-			if body != tc.expectedBody {
-				t.Errorf("Expected body %q, got %q", tc.expectedBody, body)
+			router := env.Router
+
+			req := httptest.NewRequest("GET", tc.requestPath, nil)
+			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
+			
+			if resp.StatusCode != tc.expectedStatus {
+				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
+			}
+
+			if resp.Body != tc.expectedBody {
+				t.Errorf("Expected body %q, got %q", tc.expectedBody, resp.Body)
 			}
 
 			if tc.expectedHeader != "" {
-				if resp.Header.Get(tc.expectedHeader) == "" {
+				if resp.Headers.Get(tc.expectedHeader) == "" {
 					t.Errorf("Expected header %s to be present", tc.expectedHeader)
 				}
 			}
@@ -518,9 +545,10 @@ end)
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, _ := fixtures.SetupLuaEngineWithScript(t, "error-test", tc.script)
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
 
-			err := engine.ExecuteRouteScript("error-test", "test-tenant")
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
 
 			if tc.expectError {
 				if err == nil {
@@ -532,6 +560,12 @@ end)
 			} else {
 				if err != nil {
 					t.Errorf("Expected no error, got: %v", err)
+				} else {
+					// Mount the tenant routes on the main router if script execution succeeded
+					err = env.MountTenantRoutesAtRoot("test-tenant")
+					if err != nil {
+						t.Fatalf("Failed to mount tenant routes: %v", err)
+					}
 				}
 			}
 		})
@@ -587,15 +621,21 @@ chi_route("GET", "/health", function(response, request)
 end)
 `
 
-	engine, _ := fixtures.SetupLuaEngineWithScript(t, "integration-test", script)
+	env := fixtures.SetupLuaEngineWithScript(t, script)
+	engine := env.Engine
 
-	err := engine.ExecuteRouteScript("integration-test", "test-tenant")
+	err := engine.ExecuteRouteScript("test-script", "test-tenant")
 	if err != nil {
 		t.Fatalf("Failed to execute integration script: %v", err)
 	}
 
-	registry := engine.RouteRegistry()
-	router := registry.GetRouter()
+	// Mount the tenant routes on the main router
+	err = env.MountTenantRoutesAtRoot("test-tenant")
+	if err != nil {
+		t.Fatalf("Failed to mount tenant routes: %v", err)
+	}
+
+	router := env.Router
 
 	testCases := []fixtures.HTTPTestCase{
 		{

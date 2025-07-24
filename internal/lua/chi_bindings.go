@@ -181,7 +181,7 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 	
 
 	// Check if we already have cached logic for this middleware
-	if cachedLogic, exists := e.getCachedMiddleware(tenantName, pattern); exists {
+	if cachedLogic, exists := e.getCachedMiddleware(tenantName, pattern, groupPattern); exists {
 		// Use cached logic for performance
 		middleware := func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -211,7 +211,7 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 	
 	// Cache the parsed logic
 	logic.TenantName = tenantName
-	e.setCachedMiddleware(tenantName, pattern, logic)
+	e.setCachedMiddleware(tenantName, pattern, groupPattern, logic)
 	
 	// Create Go middleware that executes the cached logic directly
 	middleware := func(next http.Handler) http.Handler {
@@ -247,7 +247,21 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 	// Execute the setup function to collect group routes and middleware
 	// Save current group context
 	oldGroupContext := L.GetGlobal("__current_group_pattern")
-	L.SetGlobal("__current_group_pattern", lua.LString(pattern))
+	
+	// Build nested group pattern by combining with parent group
+	var fullPattern string
+	if oldGroupContext != lua.LNil {
+		parentPattern := oldGroupContext.String()
+		if parentPattern != "" {
+			fullPattern = parentPattern + pattern
+		} else {
+			fullPattern = pattern
+		}
+	} else {
+		fullPattern = pattern
+	}
+	
+	L.SetGlobal("__current_group_pattern", lua.LString(fullPattern))
 	
 	// Execute the setup function
 	err := L.CallByParam(lua.P{
@@ -270,17 +284,17 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 // Cache methods for middleware logic
 
 // getCachedMiddleware retrieves cached middleware logic thread-safely
-func (e *Engine) getCachedMiddleware(tenantName, pattern string) (*MiddlewareLogic, bool) {
-	key := fmt.Sprintf("%s_%s", tenantName, pattern)
+func (e *Engine) getCachedMiddleware(tenantName, pattern, groupPattern string) (*MiddlewareLogic, bool) {
+	key := fmt.Sprintf("%s_%s_%s", tenantName, groupPattern, pattern)
 	e.middlewareCache.mu.RLock()
 	defer e.middlewareCache.mu.RUnlock()
 	logic, exists := e.middlewareCache.cache[key]
 	return logic, exists
 }
 
-// setCachedMiddleware stores middleware logic thread-safely
-func (e *Engine) setCachedMiddleware(tenantName, pattern string, logic *MiddlewareLogic) {
-	key := fmt.Sprintf("%s_%s", tenantName, pattern)
+// setCachedMiddleware stores middleware logic thread-safely  
+func (e *Engine) setCachedMiddleware(tenantName, pattern, groupPattern string, logic *MiddlewareLogic) {
+	key := fmt.Sprintf("%s_%s_%s", tenantName, groupPattern, pattern)
 	e.middlewareCache.mu.Lock()
 	defer e.middlewareCache.mu.Unlock()
 	e.middlewareCache.cache[key] = logic

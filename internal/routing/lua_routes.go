@@ -412,21 +412,21 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
 // routeMatchesPattern checks if a route pattern matches a middleware pattern
 // considering group context for proper scoping
 func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware MiddlewareDefinition) bool {
-	// First check: middleware and route must be in the same group context
-	if middleware.GroupPattern != route.GroupPattern {
-		return false
-	}
-	
-	// If we're in a group, we need to handle the middleware pattern relative to the group
+	// Get the effective patterns to compare
 	middlewarePattern := middleware.Pattern
 	routePattern := route.Pattern
 	
-	// If both are in a group, resolve the middleware pattern relative to the group
+	// Handle group-scoped middleware
 	if middleware.GroupPattern != "" {
-		// For group middleware, the pattern is relative to the group
+		// Group middleware: only applies to routes in the same group
+		if middleware.GroupPattern != route.GroupPattern {
+			return false
+		}
+		// For group middleware, resolve the pattern relative to the group
 		// e.g., group="/api/v1", middleware pattern="/*" should match "/api/v1/users"
 		middlewarePattern = middleware.GroupPattern + middleware.Pattern
 	}
+	// Global middleware (empty GroupPattern): applies to all routes regardless of group
 	
 	// Handle wildcard patterns like "/protected/*" or "/api/v1/*"
 	if strings.HasSuffix(middlewarePattern, "/*") {

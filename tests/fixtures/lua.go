@@ -41,11 +41,15 @@ func SetupLuaEngine(t *testing.T) *LuaTestEnv {
 func SetupLuaEngineWithScript(t *testing.T, scriptContent string) *LuaTestEnv {
 	env := SetupLuaEngine(t)
 	
-	if scriptContent != "" {
-		scriptFile := filepath.Join(env.ScriptsDir, "test-script.lua")
-		if err := os.WriteFile(scriptFile, []byte(scriptContent), 0644); err != nil {
-			t.Fatalf("failed to create script file: %v", err)
-		}
+	// Always create the script file, even if content is empty
+	scriptFile := filepath.Join(env.ScriptsDir, "test-script.lua")
+	if err := os.WriteFile(scriptFile, []byte(scriptContent), 0644); err != nil {
+		t.Fatalf("failed to create script file: %v", err)
+	}
+	
+	// Reload script paths so the engine can find the newly written script
+	if err := env.Engine.ReloadScripts(); err != nil {
+		t.Fatalf("failed to reload scripts: %v", err)
 	}
 	
 	return env
@@ -62,7 +66,22 @@ func SetupLuaEngineWithScripts(t *testing.T, scripts map[string]string) *LuaTest
 		}
 	}
 
+	// Reload script paths so the engine can find the newly written scripts
+	if err := env.Engine.ReloadScripts(); err != nil {
+		t.Fatalf("failed to reload scripts: %v", err)
+	}
+
 	return env
+}
+
+// MountTenantRoutes mounts the routes for a specific tenant on the main router
+func (env *LuaTestEnv) MountTenantRoutes(tenantName, mountPath string) error {
+	return env.Engine.RouteRegistry().MountTenantRoutes(tenantName, mountPath)
+}
+
+// MountTenantRoutesAtRoot mounts tenant routes at the root path for easier testing
+func (env *LuaTestEnv) MountTenantRoutesAtRoot(tenantName string) error {
+	return env.Engine.RouteRegistry().MountTenantRoutes(tenantName, "/")
 }
 
 // CreateChiBindingsScript returns a sample Chi bindings Lua script

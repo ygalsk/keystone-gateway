@@ -220,7 +220,7 @@ func TestLoadBalancing(t *testing.T) {
 	backend3 := fixtures.CreateSimpleBackend(t)
 	defer backend3.Close()
 
-	cfg := fixtures.CreateConfigWithBackend(t, "lb-tenant", "/lb/", []string{
+	cfg := fixtures.CreateConfigWithMultipleBackends("lb-tenant", "/lb/", []string{
 		backend1.URL,
 		backend2.URL, 
 		backend3.URL,
@@ -269,7 +269,7 @@ func TestBackendHealth(t *testing.T) {
 	unhealthyBackend := fixtures.CreateErrorBackend(t)
 	defer unhealthyBackend.Close()
 
-	cfg := fixtures.CreateConfigWithBackend(t, "health-tenant", "/health/", []string{
+	cfg := fixtures.CreateConfigWithMultipleBackends("health-tenant", "/health/", []string{
 		healthyBackend.URL,
 		unhealthyBackend.URL,
 	})

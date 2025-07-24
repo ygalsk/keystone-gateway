@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -60,6 +61,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
+	
+	// Handle empty or whitespace-only files gracefully
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return &cfg, nil // Return empty config for whitespace-only files
+	}
+	
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
@@ -96,5 +103,15 @@ func ValidateTenant(t Tenant) error {
 
 // isValidDomain performs basic domain name validation.
 func isValidDomain(domain string) bool {
-	return domain != "" && !strings.Contains(domain, " ") && strings.Contains(domain, ".")
+	if domain == "" || strings.Contains(domain, " ") {
+		return false
+	}
+	
+	// Reject IP addresses (both IPv4 and IPv6)
+	if net.ParseIP(domain) != nil {
+		return false
+	}
+	
+	// Basic domain validation: must contain a dot and have valid format
+	return strings.Contains(domain, ".")
 }

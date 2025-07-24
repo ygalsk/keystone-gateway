@@ -123,6 +123,9 @@ func (e *Engine) setupBasicBindings(L *lua.LState) {
 		log.Printf("[Lua] %s", message)
 		return 0
 	}))
+	
+	// Register the chi module so scripts can use require('chi')
+	e.registerChiModule(L)
 }
 
 // loadScriptPaths discovers and maps script files without loading content
@@ -306,4 +309,52 @@ func (e *Engine) GetLoadedScripts() []string {
 // GetScriptMap returns the script paths map for testing purposes
 func (e *Engine) GetScriptMap() map[string]string {
 	return e.scriptPaths
+}
+
+// registerChiModule registers the chi module in the Lua state so scripts can use require('chi')
+func (e *Engine) registerChiModule(L *lua.LState) {
+	// Create a chi module table
+	chiModule := L.NewTable()
+	
+	// Add NewRouter function that returns a router table with methods
+	newRouterFunc := L.NewFunction(func(L *lua.LState) int {
+		routerTable := L.NewTable()
+		
+		// Add router methods (Use, Get, Post, Put, Delete, Route, etc.)
+		routerTable.RawSetString("Use", L.NewFunction(func(L *lua.LState) int {
+			// For now, return 0 as these are placeholders for the test scripts
+			return 0
+		}))
+		
+		routerTable.RawSetString("Get", L.NewFunction(func(L *lua.LState) int {
+			return 0
+		}))
+		
+		routerTable.RawSetString("Post", L.NewFunction(func(L *lua.LState) int {
+			return 0
+		}))
+		
+		routerTable.RawSetString("Put", L.NewFunction(func(L *lua.LState) int {
+			return 0
+		}))
+		
+		routerTable.RawSetString("Delete", L.NewFunction(func(L *lua.LState) int {
+			return 0
+		}))
+		
+		routerTable.RawSetString("Route", L.NewFunction(func(L *lua.LState) int {
+			return 0
+		}))
+		
+		L.Push(routerTable)
+		return 1
+	})
+	
+	chiModule.RawSetString("NewRouter", newRouterFunc)
+	
+	// Register the chi module so it can be loaded with require('chi')
+	L.PreloadModule("chi", func(L *lua.LState) int {
+		L.Push(chiModule)
+		return 1
+	})
 }

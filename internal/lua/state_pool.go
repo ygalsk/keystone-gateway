@@ -352,6 +352,7 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 	// Set methods on table
 	respTable.RawSetString("write", writeFunc)
 	respTable.RawSetString("header", headerFunc)
+	respTable.RawSetString("set_header", headerFunc) // Alias for header method
 	respTable.RawSetString("status", statusFunc)
 	respTable.RawSetString("json", jsonFunc)
 

@@ -23,7 +23,8 @@ func TestLuaEngineCreation(t *testing.T) {
 		{
 			name: "basic engine creation",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
-				return fixtures.SetupLuaEngine(t)
+				env := fixtures.SetupLuaEngine(t)
+				return env.Engine, env.ScriptsDir
 			},
 			expectError:   false,
 			checkScripts:  true,
@@ -32,7 +33,8 @@ func TestLuaEngineCreation(t *testing.T) {
 		{
 			name: "engine with single script",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
-				return fixtures.SetupLuaEngineWithScript(t, "test-routes", fixtures.CreateChiBindingsScript())
+				env := fixtures.SetupLuaEngineWithScript(t, fixtures.CreateChiBindingsScript())
+				return env.Engine, env.ScriptsDir
 			},
 			expectError:   false,
 			checkScripts:  true,
@@ -42,11 +44,12 @@ func TestLuaEngineCreation(t *testing.T) {
 			name: "engine with multiple scripts",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
 				scripts := map[string]string{
-					"routes1": fixtures.CreateChiBindingsScript(),
-					"routes2": fixtures.CreateRouteGroupScript(),
-					"middleware": fixtures.CreateMiddlewareScript(),
+					"routes1.lua": fixtures.CreateChiBindingsScript(),
+					"routes2.lua": fixtures.CreateRouteGroupScript(),
+					"middleware.lua": fixtures.CreateMiddlewareScript(),
 				}
-				return fixtures.SetupLuaEngineWithScripts(t, scripts)
+				env := fixtures.SetupLuaEngineWithScripts(t, scripts)
+				return env.Engine, env.ScriptsDir
 			},
 			expectError:   false,
 			checkScripts:  true,
@@ -114,11 +117,16 @@ func TestLuaScriptLoading(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			scripts := make(map[string]string)
-			if tc.scriptContent != "" {
-				scripts[tc.scriptName] = tc.scriptContent
+			var env *fixtures.LuaTestEnv
+			if tc.expectFound {
+				// Create the script file (even if empty) when we expect it to be found
+				scripts[tc.scriptName + ".lua"] = tc.scriptContent
+				env = fixtures.SetupLuaEngineWithScripts(t, scripts)
+			} else {
+				// Don't create any script file when we expect it not to be found
+				env = fixtures.SetupLuaEngine(t)
 			}
-			
-			engine, _ := fixtures.SetupLuaEngineWithScripts(t, scripts)
+			engine := env.Engine
 
 			content, found := engine.GetScript(tc.scriptName)
 
@@ -181,7 +189,8 @@ func TestLuaScriptExecution(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			engine, _ := fixtures.SetupLuaEngineWithScript(t, "test-script", tc.scriptContent)
+			env := fixtures.SetupLuaEngineWithScript(t, tc.scriptContent)
+			engine := env.Engine
 
 			err := engine.ExecuteRouteScript("test-script", tc.tenantName)
 
@@ -203,7 +212,9 @@ func TestLuaScriptExecution(t *testing.T) {
 
 // TestLuaGlobalScripts tests global script functionality
 func TestLuaGlobalScripts(t *testing.T) {
-	engine, scriptsDir := fixtures.SetupLuaEngine(t)
+	env := fixtures.SetupLuaEngine(t)
+	engine := env.Engine
+	scriptsDir := env.ScriptsDir
 
 	// Create global scripts manually
 	globalScript1 := "print('Global script 1')"
@@ -235,7 +246,9 @@ func TestLuaGlobalScripts(t *testing.T) {
 
 // TestLuaScriptCaching tests script caching functionality
 func TestLuaScriptCaching(t *testing.T) {
-	engine, scriptsDir := fixtures.SetupLuaEngine(t)
+	env := fixtures.SetupLuaEngine(t)
+	engine := env.Engine
+	scriptsDir := env.ScriptsDir
 
 	scriptContent := "print('Cached script')"
 	scriptPath := filepath.Join(scriptsDir, "cached-script.lua")
@@ -275,7 +288,9 @@ func TestLuaScriptCaching(t *testing.T) {
 
 // TestLuaScriptReloading tests script reloading functionality
 func TestLuaScriptReloading(t *testing.T) {
-	engine, scriptsDir := fixtures.SetupLuaEngine(t)
+	env := fixtures.SetupLuaEngine(t)
+	engine := env.Engine
+	scriptsDir := env.ScriptsDir
 
 	scriptPath := filepath.Join(scriptsDir, "reload-script.lua")
 	originalContent := "print('Original')"
@@ -329,7 +344,8 @@ func TestLuaEngineEdgeCases(t *testing.T) {
 		{
 			name: "execute non-existent script",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
-				return fixtures.SetupLuaEngine(t)
+				env := fixtures.SetupLuaEngine(t)
+				return env.Engine, env.ScriptsDir
 			},
 			testFunc: func(t *testing.T, engine *lua.Engine) {
 				err := engine.ExecuteRouteScript("non-existent", "tenant")
@@ -342,10 +358,11 @@ func TestLuaEngineEdgeCases(t *testing.T) {
 			name: "script with memory allocation",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
 				largeScript := "local t = {}\nfor i=1,1000 do t[i] = 'data' end"
-				return fixtures.SetupLuaEngineWithScript(t, "memory-test", largeScript)
+				env := fixtures.SetupLuaEngineWithScript(t, largeScript)
+				return env.Engine, env.ScriptsDir
 			},
 			testFunc: func(t *testing.T, engine *lua.Engine) {
-				err := engine.ExecuteRouteScript("memory-test", "tenant")
+				err := engine.ExecuteRouteScript("test-script", "tenant")
 				if err != nil {
 					t.Errorf("Memory allocation script failed: %v", err)
 				}
@@ -355,7 +372,8 @@ func TestLuaEngineEdgeCases(t *testing.T) {
 			name: "concurrent script execution",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
 				script := "print('Concurrent execution')"
-				return fixtures.SetupLuaEngineWithScript(t, "concurrent-test", script)
+				env := fixtures.SetupLuaEngineWithScript(t, script)
+				return env.Engine, env.ScriptsDir
 			},
 			testFunc: func(t *testing.T, engine *lua.Engine) {
 				done := make(chan error, 3)
@@ -363,7 +381,7 @@ func TestLuaEngineEdgeCases(t *testing.T) {
 				// Execute same script concurrently
 				for i := 0; i < 3; i++ {
 					go func() {
-						err := engine.ExecuteRouteScript("concurrent-test", "tenant")
+						err := engine.ExecuteRouteScript("test-script", "tenant")
 						done <- err
 					}()
 				}
@@ -411,9 +429,9 @@ func TestLuaEngineIntegration(t *testing.T) {
 
 	// Test script execution through the integration
 	script := fixtures.CreateChiBindingsScript()
-	engine, _ := fixtures.SetupLuaEngineWithScript(t, "integration-test", script)
+	luaEnv := fixtures.SetupLuaEngineWithScript(t, script)
 	
-	err := engine.ExecuteRouteScript("integration-test", "lua-tenant")
+	err := luaEnv.Engine.ExecuteRouteScript("test-script", "lua-tenant")
 	if err != nil {
 		t.Errorf("Integration script execution failed: %v", err)
 	}

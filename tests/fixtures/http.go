@@ -67,7 +67,12 @@ func RunHTTPTestCases(t *testing.T, router *chi.Mux, testCases []HTTPTestCase) {
 			
 			// Set headers if provided
 			for key, value := range tc.Headers {
-				req.Header.Set(key, value)
+				if key == "Host" {
+					// Set the Host field directly for proper host-based routing
+					req.Host = value
+				} else {
+					req.Header.Set(key, value)
+				}
 			}
 			
 			result := ExecuteHTTPTestWithRequest(router, req)

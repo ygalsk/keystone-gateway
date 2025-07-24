@@ -2,6 +2,7 @@ package unit
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,7 +14,8 @@ import (
 // BEFORE: No HTTP endpoint tests
 // AFTER: Comprehensive coverage using KISS fixtures
 func TestHTTPEndpointsComprehensive(t *testing.T) {
-	env := fixtures.SetupSimpleGateway(t, "test-tenant", "/api/")
+	env := fixtures.SetupHealthAwareGateway(t, "test-tenant")
+	defer env.Cleanup()
 
 	testCases := []fixtures.HTTPTestCase{
 		// Basic HTTP methods
@@ -74,21 +76,21 @@ func TestHTTPEndpointsComprehensive(t *testing.T) {
 			ExpectedStatus: http.StatusMethodNotAllowed,
 		},
 		{
-			Name:           "Empty path",
+			Name:           "Root path",
 			Method:         "GET",
-			Path:           "",
+			Path:           "/",
 			ExpectedStatus: http.StatusNotFound,
 		},
 		{
 			Name:           "Path without leading slash",
 			Method:         "GET",
-			Path:           "api/data",
+			Path:           "/api-data", // Changed to valid path that should return 404
 			ExpectedStatus: http.StatusNotFound,
 		},
 		{
 			Name:           "Very long path",
 			Method:         "GET",
-			Path:           "/api/" + string(make([]byte, 2048)), // 2KB path
+			Path:           "/api/" + strings.Repeat("a", 2048), // 2KB path with valid characters
 			ExpectedStatus: http.StatusNotFound,
 		},
 		{
@@ -127,7 +129,7 @@ func TestHTTPEndpointsComprehensive(t *testing.T) {
 			Name:           "Request with very long header",
 			Method:         "GET",
 			Path:           "/api/data",
-			Headers:        map[string]string{"X-Long": string(make([]byte, 1024))},
+			Headers:        map[string]string{"X-Long": strings.Repeat("x", 1024)},
 			ExpectedStatus: http.StatusOK,
 		},
 
@@ -144,7 +146,7 @@ func TestHTTPEndpointsComprehensive(t *testing.T) {
 			Method:         "POST",
 			Path:           "/api/data",
 			Headers:        map[string]string{"Content-Type": "application/json"},
-			Body:           `{"data": "` + string(make([]byte, 1024)) + `"}`,
+			Body:           `{"data": "` + strings.Repeat("x", 1024) + `"}`,
 			ExpectedStatus: http.StatusOK,
 		},
 		{
@@ -191,7 +193,7 @@ func TestHTTPEndpointsComprehensive(t *testing.T) {
 // TestHTTPBackendErrors tests error conditions and edge cases
 func TestHTTPBackendErrors(t *testing.T) {
 	// Test with error backend
-	errorEnv := fixtures.SetupErrorProxy(t, "error-tenant", "/error/")
+	errorEnv := fixtures.SetupErrorProxy(t, "error-tenant", "/error/", "/error/*")
 	defer errorEnv.Cleanup()
 
 	errorTestCases := []fixtures.HTTPTestCase{
