@@ -65,7 +65,7 @@
 				
 				<option value="file4">keystone-gateway/internal/routing/gateway.go (89.2%)</option>
 				
-				<option value="file5">keystone-gateway/internal/routing/lua_routes.go (48.4%)</option>
+				<option value="file5">keystone-gateway/internal/routing/lua_routes.go (66.7%)</option>
 				
 				</select>
 			</div>
@@ -1647,7 +1647,7 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error <span class=
         r.mu.Unlock()
 
         // Validate route pattern before registration
-        if err := validateRoutePattern(def.Pattern); err != nil </span><span class="cov0" title="0">{
+        if err := validateRoutePattern(def.Pattern); err != nil </span><span class="cov8" title="1">{
                 // Remove from registered routes since validation failed
                 r.mu.Lock()
                 delete(r.registeredRoutes, routeKey)
@@ -1683,7 +1683,7 @@ func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error <s
 }</span>
 
 // RegisterRouteGroup registers a group of routes with shared middleware with duplicate prevention
-func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error <span class="cov0" title="0">{
+func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error <span class="cov8" title="1">{
         // Create unique group key
         groupKey := fmt.Sprintf("%s:group:%s", def.TenantName, def.Pattern)
 
@@ -1694,30 +1694,30 @@ func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error <s
                 // Group already exists, skip registration
                 return nil
         }</span>
-        <span class="cov0" title="0">r.registeredRoutes[groupKey] = true
+        <span class="cov8" title="1">r.registeredRoutes[groupKey] = true
         r.mu.Unlock()
 
         submux := r.getTenantSubmux(def.TenantName)
 
         // Create route group with pattern and middleware
-        submux.Route(def.Pattern, func(gr chi.Router) </span><span class="cov0" title="0">{
+        submux.Route(def.Pattern, func(gr chi.Router) </span><span class="cov8" title="1">{
                 // Apply group middleware
-                for _, mw := range def.Middleware </span><span class="cov0" title="0">{
+                for _, mw := range def.Middleware </span><span class="cov8" title="1">{
                         gr.Use(mw)
                 }</span>
 
                 // Register routes in the group
-                <span class="cov0" title="0">for _, route := range def.Routes </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">for _, route := range def.Routes </span><span class="cov8" title="1">{
                         r.registerRouteByMethod(gr, route)
                 }</span>
 
                 // Register subgroups recursively
-                <span class="cov0" title="0">for _, subgroup := range def.Subgroups </span><span class="cov0" title="0">{
+                <span class="cov8" title="1">for _, subgroup := range def.Subgroups </span><span class="cov0" title="0">{
                         r.registerSubgroup(gr, subgroup)
                 }</span>
         })
 
-        <span class="cov0" title="0">return nil</span>
+        <span class="cov8" title="1">return nil</span>
 }
 
 // MountTenantRoutes mounts all routes for a tenant under a specific path
@@ -1733,22 +1733,22 @@ func (r *LuaRouteRegistry) MountTenantRoutes(tenantName, mountPath string) error
 }
 
 // ClearTenantRoutes removes all routes for a specific tenant
-func (r *LuaRouteRegistry) ClearTenantRoutes(tenantName string) <span class="cov0" title="0">{
+func (r *LuaRouteRegistry) ClearTenantRoutes(tenantName string) <span class="cov8" title="1">{
         delete(r.routeGroups, tenantName)
 }</span>
 
 // GetTenantRoutes returns the submux for a tenant (for inspection/debugging)
-func (r *LuaRouteRegistry) GetTenantRoutes(tenantName string) *chi.Mux <span class="cov0" title="0">{
+func (r *LuaRouteRegistry) GetTenantRoutes(tenantName string) *chi.Mux <span class="cov8" title="1">{
         return r.routeGroups[tenantName]
 }</span>
 
 // ListTenants returns all tenants that have registered routes
-func (r *LuaRouteRegistry) ListTenants() []string <span class="cov0" title="0">{
+func (r *LuaRouteRegistry) ListTenants() []string <span class="cov8" title="1">{
         tenants := make([]string, 0, len(r.routeGroups))
-        for tenant := range r.routeGroups </span><span class="cov0" title="0">{
+        for tenant := range r.routeGroups </span><span class="cov8" title="1">{
                 tenants = append(tenants, tenant)
         }</span>
-        <span class="cov0" title="0">return tenants</span>
+        <span class="cov8" title="1">return tenants</span>
 }
 
 // getTenantSubmux gets or creates a submux for a tenant
@@ -2000,16 +2000,16 @@ func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware
         }</span>
         
         // Exact match
-        <span class="cov0" title="0">return routePattern == middlewarePattern</span>
+        <span class="cov8" title="1">return routePattern == middlewarePattern</span>
 }
 
 // validateRoutePattern validates Chi router pattern format
 func validateRoutePattern(pattern string) error <span class="cov8" title="1">{
-        if pattern == "" </span><span class="cov0" title="0">{
+        if pattern == "" </span><span class="cov8" title="1">{
                 return fmt.Errorf("route pattern cannot be empty")
         }</span>
         
-        <span class="cov8" title="1">if !strings.HasPrefix(pattern, "/") </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if !strings.HasPrefix(pattern, "/") </span><span class="cov8" title="1">{
                 return fmt.Errorf("route pattern must begin with '/'")
         }</span>
         
@@ -2020,13 +2020,13 @@ func validateRoutePattern(pattern string) error <span class="cov8" title="1">{
                         braceCount++
                 }</span> else<span class="cov8" title="1"> if char == '}' </span><span class="cov8" title="1">{
                         braceCount--
-                        if braceCount &lt; 0 </span><span class="cov0" title="0">{
+                        if braceCount &lt; 0 </span><span class="cov8" title="1">{
                                 return fmt.Errorf("unmatched closing brace '}' at position %d", i)
                         }</span>
                 }
         }
         
-        <span class="cov8" title="1">if braceCount &gt; 0 </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if braceCount &gt; 0 </span><span class="cov8" title="1">{
                 return fmt.Errorf("route param closing delimiter '}' is missing")
         }</span>
         

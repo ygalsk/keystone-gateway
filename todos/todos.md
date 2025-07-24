@@ -1,0 +1,1 @@
+- implement the missing crucial parts to the test while following go practices and conventions and stay KISS nad DRY
