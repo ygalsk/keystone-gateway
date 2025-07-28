@@ -64,7 +64,7 @@ func RunHTTPTestCases(t *testing.T, router *chi.Mux, testCases []HTTPTestCase) {
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
 			req := httptest.NewRequest(tc.Method, tc.Path, nil)
-			
+
 			// Set headers if provided
 			for key, value := range tc.Headers {
 				if key == "Host" {
@@ -74,19 +74,19 @@ func RunHTTPTestCases(t *testing.T, router *chi.Mux, testCases []HTTPTestCase) {
 					req.Header.Set(key, value)
 				}
 			}
-			
+
 			result := ExecuteHTTPTestWithRequest(router, req)
-			
+
 			// Assert status code
 			if result.StatusCode != tc.ExpectedStatus {
 				t.Errorf("expected status %d, got %d", tc.ExpectedStatus, result.StatusCode)
 			}
-			
+
 			// Assert body if specified
 			if tc.ExpectedBody != "" && result.Body != tc.ExpectedBody {
 				t.Errorf("expected body %q, got %q", tc.ExpectedBody, result.Body)
 			}
-			
+
 			// Assert required headers
 			for key, expectedValue := range tc.CheckHeaders {
 				if actualValue := result.Headers.Get(key); actualValue != expectedValue {

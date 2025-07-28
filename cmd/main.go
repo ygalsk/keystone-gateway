@@ -37,6 +37,7 @@ type HealthStatus struct {
 type Application struct {
 	gateway   *routing.Gateway
 	luaEngine *lua.Engine // New: embedded Lua engine for route definition
+	config    *config.Config // Configuration for the application
 }
 
 // NewApplicationWithLuaRouting creates an application with embedded Lua routing
@@ -57,6 +58,7 @@ func NewApplicationWithLuaRouting(cfg *config.Config, router *chi.Mux) *Applicat
 	return &Application{
 		gateway:   gateway,
 		luaEngine: luaEngine,
+		config:    cfg,
 	}
 }
 
@@ -133,6 +135,13 @@ func (app *Application) setupBaseMiddleware(r *chi.Mux) {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
+	
+	// Add compression middleware for better performance on text content
+	compressionConfig := app.config.GetCompressionConfig()
+	if compressionConfig.Enabled {
+		r.Use(middleware.Compress(compressionConfig.Level, compressionConfig.ContentTypes...))
+	}
+	
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
 
 	// Add host-based routing middleware if we have host-based tenants

@@ -40,6 +40,9 @@ type Gateway struct {
 
 	// New: Dynamic route registry for Lua-defined routes
 	routeRegistry *LuaRouteRegistry
+
+	// ✅ ADD: Shared HTTP transport for connection pooling
+	transport *http.Transport
 }
 
 // NewGatewayWithRouter creates a Gateway with an existing Chi router for dynamic routing
@@ -51,6 +54,22 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 		hybridRouters: make(map[string]map[string]*TenantRouter),
 		startTime:     time.Now(),
 		routeRegistry: NewLuaRouteRegistry(router, nil),
+
+		// ✅ ADD: Configure optimized HTTP transport
+		transport: &http.Transport{
+			MaxIdleConns:        100,              // Total idle connections across all hosts
+			MaxIdleConnsPerHost: 20,               // Idle connections per backend host
+			IdleConnTimeout:     90 * time.Second, // How long to keep idle connections
+			DisableKeepAlives:   false,            // Enable HTTP keep-alive
+
+			// Connection timeouts
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+
+			// Prevent connection leaks
+			MaxConnsPerHost:       50, // Max total connections per host
+			ExpectContinueTimeout: 1 * time.Second,
+		},
 	}
 
 	gw.initializeRouters()
@@ -122,7 +141,7 @@ func (gw *Gateway) MatchRoute(host, path string) (*TenantRouter, string) {
 			return nil, ""
 		}
 	}
-	
+
 	host = ExtractHost(host)
 
 	// Priority 1: Hybrid routing (host + path)
@@ -206,8 +225,8 @@ func ExtractHost(hostHeader string) string {
 			return hostHeader[:closeBracket+1]
 		}
 	}
-	
-	// Handle IPv4 addresses or hostnames: example.com:8080 -> example.com  
+
+	// Handle IPv4 addresses or hostnames: example.com:8080 -> example.com
 	if colonIndex := strings.Index(hostHeader, ":"); colonIndex != -1 {
 		return hostHeader[:colonIndex]
 	}
@@ -230,8 +249,12 @@ func (gw *Gateway) findBestPathMatch(path string, routers map[string]*TenantRout
 }
 
 // CreateProxy creates a reverse proxy for the given backend
+// ✅ FIXED: Now uses shared transport with connection pooling
 func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(backend.URL)
+
+	// ✅ ADD: Use the shared transport with connection pooling
+	proxy.Transport = gw.transport
 
 	proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = backend.URL.Scheme
@@ -267,4 +290,15 @@ func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *htt
 	}
 
 	return proxy
+}
+
+// ✅ ADD: Optional method to get transport stats for monitoring
+func (gw *Gateway) GetTransportStats() map[string]interface{} {
+	// Note: Go's http.Transport doesn't expose detailed stats by default
+	// But you can add custom metrics here or use third-party libraries
+	return map[string]interface{}{
+		"max_idle_conns":          gw.transport.MaxIdleConns,
+		"max_idle_conns_per_host": gw.transport.MaxIdleConnsPerHost,
+		"idle_conn_timeout":       gw.transport.IdleConnTimeout.String(),
+	}
 }

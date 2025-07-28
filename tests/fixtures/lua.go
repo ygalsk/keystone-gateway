@@ -40,18 +40,18 @@ func SetupLuaEngine(t *testing.T) *LuaTestEnv {
 // SetupLuaEngineWithScript creates a Lua engine and writes a script file
 func SetupLuaEngineWithScript(t *testing.T, scriptContent string) *LuaTestEnv {
 	env := SetupLuaEngine(t)
-	
+
 	// Always create the script file, even if content is empty
 	scriptFile := filepath.Join(env.ScriptsDir, "test-script.lua")
 	if err := os.WriteFile(scriptFile, []byte(scriptContent), 0644); err != nil {
 		t.Fatalf("failed to create script file: %v", err)
 	}
-	
+
 	// Reload script paths so the engine can find the newly written script
 	if err := env.Engine.ReloadScripts(); err != nil {
 		t.Fatalf("failed to reload scripts: %v", err)
 	}
-	
+
 	return env
 }
 

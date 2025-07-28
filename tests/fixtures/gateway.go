@@ -24,7 +24,7 @@ type GatewayTestEnv struct {
 func SetupGateway(t *testing.T, cfg *config.Config) *GatewayTestEnv {
 	router := chi.NewRouter()
 	gateway := routing.NewGatewayWithRouter(cfg, router)
-	
+
 	// Set up proxy handler for routing (similar to main.go)
 	proxyHandler := func(w http.ResponseWriter, r *http.Request) {
 		// Validate headers for malformed content
@@ -36,7 +36,7 @@ func SetupGateway(t *testing.T, cfg *config.Config) *GatewayTestEnv {
 				}
 			}
 		}
-		
+
 		// Validate path for null bytes and excessive length
 		if len(r.URL.Path) > 1024 { // Reject paths longer than 1KB
 			http.NotFound(w, r)
@@ -48,7 +48,7 @@ func SetupGateway(t *testing.T, cfg *config.Config) *GatewayTestEnv {
 				return
 			}
 		}
-		
+
 		tenantRouter, stripPrefix := gateway.MatchRoute(r.Host, r.URL.Path)
 		if tenantRouter == nil {
 			http.NotFound(w, r)
@@ -64,11 +64,11 @@ func SetupGateway(t *testing.T, cfg *config.Config) *GatewayTestEnv {
 		proxy := gateway.CreateProxy(backend, stripPrefix)
 		proxy.ServeHTTP(w, r)
 	}
-	
+
 	// Register the proxy handler as catch-all routes
 	router.HandleFunc("/", proxyHandler)
 	router.HandleFunc("/*", proxyHandler)
-	
+
 	return &GatewayTestEnv{
 		Gateway: gateway,
 		Router:  router,
@@ -80,20 +80,20 @@ func SetupGateway(t *testing.T, cfg *config.Config) *GatewayTestEnv {
 func SetupSimpleGateway(t *testing.T, tenantName, pathPrefix string) *GatewayTestEnv {
 	// Create a real mock backend
 	backend := CreateSimpleBackend(t)
-	
+
 	cfg := CreateConfigWithBackend(tenantName, pathPrefix, backend.URL)
 	env := SetupGateway(t, cfg)
-	
+
 	// Store backend reference for cleanup
 	env.Backends = []*httptest.Server{backend}
-	
+
 	// Mark backend as alive for testing
 	if tenantRouter := env.Gateway.GetTenantRouter(tenantName); tenantRouter != nil {
 		for _, gtwBackend := range tenantRouter.Backends {
 			gtwBackend.Alive.Store(true)
 		}
 	}
-	
+
 	return env
 }
 
@@ -101,7 +101,7 @@ func SetupSimpleGateway(t *testing.T, tenantName, pathPrefix string) *GatewayTes
 func SetupMultiTenantGateway(t *testing.T) *GatewayTestEnv {
 	// Create mock backends for each tenant
 	apiBackend := CreateSimpleBackend(t)
-	webBackend := CreateSimpleBackend(t) 
+	webBackend := CreateSimpleBackend(t)
 	mobileBackend := CreateSimpleBackend(t)
 	adminBackend := CreateSimpleBackend(t)
 	apiPathBackend := CreateSimpleBackend(t)
@@ -166,13 +166,13 @@ func SetupMultiTenantGateway(t *testing.T) *GatewayTestEnv {
 	}
 
 	env := SetupGateway(t, cfg)
-	
+
 	// Store backend references for cleanup
 	env.Backends = []*httptest.Server{
-		apiBackend, webBackend, mobileBackend, 
+		apiBackend, webBackend, mobileBackend,
 		adminBackend, apiPathBackend, hybridBackend,
 	}
-	
+
 	// Mark all backends as alive for testing
 	tenantNames := []string{"api-tenant", "web-tenant", "mobile-tenant", "admin-tenant", "api-path-tenant", "hybrid-tenant"}
 	for _, tenantName := range tenantNames {
@@ -182,7 +182,7 @@ func SetupMultiTenantGateway(t *testing.T) *GatewayTestEnv {
 			}
 		}
 	}
-	
+
 	return env
 }
 
@@ -190,13 +190,13 @@ func SetupMultiTenantGateway(t *testing.T) *GatewayTestEnv {
 func SetupHealthAwareGateway(t *testing.T, tenantName string) *GatewayTestEnv {
 	// Create a health-aware mock backend
 	backend := CreateHealthCheckBackend(t)
-	
+
 	cfg := CreateHealthAndAPIConfig(tenantName, backend.URL)
 	env := SetupGateway(t, cfg)
-	
+
 	// Store backend reference for cleanup
 	env.Backends = []*httptest.Server{backend}
-	
+
 	// Mark all backends as alive for testing
 	tenantNames := []string{tenantName + "-health", tenantName}
 	for _, tn := range tenantNames {
@@ -206,7 +206,7 @@ func SetupHealthAwareGateway(t *testing.T, tenantName string) *GatewayTestEnv {
 			}
 		}
 	}
-	
+
 	return env
 }
 
@@ -214,20 +214,20 @@ func SetupHealthAwareGateway(t *testing.T, tenantName string) *GatewayTestEnv {
 func SetupMethodAwareGateway(t *testing.T, tenantName, pathPrefix string) *GatewayTestEnv {
 	// Create a method-aware mock backend
 	backend := CreateMethodAwareBackend(t)
-	
+
 	cfg := CreateConfigWithBackend(tenantName, pathPrefix, backend.URL)
 	env := SetupGateway(t, cfg)
-	
+
 	// Store backend reference for cleanup
 	env.Backends = []*httptest.Server{backend}
-	
+
 	// Mark backend as alive for testing
 	if tenantRouter := env.Gateway.GetTenantRouter(tenantName); tenantRouter != nil {
 		for _, gtwBackend := range tenantRouter.Backends {
 			gtwBackend.Alive.Store(true)
 		}
 	}
-	
+
 	return env
 }
 
@@ -235,20 +235,20 @@ func SetupMethodAwareGateway(t *testing.T, tenantName, pathPrefix string) *Gatew
 func SetupRestrictiveGateway(t *testing.T, tenantName, pathPrefix string) *GatewayTestEnv {
 	// Create a restrictive mock backend
 	backend := CreateRestrictiveBackend(t)
-	
+
 	cfg := CreateConfigWithBackend(tenantName, pathPrefix, backend.URL)
 	env := SetupGateway(t, cfg)
-	
+
 	// Store backend reference for cleanup
 	env.Backends = []*httptest.Server{backend}
-	
+
 	// Mark backend as alive for testing
 	if tenantRouter := env.Gateway.GetTenantRouter(tenantName); tenantRouter != nil {
 		for _, gtwBackend := range tenantRouter.Backends {
 			gtwBackend.Alive.Store(true)
 		}
 	}
-	
+
 	return env
 }
 

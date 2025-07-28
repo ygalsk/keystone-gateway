@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,7 +30,9 @@ type BackendResponse struct {
 func CreateSimpleBackend(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Printf("Failed to write OK response: %v", err)
+		}
 	}))
 }
 
@@ -55,12 +58,12 @@ func CreateCustomBackend(t *testing.T, behavior BackendBehavior) *httptest.Serve
 			if response.Delay > 0 {
 				time.Sleep(response.Delay)
 			}
-			
+
 			// Set custom headers
 			for key, value := range response.Headers {
 				w.Header().Set(key, value)
 			}
-			
+
 			w.WriteHeader(response.StatusCode)
 			w.Write([]byte(response.Body))
 		} else {
@@ -78,13 +81,13 @@ func CreateCustomBackend(t *testing.T, behavior BackendBehavior) *httptest.Serve
 func CreateErrorBackend(t *testing.T) *httptest.Server {
 	return CreateCustomBackend(t, BackendBehavior{
 		ResponseMap: map[string]BackendResponse{
-			"/500": {StatusCode: http.StatusInternalServerError, Body: "Internal Server Error"},
-			"/404": {StatusCode: http.StatusNotFound, Body: "Not Found"},
-			"/400": {StatusCode: http.StatusBadRequest, Body: "Bad Request"},
-			"/503": {StatusCode: http.StatusServiceUnavailable, Body: "Service Unavailable"},
+			"/500":     {StatusCode: http.StatusInternalServerError, Body: "Internal Server Error"},
+			"/404":     {StatusCode: http.StatusNotFound, Body: "Not Found"},
+			"/400":     {StatusCode: http.StatusBadRequest, Body: "Bad Request"},
+			"/503":     {StatusCode: http.StatusServiceUnavailable, Body: "Service Unavailable"},
 			"/timeout": {StatusCode: http.StatusRequestTimeout, Delay: 100 * time.Millisecond},
-			"/empty": {StatusCode: http.StatusOK, Body: ""},
-			"/large": {StatusCode: http.StatusOK, Body: strings.Repeat("x", 1024*1024)},
+			"/empty":   {StatusCode: http.StatusOK, Body: ""},
+			"/large":   {StatusCode: http.StatusOK, Body: strings.Repeat("x", 1024*1024)},
 			"/invalid-json": {
 				StatusCode: http.StatusOK,
 				Body:       "invalid json {",
@@ -108,7 +111,7 @@ func CreateSlowBackend(t *testing.T, delay time.Duration) *httptest.Server {
 func CreateEchoBackend(t *testing.T) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		
+
 		response := map[string]interface{}{
 			"method":  r.Method,
 			"path":    r.URL.Path,
@@ -116,7 +119,7 @@ func CreateEchoBackend(t *testing.T) *httptest.Server {
 			"headers": r.Header,
 			"body":    string(body),
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(response)
@@ -156,7 +159,9 @@ func CreateDropConnectionBackend(t *testing.T) *httptest.Server {
 		if hijacker, ok := w.(http.Hijacker); ok {
 			conn, _, err := hijacker.Hijack()
 			if err == nil {
-				conn.Close()
+				if closeErr := conn.Close(); closeErr != nil {
+					log.Printf("Failed to close hijacked connection: %v", closeErr)
+				}
 				return
 			}
 		}
@@ -179,15 +184,17 @@ func CreateMethodAwareBackend(t *testing.T) *httptest.Server {
 			"HEAD":    true,
 			"OPTIONS": true,
 		}
-		
+
 		if !allowedMethods[r.Method] {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			w.Write([]byte("Method not allowed"))
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Printf("Failed to write OK response: %v", err)
+		}
 	}))
 }
 
@@ -197,10 +204,12 @@ func CreateRestrictiveBackend(t *testing.T) *httptest.Server {
 		// Only respond to /test, not percent-encoded variations
 		if r.URL.Path == "/test" {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("OK"))
+			if _, err := w.Write([]byte("OK")); err != nil {
+			log.Printf("Failed to write OK response: %v", err)
+		}
 			return
 		}
-		
+
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Not Found"))
 	}))
@@ -216,9 +225,11 @@ func CreateHealthAwareBackend(t *testing.T) *httptest.Server {
 			w.Write([]byte(`{"status":"healthy"}`))
 			return
 		}
-		
+
 		// Handle API routes (these come with stripped paths)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Printf("Failed to write OK response: %v", err)
+		}
 	}))
 }

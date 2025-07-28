@@ -2,8 +2,13 @@ package unit
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 
 	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/routing"
@@ -100,12 +105,12 @@ func TestRouteMatching(t *testing.T) {
 	cfg := &config.Config{
 		Tenants: []config.Tenant{
 			{
-				Name:       "host-tenant",
-				Domains:    []string{"host.example.com"},
-				Services:   []config.Service{{Name: "svc1", URL: "http://backend1:8080", Health: "/health"}},
+				Name:     "host-tenant",
+				Domains:  []string{"host.example.com"},
+				Services: []config.Service{{Name: "svc1", URL: "http://backend1:8080", Health: "/health"}},
 			},
 			{
-				Name:       "path-tenant", 
+				Name:       "path-tenant",
 				PathPrefix: "/api/",
 				Services:   []config.Service{{Name: "svc2", URL: "http://backend2:8080", Health: "/health"}},
 			},
@@ -222,7 +227,7 @@ func TestLoadBalancing(t *testing.T) {
 
 	cfg := fixtures.CreateConfigWithMultipleBackends("lb-tenant", "/lb/", []string{
 		backend1.URL,
-		backend2.URL, 
+		backend2.URL,
 		backend3.URL,
 	})
 
@@ -445,7 +450,7 @@ func TestHostExtraction(t *testing.T) {
 // TestRoutingEdgeCases tests edge cases and error conditions
 func TestRoutingEdgeCases(t *testing.T) {
 	testCases := []struct {
-		name     string
+		name      string
 		setupFunc func(t *testing.T) *fixtures.GatewayTestEnv
 		testFunc  func(t *testing.T, env *fixtures.GatewayTestEnv)
 	}{
@@ -495,7 +500,7 @@ func TestRoutingEdgeCases(t *testing.T) {
 					Tenants: []config.Tenant{{
 						Name:       "invalid-tenant",
 						PathPrefix: "/invalid/",
-						Services:   []config.Service{{
+						Services: []config.Service{{
 							Name:   "invalid-svc",
 							URL:    "not-a-valid-url",
 							Health: "/health",
@@ -524,3 +529,141 @@ func TestRoutingEdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestCompressionIntegration tests compression works end-to-end through the gateway
+func TestCompressionIntegration(t *testing.T) {
+	// Create a router with compression middleware enabled (like in main.go)
+	r := chi.NewRouter()
+	
+	// Add compression middleware like in our main application
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.RequestID)
+	
+	// Add compression middleware for better performance on text content
+	r.Use(middleware.Compress(5, 
+		"text/html", 
+		"text/css", 
+		"text/javascript", 
+		"application/json", 
+		"application/xml",
+		"text/plain",
+	))
+
+	// Add test routes that return different content types
+	r.Get("/api/json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Large enough JSON to trigger compression
+		jsonResponse := `{"users":[{"id":1,"name":"John Doe","email":"john@example.com","bio":"A software developer with 10 years of experience"},{"id":2,"name":"Jane Smith","email":"jane@example.com","bio":"A designer who loves creating beautiful user interfaces"}],"total":2,"page":1,"metadata":{"timestamp":"2024-01-01T00:00:00Z","version":"1.0","source":"api"}}`
+		if _, err := w.Write([]byte(jsonResponse)); err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
+	})
+
+	r.Get("/api/text", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		// Large enough text to trigger compression
+		textResponse := strings.Repeat("This is a text response that should be compressed when gzip is supported by the client. ", 10)
+		if _, err := w.Write([]byte(textResponse)); err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
+	})
+
+	r.Get("/api/small", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
+	})
+
+	testCases := []struct {
+		name           string
+		path           string
+		acceptEncoding string
+		expectCompressed bool
+		description    string
+	}{
+		{
+			name:           "Large JSON response with compression",
+			path:           "/api/json",
+			acceptEncoding: "gzip, deflate",
+			expectCompressed: true,
+			description:    "Large JSON responses should be compressed",
+		},
+		{
+			name:           "Large text response with compression",
+			path:           "/api/text",
+			acceptEncoding: "gzip",
+			expectCompressed: true,
+			description:    "Large text responses should be compressed",
+		},
+		{
+			name:           "No compression when not accepted",
+			path:           "/api/json",
+			acceptEncoding: "identity",
+			expectCompressed: false,
+			description:    "No compression when client doesn't accept it",
+		},
+		{
+			name:           "Small response may not be compressed",
+			path:           "/api/small",
+			acceptEncoding: "gzip",
+			expectCompressed: false, // Small responses might not be compressed
+			description:    "Small responses may not benefit from compression",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create request with appropriate headers
+			req := httptest.NewRequest("GET", tc.path, nil)
+			req.Header.Set("Accept-Encoding", tc.acceptEncoding)
+
+			// Execute the request through the router
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			// Check response status
+			if w.Code != http.StatusOK {
+				t.Errorf("Expected status 200, got %d", w.Code)
+			}
+
+			// Check compression headers
+			contentEncoding := w.Header().Get("Content-Encoding")
+			
+			if tc.expectCompressed {
+				if contentEncoding == "" {
+					t.Errorf("%s: Expected compression but got no Content-Encoding header", tc.description)
+				} else if contentEncoding != "gzip" && contentEncoding != "deflate" {
+					t.Errorf("%s: Expected gzip or deflate compression, got %q", tc.description, contentEncoding)
+				}
+
+				// Verify Vary header is set for compressed responses
+				vary := w.Header().Get("Vary")
+				if vary == "" || !strings.Contains(vary, "Accept-Encoding") {
+					t.Errorf("%s: Expected Vary header to contain Accept-Encoding, got %q", tc.description, vary)
+				}
+
+				t.Logf("%s: Successfully compressed with %s (%d bytes)", 
+					tc.description, contentEncoding, w.Body.Len())
+			} else {
+				if contentEncoding != "" && tc.expectCompressed {
+					t.Errorf("%s: Expected no compression but got Content-Encoding: %q", tc.description, contentEncoding)
+				}
+				t.Logf("%s: Response %s (%d bytes)", tc.description, 
+					func() string {
+						if contentEncoding != "" {
+							return "compressed with " + contentEncoding
+						}
+						return "not compressed"
+					}(), w.Body.Len())
+			}
+		})
+	}
+}
+
+

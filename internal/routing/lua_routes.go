@@ -16,10 +16,10 @@ import (
 // LuaRouteRegistry manages dynamic route registration from Lua scripts with thread safety
 type LuaRouteRegistry struct {
 	router           *chi.Mux
-	routeGroups      map[string]*chi.Mux // tenant -> submux for tenant routes
-	registeredRoutes map[string]bool     // track registered routes to prevent duplicates
+	routeGroups      map[string]*chi.Mux               // tenant -> submux for tenant routes
+	registeredRoutes map[string]bool                   // track registered routes to prevent duplicates
 	middleware       map[string][]MiddlewareDefinition // tenant -> middleware definitions
-	mu               sync.RWMutex        // protects routeGroups and registeredRoutes maps
+	mu               sync.RWMutex                      // protects routeGroups and registeredRoutes maps
 	Engine           interface {
 		GetScript(string) (string, bool)
 		SetupChiBindings(*lua.LState, string, string)
@@ -110,10 +110,10 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	
+
 	// Store the middleware definition for later application
 	r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
-	
+
 	return nil
 }
 
@@ -210,77 +210,6 @@ func (r *LuaRouteRegistry) getTenantSubmux(tenantName string) *chi.Mux {
 	return submux
 }
 
-// getMatchingMiddleware returns all middleware that matches the given route pattern
-func (r *LuaRouteRegistry) getMatchingMiddleware(tenantName, routePattern string) []func(http.Handler) http.Handler {
-	r.mu.RLock()
-	middlewares := r.middleware[tenantName]
-	r.mu.RUnlock()
-
-	var matching []func(http.Handler) http.Handler
-	for _, mw := range middlewares {
-		// Check if the route pattern matches the middleware pattern
-		if r.patternMatches(routePattern, mw.Pattern) {
-			matching = append(matching, mw.Middleware)
-		}
-	}
-	return matching
-}
-
-// wrapHandlerWithMiddleware wraps a handler with a chain of middleware
-func (r *LuaRouteRegistry) wrapHandlerWithMiddleware(handler http.HandlerFunc, middleware []func(http.Handler) http.Handler) http.HandlerFunc {
-	// Apply middleware in reverse order (last middleware wraps first)
-	wrapped := http.Handler(handler)
-	for i := len(middleware) - 1; i >= 0; i-- {
-		wrapped = middleware[i](wrapped)
-	}
-	return wrapped.ServeHTTP
-}
-
-// patternMatches checks if a route pattern matches a middleware pattern
-// For simplicity, we use basic pattern matching with wildcards
-func (r *LuaRouteRegistry) patternMatches(routePattern, middlewarePattern string) bool {
-	// Handle exact matches
-	if routePattern == middlewarePattern {
-		return true
-	}
-	
-	// Handle wildcard patterns (e.g., "/protected/*" matches "/protected/data")
-	if strings.HasSuffix(middlewarePattern, "/*") {
-		prefix := strings.TrimSuffix(middlewarePattern, "/*")
-		return strings.HasPrefix(routePattern, prefix)
-	}
-	
-	return false
-}
-
-// applyMatchingMiddleware wraps a handler with all matching middleware for the route
-func (r *LuaRouteRegistry) applyMatchingMiddleware(handler http.HandlerFunc, tenantName, routePattern string) http.HandlerFunc {
-	r.mu.RLock()
-	middlewares := r.middleware[tenantName]
-	r.mu.RUnlock()
-	
-	// Find matching middleware
-	var matchingMiddleware []func(http.Handler) http.Handler
-	for _, mw := range middlewares {
-		if r.patternMatches(routePattern, mw.Pattern) {
-			matchingMiddleware = append(matchingMiddleware, mw.Middleware)
-		}
-	}
-	
-	// If no middleware matches, return original handler
-	if len(matchingMiddleware) == 0 {
-		return handler
-	}
-	
-	// Apply middleware chain
-	wrapped := http.Handler(handler)
-	for i := len(matchingMiddleware) - 1; i >= 0; i-- {
-		wrapped = matchingMiddleware[i](wrapped)
-	}
-	
-	return wrapped.ServeHTTP
-}
-
 // registerSubgroup recursively registers subgroups
 func (r *LuaRouteRegistry) registerSubgroup(parent chi.Router, def RouteGroupDefinition) {
 	parent.Route(def.Pattern, func(gr chi.Router) {
@@ -360,7 +289,7 @@ func (api *RouteRegistryAPI) Clear(tenantName string) {
 func (r *LuaRouteRegistry) registerRouteByMethod(router chi.Router, route RouteDefinition) {
 	// Apply middleware that matches this route pattern
 	handler := r.applyMiddleware(route)
-	
+
 	switch route.Method {
 	case "GET":
 		router.Get(route.Pattern, handler)
@@ -395,9 +324,9 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
 	r.mu.RLock()
 	middlewares := r.middleware[route.TenantName]
 	r.mu.RUnlock()
-	
+
 	var handler http.Handler = route.Handler
-	
+
 	// Apply middleware in reverse order (last registered middleware wraps first)
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		mw := middlewares[i]
@@ -405,7 +334,7 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
 			handler = mw.Middleware(handler)
 		}
 	}
-	
+
 	return handler.ServeHTTP
 }
 
@@ -415,7 +344,7 @@ func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware
 	// Get the effective patterns to compare
 	middlewarePattern := middleware.Pattern
 	routePattern := route.Pattern
-	
+
 	// Handle group-scoped middleware
 	if middleware.GroupPattern != "" {
 		// Group middleware: only applies to routes in the same group
@@ -427,13 +356,13 @@ func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware
 		middlewarePattern = middleware.GroupPattern + middleware.Pattern
 	}
 	// Global middleware (empty GroupPattern): applies to all routes regardless of group
-	
+
 	// Handle wildcard patterns like "/protected/*" or "/api/v1/*"
 	if strings.HasSuffix(middlewarePattern, "/*") {
 		prefix := strings.TrimSuffix(middlewarePattern, "/*")
 		return strings.HasPrefix(routePattern, prefix)
 	}
-	
+
 	// Exact match
 	return routePattern == middlewarePattern
 }
@@ -443,27 +372,28 @@ func validateRoutePattern(pattern string) error {
 	if pattern == "" {
 		return fmt.Errorf("route pattern cannot be empty")
 	}
-	
+
 	if !strings.HasPrefix(pattern, "/") {
 		return fmt.Errorf("route pattern must begin with '/'")
 	}
-	
+
 	// Check for unmatched parameter braces
 	braceCount := 0
 	for i, char := range pattern {
-		if char == '{' {
+		switch char {
+		case '{':
 			braceCount++
-		} else if char == '}' {
+		case '}':
 			braceCount--
 			if braceCount < 0 {
 				return fmt.Errorf("unmatched closing brace '}' at position %d", i)
 			}
 		}
 	}
-	
+
 	if braceCount > 0 {
 		return fmt.Errorf("route param closing delimiter '}' is missing")
 	}
-	
+
 	return nil
 }

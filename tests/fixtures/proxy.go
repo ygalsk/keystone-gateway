@@ -16,14 +16,14 @@ type ProxyTestEnv struct {
 func SetupProxy(t *testing.T, tenantName, pathPrefix string, backend *httptest.Server) *ProxyTestEnv {
 	cfg := CreateConfigWithBackend(tenantName, pathPrefix, backend.URL)
 	gatewayEnv := SetupGateway(t, cfg)
-	
+
 	// Ensure backend is marked as alive
 	if tenantRouter := gatewayEnv.Gateway.GetTenantRouter(tenantName); tenantRouter != nil {
 		if len(tenantRouter.Backends) > 0 {
 			tenantRouter.Backends[0].Alive.Store(true)
 		}
 	}
-	
+
 	return &ProxyTestEnv{
 		GatewayTestEnv: gatewayEnv,
 		Backend:        backend,
@@ -33,7 +33,7 @@ func SetupProxy(t *testing.T, tenantName, pathPrefix string, backend *httptest.S
 // SetupProxyWithHandler creates a proxy environment and registers a proxy handler
 func SetupProxyWithHandler(t *testing.T, tenantName, pathPrefix, routePattern string, backend *httptest.Server) *ProxyTestEnv {
 	env := SetupProxy(t, tenantName, pathPrefix, backend)
-	
+
 	// Register the standard proxy handler
 	env.Router.HandleFunc(routePattern, func(w http.ResponseWriter, r *http.Request) {
 		router, stripPrefix := env.Gateway.MatchRoute(r.Host, r.URL.Path)
@@ -49,7 +49,7 @@ func SetupProxyWithHandler(t *testing.T, tenantName, pathPrefix, routePattern st
 		proxy := env.Gateway.CreateProxy(backend, stripPrefix)
 		proxy.ServeHTTP(w, r)
 	})
-	
+
 	return env
 }
 

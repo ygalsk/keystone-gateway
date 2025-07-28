@@ -31,7 +31,7 @@ func TestErrorBackendIntegration(t *testing.T) {
 		},
 		{
 			Name:           "backend 400 error propagation",
-			Method:         "GET", 
+			Method:         "GET",
 			Path:           "/error/400",
 			ExpectedStatus: http.StatusBadRequest,
 		},
@@ -163,7 +163,7 @@ func TestSlowBackendIntegration(t *testing.T) {
 		}
 
 		totalTime := time.Since(start)
-		
+
 		// All requests should complete relatively quickly due to concurrency
 		if totalTime > 1*time.Second {
 			t.Errorf("Concurrent requests took too long: %v", totalTime)
@@ -177,20 +177,20 @@ func TestEchoBackendIntegration(t *testing.T) {
 	defer env.Cleanup()
 
 	testCases := []struct {
-		name            string
-		method          string
-		path            string
-		headers         map[string]string
-		body            string
-		checkResponse   func(t *testing.T, body string)
+		name          string
+		method        string
+		path          string
+		headers       map[string]string
+		body          string
+		checkResponse func(t *testing.T, body string)
 	}{
 		{
 			name:   "echo GET request details",
 			method: "GET",
 			path:   "/echo/test",
 			headers: map[string]string{
-				"User-Agent":   "test-client/1.0",
-				"X-Custom":     "custom-value",
+				"User-Agent": "test-client/1.0",
+				"X-Custom":   "custom-value",
 			},
 			checkResponse: func(t *testing.T, body string) {
 				if !strings.Contains(body, "GET") {
@@ -212,7 +212,7 @@ func TestEchoBackendIntegration(t *testing.T) {
 			method: "POST",
 			path:   "/echo/data",
 			headers: map[string]string{
-				"Content-Type": "application/json",
+				"Content-Type":  "application/json",
 				"Authorization": "Bearer token123",
 			},
 			body: `{"message": "test data", "id": 123}`,
@@ -280,7 +280,7 @@ func TestEchoBackendIntegration(t *testing.T) {
 				req.Header.Set(k, v)
 			}
 			resp := fixtures.ExecuteHTTPTestWithRequest(env.Router, req)
-			
+
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
@@ -298,8 +298,8 @@ func TestHeaderEchoBackendIntegration(t *testing.T) {
 	defer env.Cleanup()
 
 	testCases := []struct {
-		name     string
-		headers  map[string]string
+		name         string
+		headers      map[string]string
 		checkHeaders func(t *testing.T, headers map[string]string)
 	}{
 		{
@@ -363,7 +363,7 @@ func TestHeaderEchoBackendIntegration(t *testing.T) {
 				req.Header.Set(k, v)
 			}
 			resp := fixtures.ExecuteHTTPTestWithRequest(env.Router, req)
-			
+
 			if resp.StatusCode != http.StatusOK {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
@@ -374,7 +374,6 @@ func TestHeaderEchoBackendIntegration(t *testing.T) {
 				t.Errorf("Failed to parse JSON response: %v", err)
 				return
 			}
-
 
 			tc.checkHeaders(t, responseHeaders)
 		})
@@ -388,11 +387,11 @@ func TestDropConnectionBackendIntegration(t *testing.T) {
 	defer env.Cleanup()
 
 	testCases := []struct {
-		name           string
-		method         string
-		path           string
-		expectError    bool
-		timeoutLimit   time.Duration
+		name         string
+		method       string
+		path         string
+		expectError  bool
+		timeoutLimit time.Duration
 	}{
 		{
 			name:         "GET request to dropping backend",
@@ -420,10 +419,10 @@ func TestDropConnectionBackendIntegration(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			start := time.Now()
-			
+
 			req := httptest.NewRequest(tc.method, tc.path, nil)
 			resp := fixtures.ExecuteHTTPTestWithRequest(env.Router, req)
-			
+
 			duration := time.Since(start)
 
 			// Connection drop should result in 502 Bad Gateway or similar error
@@ -507,23 +506,23 @@ func TestCustomBackendBehavior(t *testing.T) {
 	// Test slow endpoint timing
 	t.Run("slow endpoint timing", func(t *testing.T) {
 		start := time.Now()
-		
+
 		testCase := fixtures.HTTPTestCase{
 			Name:           "timing test",
 			Method:         "GET",
 			Path:           "/api/slow",
 			ExpectedStatus: http.StatusOK,
 		}
-		
+
 		fixtures.RunHTTPTestCases(t, env.Router, []fixtures.HTTPTestCase{testCase})
-		
+
 		duration := time.Since(start)
-		
+
 		// Should take at least the configured delay
 		if duration < 200*time.Millisecond {
 			t.Errorf("Request completed too quickly: %v < 200ms", duration)
 		}
-		
+
 		// But not too much longer
 		if duration > 500*time.Millisecond {
 			t.Errorf("Request took too long: %v > 500ms", duration)
@@ -536,7 +535,7 @@ func TestCustomBackendBehavior(t *testing.T) {
 // TestBackendIntegrationEdgeCases tests edge cases in backend integration
 func TestBackendIntegrationEdgeCases(t *testing.T) {
 	testCases := []struct {
-		name     string
+		name      string
 		setupFunc func(t *testing.T) (*fixtures.ProxyTestEnv, func())
 		testFunc  func(t *testing.T, env *fixtures.ProxyTestEnv)
 	}{
@@ -563,7 +562,7 @@ func TestBackendIntegrationEdgeCases(t *testing.T) {
 				if resp.StatusCode != http.StatusOK {
 					t.Errorf("Expected status 200, got %d", resp.StatusCode)
 				}
-				
+
 				body := resp.Body
 				if len(body) != 1024*1024 {
 					t.Errorf("Expected body length 1MB, got %d bytes", len(body))
@@ -593,7 +592,7 @@ func TestBackendIntegrationEdgeCases(t *testing.T) {
 				if resp.StatusCode != http.StatusOK {
 					t.Errorf("Expected status 200, got %d", resp.StatusCode)
 				}
-				
+
 				if !strings.Contains(resp.Body, "测试") {
 					t.Error("Response should contain Unicode characters")
 				}

@@ -57,15 +57,15 @@
 				
 				<option value="file0">keystone-gateway/internal/config/config.go (100.0%)</option>
 				
-				<option value="file1">keystone-gateway/internal/lua/chi_bindings.go (84.6%)</option>
+				<option value="file1">keystone-gateway/internal/lua/chi_bindings.go (85.4%)</option>
 				
 				<option value="file2">keystone-gateway/internal/lua/engine.go (82.3%)</option>
 				
-				<option value="file3">keystone-gateway/internal/lua/state_pool.go (68.3%)</option>
+				<option value="file3">keystone-gateway/internal/lua/state_pool.go (78.6%)</option>
 				
 				<option value="file4">keystone-gateway/internal/routing/gateway.go (89.2%)</option>
 				
-				<option value="file5">keystone-gateway/internal/routing/lua_routes.go (66.7%)</option>
+				<option value="file5">keystone-gateway/internal/routing/lua_routes.go (91.0%)</option>
 				
 				</select>
 			</div>
@@ -142,12 +142,12 @@ func LoadConfig(path string) (*Config, error) <span class="cov8" title="1">{
         }</span>
 
         <span class="cov8" title="1">var cfg Config
-        
+
         // Handle empty or whitespace-only files gracefully
         if len(strings.TrimSpace(string(data))) == 0 </span><span class="cov8" title="1">{
                 return &amp;cfg, nil // Return empty config for whitespace-only files
         }</span>
-        
+
         <span class="cov8" title="1">if err := yaml.Unmarshal(data, &amp;cfg); err != nil </span><span class="cov8" title="1">{
                 return nil, fmt.Errorf("failed to parse config: %w", err)
         }</span>
@@ -187,12 +187,12 @@ func isValidDomain(domain string) bool <span class="cov8" title="1">{
         if domain == "" || strings.Contains(domain, " ") </span><span class="cov8" title="1">{
                 return false
         }</span>
-        
+
         // Reject IP addresses (both IPv4 and IPv6)
         <span class="cov8" title="1">if net.ParseIP(domain) != nil </span><span class="cov8" title="1">{
                 return false
         }</span>
-        
+
         // Basic domain validation: must contain a dot and have valid format
         <span class="cov8" title="1">return strings.Contains(domain, ".")</span>
 }
@@ -223,10 +223,10 @@ type MiddlewareAction struct {
 
 // MiddlewareLogic represents the cached logic for a middleware function
 type MiddlewareLogic struct {
-        Pattern     string              `json:"pattern"`
-        TenantName  string              `json:"tenant_name"`
-        Actions     []MiddlewareAction  `json:"actions"`
-        CallNext    bool                `json:"call_next"`
+        Pattern    string             `json:"pattern"`
+        TenantName string             `json:"tenant_name"`
+        Actions    []MiddlewareAction `json:"actions"`
+        CallNext   bool               `json:"call_next"`
 }
 
 // MiddlewareCache provides thread-safe caching of middleware logic
@@ -248,7 +248,7 @@ func (m *mockResponseWriter) Header() http.Header <span class="cov8" title="1">{
         <span class="cov8" title="1">return m.headers</span>
 }
 
-func (m *mockResponseWriter) Write([]byte) (int, error) <span class="cov0" title="0">{
+func (m *mockResponseWriter) Write([]byte) (int, error) <span class="cov8" title="1">{
         return 0, nil
 }</span>
 
@@ -273,7 +273,7 @@ func (m *mockResponseWriter) getActions() []MiddlewareAction <span class="cov8" 
 
 type mockRequest struct{}
 
-func (m *mockRequest) Method() string       <span class="cov0" title="0">{ return "GET" }</span>
+func (m *mockRequest) Method() string      <span class="cov0" title="0">{ return "GET" }</span>
 func (m *mockRequest) URL() string         <span class="cov0" title="0">{ return "/" }</span>
 func (m *mockRequest) Header() http.Header <span class="cov0" title="0">{ return make(http.Header) }</span>
 
@@ -321,7 +321,7 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int <s
                 L.ArgError(1, "chi_route requires method, pattern, and handler function")
                 return 0
         }</span>
-        
+
         // Check if we're inside a group context
         <span class="cov8" title="1">var groupPattern string
         if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil </span><span class="cov8" title="1">{
@@ -346,8 +346,6 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int <s
         // Create a thread-safe handler using the state pool
         <span class="cov8" title="1">luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, scriptTag, e.statePool, e)
 
-        
-        
         // Register the route with the simplified registry
         err := e.routeRegistry.RegisterRoute(routing.RouteDefinition{
                 TenantName:   tenantName,
@@ -378,7 +376,6 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
         if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil </span><span class="cov8" title="1">{
                 groupPattern = groupCtx.String()
         }</span>
-        
 
         // Check if we already have cached logic for this middleware
         <span class="cov8" title="1">if cachedLogic, exists := e.getCachedMiddleware(tenantName, pattern, groupPattern); exists </span><span class="cov8" title="1">{
@@ -388,7 +385,7 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
                                 e.executeMiddlewareLogic(cachedLogic, w, r, next)
                         }</span>)
                 }
-                
+
                 // Register with the route registry, including group context
                 <span class="cov8" title="1">err := e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
                         TenantName:   tenantName,
@@ -408,11 +405,11 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
                 L.RaiseError("Failed to parse middleware logic: %v", err)
                 return 0
         }</span>
-        
+
         // Cache the parsed logic
         <span class="cov8" title="1">logic.TenantName = tenantName
         e.setCachedMiddleware(tenantName, pattern, groupPattern, logic)
-        
+
         // Create Go middleware that executes the cached logic directly
         middleware := func(next http.Handler) http.Handler </span><span class="cov8" title="1">{
                 return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) </span><span class="cov8" title="1">{
@@ -447,7 +444,7 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int <span class="
         // Execute the setup function to collect group routes and middleware
         // Save current group context
         <span class="cov8" title="1">oldGroupContext := L.GetGlobal("__current_group_pattern")
-        
+
         // Build nested group pattern by combining with parent group
         var fullPattern string
         if oldGroupContext != lua.LNil </span><span class="cov8" title="1">{
@@ -460,26 +457,25 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int <span class="
         } else<span class="cov8" title="1"> {
                 fullPattern = pattern
         }</span>
-        
+
         <span class="cov8" title="1">L.SetGlobal("__current_group_pattern", lua.LString(fullPattern))
-        
+
         // Execute the setup function
         err := L.CallByParam(lua.P{
                 Fn:      setupFunc,
                 NRet:    0,
                 Protect: true,
         })
-        
+
         // Restore previous group context
         L.SetGlobal("__current_group_pattern", oldGroupContext)
-        
+
         if err != nil </span><span class="cov0" title="0">{
                 L.RaiseError("Failed to execute group setup function: %v", err)
         }</span>
 
         <span class="cov8" title="1">return 0</span>
 }
-
 
 // Cache methods for middleware logic
 
@@ -492,7 +488,7 @@ func (e *Engine) getCachedMiddleware(tenantName, pattern, groupPattern string) (
         return logic, exists
 }</span>
 
-// setCachedMiddleware stores middleware logic thread-safely  
+// setCachedMiddleware stores middleware logic thread-safely
 func (e *Engine) setCachedMiddleware(tenantName, pattern, groupPattern string, logic *MiddlewareLogic) <span class="cov8" title="1">{
         key := fmt.Sprintf("%s_%s_%s", tenantName, groupPattern, pattern)
         e.middlewareCache.mu.Lock()
@@ -504,7 +500,7 @@ func (e *Engine) setCachedMiddleware(tenantName, pattern, groupPattern string, l
 func (e *Engine) parseLuaMiddlewareLogic(L *lua.LState, middlewareFunc *lua.LFunction, pattern string) (*MiddlewareLogic, error) <span class="cov8" title="1">{
         // Execute the function in a controlled environment to extract its logic
         // Create a mock HTTP request and response writer to capture actions
-        
+
         // Create a proper mock request with URL
         mockURL := &amp;url.URL{Path: "/"}
         mockReq := &amp;http.Request{
@@ -512,36 +508,36 @@ func (e *Engine) parseLuaMiddlewareLogic(L *lua.LState, middlewareFunc *lua.LFun
                 URL:    mockURL,
                 Header: make(http.Header),
         }
-        
+
         mockWriter := &amp;mockResponseWriter{}
         respWriter := &amp;luaResponseWriter{w: mockWriter}
         respTable := createLuaResponse(L, respWriter)
         reqTable := createLuaRequest(L, mockReq)
-        
+
         nextCalled := false
         nextFunc := L.NewFunction(func(L *lua.LState) int </span><span class="cov8" title="1">{
                 nextCalled = true
                 return 0
         }</span>)
-        
+
         // Execute the middleware function to capture its actions
         <span class="cov8" title="1">err := L.CallByParam(lua.P{
                 Fn:      middlewareFunc,
                 NRet:    0,
                 Protect: true,
         }, respTable, reqTable, nextFunc)
-        
+
         if err != nil </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("failed to parse middleware logic: %v", err)
         }</span>
-        
+
         // Extract actions from the mock response writer
         <span class="cov8" title="1">actions := mockWriter.getActions()
-        
+
         return &amp;MiddlewareLogic{
-                Pattern:    pattern,
-                Actions:    actions,
-                CallNext:   nextCalled,
+                Pattern:  pattern,
+                Actions:  actions,
+                CallNext: nextCalled,
         }, nil</span>
 }
 
@@ -556,10 +552,10 @@ func (e *Engine) executeMiddlewareLogic(logic *MiddlewareLogic, w http.ResponseW
                         w.Header().Add(action.Key, action.Value)</span>
                 case "delete_header":<span class="cov0" title="0">
                         w.Header().Del(action.Key)</span>
-                // Add more action types as needed
+                        // Add more action types as needed
                 }
         }
-        
+
         // Call next handler if the original middleware called next
         <span class="cov8" title="1">if logic.CallNext &amp;&amp; next != nil </span><span class="cov8" title="1">{
                 next.ServeHTTP(w, r)
@@ -692,7 +688,7 @@ func (e *Engine) setupBasicBindings(L *lua.LState) <span class="cov8" title="1">
                 log.Printf("[Lua] %s", message)
                 return 0
         }</span>))
-        
+
         // Register the chi module so scripts can use require('chi')
         <span class="cov8" title="1">e.registerChiModule(L)</span>
 }
@@ -884,43 +880,43 @@ func (e *Engine) GetScriptMap() map[string]string <span class="cov0" title="0">{
 func (e *Engine) registerChiModule(L *lua.LState) <span class="cov8" title="1">{
         // Create a chi module table
         chiModule := L.NewTable()
-        
+
         // Add NewRouter function that returns a router table with methods
         newRouterFunc := L.NewFunction(func(L *lua.LState) int </span><span class="cov8" title="1">{
                 routerTable := L.NewTable()
-                
+
                 // Add router methods (Use, Get, Post, Put, Delete, Route, etc.)
                 routerTable.RawSetString("Use", L.NewFunction(func(L *lua.LState) int </span><span class="cov8" title="1">{
                         // For now, return 0 as these are placeholders for the test scripts
                         return 0
                 }</span>))
-                
+
                 <span class="cov8" title="1">routerTable.RawSetString("Get", L.NewFunction(func(L *lua.LState) int </span><span class="cov8" title="1">{
                         return 0
                 }</span>))
-                
+
                 <span class="cov8" title="1">routerTable.RawSetString("Post", L.NewFunction(func(L *lua.LState) int </span><span class="cov0" title="0">{
                         return 0
                 }</span>))
-                
+
                 <span class="cov8" title="1">routerTable.RawSetString("Put", L.NewFunction(func(L *lua.LState) int </span><span class="cov0" title="0">{
                         return 0
                 }</span>))
-                
+
                 <span class="cov8" title="1">routerTable.RawSetString("Delete", L.NewFunction(func(L *lua.LState) int </span><span class="cov0" title="0">{
                         return 0
                 }</span>))
-                
+
                 <span class="cov8" title="1">routerTable.RawSetString("Route", L.NewFunction(func(L *lua.LState) int </span><span class="cov0" title="0">{
                         return 0
                 }</span>))
-                
+
                 <span class="cov8" title="1">L.Push(routerTable)
                 return 1</span>
         })
-        
+
         <span class="cov8" title="1">chiModule.RawSetString("NewRouter", newRouterFunc)
-        
+
         // Register the chi module so it can be loaded with require('chi')
         L.PreloadModule("chi", func(L *lua.LState) int </span><span class="cov8" title="1">{
                 L.Push(chiModule)
@@ -1002,12 +998,12 @@ func (p *LuaStatePool) Get() *lua.LState <span class="cov8" title="1">{
 
 // Put returns a Lua state to the pool
 func (p *LuaStatePool) Put(L *lua.LState) <span class="cov8" title="1">{
-        if L == nil </span><span class="cov0" title="0">{
+        if L == nil </span><span class="cov8" title="1">{
                 return
         }</span>
 
         <span class="cov8" title="1">p.mu.Lock()
-        if p.closed </span><span class="cov0" title="0">{
+        if p.closed </span><span class="cov8" title="1">{
                 // Pool is closed, just close the state
                 L.Close()
                 p.created--
@@ -1019,7 +1015,7 @@ func (p *LuaStatePool) Put(L *lua.LState) <span class="cov8" title="1">{
         select </span>{
         case p.pool &lt;- L:<span class="cov8" title="1"></span>
                 // Successfully returned to pool
-        default:<span class="cov0" title="0">
+        default:<span class="cov8" title="1">
                 // Pool is full, close the state
                 L.Close()
                 p.mu.Lock()
@@ -1029,13 +1025,13 @@ func (p *LuaStatePool) Put(L *lua.LState) <span class="cov8" title="1">{
 }
 
 // Close closes all states in the pool
-func (p *LuaStatePool) Close() <span class="cov0" title="0">{
+func (p *LuaStatePool) Close() <span class="cov8" title="1">{
         p.mu.Lock()
         p.closed = true
         p.mu.Unlock()
-        
+
         close(p.pool)
-        for L := range p.pool </span><span class="cov0" title="0">{
+        for L := range p.pool </span><span class="cov8" title="1">{
                 L.Close()
         }</span>
 }
@@ -1415,7 +1411,7 @@ func (gw *Gateway) MatchRoute(host, path string) (*TenantRouter, string) <span c
                         return nil, ""
                 }</span>
         }
-        
+
         <span class="cov8" title="1">host = ExtractHost(host)
 
         // Priority 1: Hybrid routing (host + path)
@@ -1499,8 +1495,8 @@ func ExtractHost(hostHeader string) string <span class="cov8" title="1">{
                         return hostHeader[:closeBracket+1]
                 }</span>
         }
-        
-        // Handle IPv4 addresses or hostnames: example.com:8080 -&gt; example.com  
+
+        // Handle IPv4 addresses or hostnames: example.com:8080 -&gt; example.com
         <span class="cov8" title="1">if colonIndex := strings.Index(hostHeader, ":"); colonIndex != -1 </span><span class="cov8" title="1">{
                 return hostHeader[:colonIndex]
         }</span>
@@ -1581,10 +1577,10 @@ import (
 // LuaRouteRegistry manages dynamic route registration from Lua scripts with thread safety
 type LuaRouteRegistry struct {
         router           *chi.Mux
-        routeGroups      map[string]*chi.Mux // tenant -&gt; submux for tenant routes
-        registeredRoutes map[string]bool     // track registered routes to prevent duplicates
+        routeGroups      map[string]*chi.Mux               // tenant -&gt; submux for tenant routes
+        registeredRoutes map[string]bool                   // track registered routes to prevent duplicates
         middleware       map[string][]MiddlewareDefinition // tenant -&gt; middleware definitions
-        mu               sync.RWMutex        // protects routeGroups and registeredRoutes maps
+        mu               sync.RWMutex                      // protects routeGroups and registeredRoutes maps
         Engine           interface {
                 GetScript(string) (string, bool)
                 SetupChiBindings(*lua.LState, string, string)
@@ -1675,10 +1671,10 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error <span class=
 func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error <span class="cov8" title="1">{
         r.mu.Lock()
         defer r.mu.Unlock()
-        
+
         // Store the middleware definition for later application
         r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
-        
+
         return nil
 }</span>
 
@@ -1775,77 +1771,6 @@ func (r *LuaRouteRegistry) getTenantSubmux(tenantName string) *chi.Mux <span cla
         return submux</span>
 }
 
-// getMatchingMiddleware returns all middleware that matches the given route pattern
-func (r *LuaRouteRegistry) getMatchingMiddleware(tenantName, routePattern string) []func(http.Handler) http.Handler <span class="cov0" title="0">{
-        r.mu.RLock()
-        middlewares := r.middleware[tenantName]
-        r.mu.RUnlock()
-
-        var matching []func(http.Handler) http.Handler
-        for _, mw := range middlewares </span><span class="cov0" title="0">{
-                // Check if the route pattern matches the middleware pattern
-                if r.patternMatches(routePattern, mw.Pattern) </span><span class="cov0" title="0">{
-                        matching = append(matching, mw.Middleware)
-                }</span>
-        }
-        <span class="cov0" title="0">return matching</span>
-}
-
-// wrapHandlerWithMiddleware wraps a handler with a chain of middleware
-func (r *LuaRouteRegistry) wrapHandlerWithMiddleware(handler http.HandlerFunc, middleware []func(http.Handler) http.Handler) http.HandlerFunc <span class="cov0" title="0">{
-        // Apply middleware in reverse order (last middleware wraps first)
-        wrapped := http.Handler(handler)
-        for i := len(middleware) - 1; i &gt;= 0; i-- </span><span class="cov0" title="0">{
-                wrapped = middleware[i](wrapped)
-        }</span>
-        <span class="cov0" title="0">return wrapped.ServeHTTP</span>
-}
-
-// patternMatches checks if a route pattern matches a middleware pattern
-// For simplicity, we use basic pattern matching with wildcards
-func (r *LuaRouteRegistry) patternMatches(routePattern, middlewarePattern string) bool <span class="cov0" title="0">{
-        // Handle exact matches
-        if routePattern == middlewarePattern </span><span class="cov0" title="0">{
-                return true
-        }</span>
-        
-        // Handle wildcard patterns (e.g., "/protected/*" matches "/protected/data")
-        <span class="cov0" title="0">if strings.HasSuffix(middlewarePattern, "/*") </span><span class="cov0" title="0">{
-                prefix := strings.TrimSuffix(middlewarePattern, "/*")
-                return strings.HasPrefix(routePattern, prefix)
-        }</span>
-        
-        <span class="cov0" title="0">return false</span>
-}
-
-// applyMatchingMiddleware wraps a handler with all matching middleware for the route
-func (r *LuaRouteRegistry) applyMatchingMiddleware(handler http.HandlerFunc, tenantName, routePattern string) http.HandlerFunc <span class="cov0" title="0">{
-        r.mu.RLock()
-        middlewares := r.middleware[tenantName]
-        r.mu.RUnlock()
-        
-        // Find matching middleware
-        var matchingMiddleware []func(http.Handler) http.Handler
-        for _, mw := range middlewares </span><span class="cov0" title="0">{
-                if r.patternMatches(routePattern, mw.Pattern) </span><span class="cov0" title="0">{
-                        matchingMiddleware = append(matchingMiddleware, mw.Middleware)
-                }</span>
-        }
-        
-        // If no middleware matches, return original handler
-        <span class="cov0" title="0">if len(matchingMiddleware) == 0 </span><span class="cov0" title="0">{
-                return handler
-        }</span>
-        
-        // Apply middleware chain
-        <span class="cov0" title="0">wrapped := http.Handler(handler)
-        for i := len(matchingMiddleware) - 1; i &gt;= 0; i-- </span><span class="cov0" title="0">{
-                wrapped = matchingMiddleware[i](wrapped)
-        }</span>
-        
-        <span class="cov0" title="0">return wrapped.ServeHTTP</span>
-}
-
 // registerSubgroup recursively registers subgroups
 func (r *LuaRouteRegistry) registerSubgroup(parent chi.Router, def RouteGroupDefinition) <span class="cov0" title="0">{
         parent.Route(def.Pattern, func(gr chi.Router) </span><span class="cov0" title="0">{
@@ -1871,14 +1796,14 @@ type RouteRegistryAPI struct {
 }
 
 // NewRouteRegistryAPI creates a new API wrapper
-func NewRouteRegistryAPI(router *chi.Mux) *RouteRegistryAPI <span class="cov0" title="0">{
+func NewRouteRegistryAPI(router *chi.Mux) *RouteRegistryAPI <span class="cov8" title="1">{
         return &amp;RouteRegistryAPI{
                 registry: NewLuaRouteRegistry(router, nil),
         }
 }</span>
 
 // Route registers a simple route (called from Lua via chi_route function)
-func (api *RouteRegistryAPI) Route(tenantName, method, pattern string, handler http.HandlerFunc) error <span class="cov0" title="0">{
+func (api *RouteRegistryAPI) Route(tenantName, method, pattern string, handler http.HandlerFunc) error <span class="cov8" title="1">{
         return api.registry.RegisterRoute(RouteDefinition{
                 TenantName: tenantName,
                 Method:     method,
@@ -1888,7 +1813,7 @@ func (api *RouteRegistryAPI) Route(tenantName, method, pattern string, handler h
 }</span>
 
 // Middleware registers middleware for a pattern (called from Lua via chi_middleware function)
-func (api *RouteRegistryAPI) Middleware(tenantName, pattern string, middleware func(http.Handler) http.Handler) error <span class="cov0" title="0">{
+func (api *RouteRegistryAPI) Middleware(tenantName, pattern string, middleware func(http.Handler) http.Handler) error <span class="cov8" title="1">{
         return api.registry.RegisterMiddleware(MiddlewareDefinition{
                 TenantName: tenantName,
                 Pattern:    pattern,
@@ -1897,7 +1822,7 @@ func (api *RouteRegistryAPI) Middleware(tenantName, pattern string, middleware f
 }</span>
 
 // Group registers a route group (called from Lua via chi_group function)
-func (api *RouteRegistryAPI) Group(tenantName, pattern string, middleware []func(http.Handler) http.Handler, setupFunc func(*RouteRegistryAPI)) error <span class="cov0" title="0">{
+func (api *RouteRegistryAPI) Group(tenantName, pattern string, middleware []func(http.Handler) http.Handler, setupFunc func(*RouteRegistryAPI)) error <span class="cov8" title="1">{
         // This will be used by the Lua bindings to set up groups
         // The setupFunc will be called with the API to register routes within the group
         def := RouteGroupDefinition{
@@ -1912,12 +1837,12 @@ func (api *RouteRegistryAPI) Group(tenantName, pattern string, middleware []func
 }</span>
 
 // Mount mounts tenant routes under a path (called from Lua via chi_mount function)
-func (api *RouteRegistryAPI) Mount(tenantName, mountPath string) error <span class="cov0" title="0">{
+func (api *RouteRegistryAPI) Mount(tenantName, mountPath string) error <span class="cov8" title="1">{
         return api.registry.MountTenantRoutes(tenantName, mountPath)
 }</span>
 
 // Clear removes all routes for a tenant
-func (api *RouteRegistryAPI) Clear(tenantName string) <span class="cov0" title="0">{
+func (api *RouteRegistryAPI) Clear(tenantName string) <span class="cov8" title="1">{
         api.registry.ClearTenantRoutes(tenantName)
 }</span>
 
@@ -1925,7 +1850,7 @@ func (api *RouteRegistryAPI) Clear(tenantName string) <span class="cov0" title="
 func (r *LuaRouteRegistry) registerRouteByMethod(router chi.Router, route RouteDefinition) <span class="cov8" title="1">{
         // Apply middleware that matches this route pattern
         handler := r.applyMiddleware(route)
-        
+
         switch route.Method </span>{
         case "GET":<span class="cov8" title="1">
                 router.Get(route.Pattern, handler)</span>
@@ -1937,9 +1862,9 @@ func (r *LuaRouteRegistry) registerRouteByMethod(router chi.Router, route RouteD
                 router.Delete(route.Pattern, handler)</span>
         case "PATCH":<span class="cov8" title="1">
                 router.Patch(route.Pattern, handler)</span>
-        case "OPTIONS":<span class="cov0" title="0">
+        case "OPTIONS":<span class="cov8" title="1">
                 router.Options(route.Pattern, handler)</span>
-        case "HEAD":<span class="cov0" title="0">
+        case "HEAD":<span class="cov8" title="1">
                 router.Head(route.Pattern, handler)</span>
         default:<span class="cov8" title="1">
                 // Handle custom methods that Chi might not support
@@ -1960,9 +1885,9 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
         r.mu.RLock()
         middlewares := r.middleware[route.TenantName]
         r.mu.RUnlock()
-        
+
         var handler http.Handler = route.Handler
-        
+
         // Apply middleware in reverse order (last registered middleware wraps first)
         for i := len(middlewares) - 1; i &gt;= 0; i-- </span><span class="cov8" title="1">{
                 mw := middlewares[i]
@@ -1970,7 +1895,7 @@ func (r *LuaRouteRegistry) applyMiddleware(route RouteDefinition) http.HandlerFu
                         handler = mw.Middleware(handler)
                 }</span>
         }
-        
+
         <span class="cov8" title="1">return handler.ServeHTTP</span>
 }
 
@@ -1980,7 +1905,7 @@ func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware
         // Get the effective patterns to compare
         middlewarePattern := middleware.Pattern
         routePattern := route.Pattern
-        
+
         // Handle group-scoped middleware
         if middleware.GroupPattern != "" </span><span class="cov8" title="1">{
                 // Group middleware: only applies to routes in the same group
@@ -1992,13 +1917,13 @@ func (r *LuaRouteRegistry) routeMatchesPattern(route RouteDefinition, middleware
                 <span class="cov8" title="1">middlewarePattern = middleware.GroupPattern + middleware.Pattern</span>
         }
         // Global middleware (empty GroupPattern): applies to all routes regardless of group
-        
+
         // Handle wildcard patterns like "/protected/*" or "/api/v1/*"
         <span class="cov8" title="1">if strings.HasSuffix(middlewarePattern, "/*") </span><span class="cov8" title="1">{
                 prefix := strings.TrimSuffix(middlewarePattern, "/*")
                 return strings.HasPrefix(routePattern, prefix)
         }</span>
-        
+
         // Exact match
         <span class="cov8" title="1">return routePattern == middlewarePattern</span>
 }
@@ -2008,11 +1933,11 @@ func validateRoutePattern(pattern string) error <span class="cov8" title="1">{
         if pattern == "" </span><span class="cov8" title="1">{
                 return fmt.Errorf("route pattern cannot be empty")
         }</span>
-        
+
         <span class="cov8" title="1">if !strings.HasPrefix(pattern, "/") </span><span class="cov8" title="1">{
                 return fmt.Errorf("route pattern must begin with '/'")
         }</span>
-        
+
         // Check for unmatched parameter braces
         <span class="cov8" title="1">braceCount := 0
         for i, char := range pattern </span><span class="cov8" title="1">{
@@ -2025,11 +1950,11 @@ func validateRoutePattern(pattern string) error <span class="cov8" title="1">{
                         }</span>
                 }
         }
-        
+
         <span class="cov8" title="1">if braceCount &gt; 0 </span><span class="cov8" title="1">{
                 return fmt.Errorf("route param closing delimiter '}' is missing")
         }</span>
-        
+
         <span class="cov8" title="1">return nil</span>
 }
 </pre>

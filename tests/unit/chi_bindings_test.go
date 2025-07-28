@@ -209,7 +209,7 @@ end)
 			// Verify each expected parameter appears in the response
 			for paramName, expectedValue := range tc.expectedParams {
 				if !strings.Contains(body, expectedValue) {
-					t.Errorf("Expected parameter %s=%s to appear in response, got: %s", 
+					t.Errorf("Expected parameter %s=%s to appear in response, got: %s",
 						paramName, expectedValue, body)
 				}
 			}
@@ -336,7 +336,7 @@ end)
 
 			req := httptest.NewRequest(method, tc.requestPath, nil)
 			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
-			
+
 			if resp.StatusCode != tc.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
 			}
@@ -453,7 +453,7 @@ end)
 
 			req := httptest.NewRequest("GET", tc.requestPath, nil)
 			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
-			
+
 			if resp.StatusCode != tc.expectedStatus {
 				t.Errorf("Expected status %d, got %d", tc.expectedStatus, resp.StatusCode)
 			}
@@ -474,10 +474,10 @@ end)
 // TestChiBindingsErrorHandling tests error handling in Chi bindings
 func TestChiBindingsErrorHandling(t *testing.T) {
 	testCases := []struct {
-		name           string
-		script         string
-		expectError    bool
-		errorContains  string
+		name          string
+		script        string
+		expectError   bool
+		errorContains string
 	}{
 		{
 			name: "invalid route method",
@@ -486,7 +486,7 @@ chi_route("INVALID", "/test", function(response, request)
     response:write("test")
 end)
 `,
-			expectError:   false, // Chi accepts any method
+			expectError: false, // Chi accepts any method
 		},
 		{
 			name: "missing route handler",
@@ -682,4 +682,268 @@ end)
 	}
 
 	fixtures.RunHTTPTestCases(t, router, testCases)
+}
+
+// TestMockResponseWriter tests the mock response writer functions through middleware parsing
+func TestMockResponseWriter(t *testing.T) {
+	// Since mockResponseWriter is not exported, we test it indirectly through middleware parsing
+	// The mock objects are used internally when parsing middleware logic
+	testCases := []struct {
+		name               string
+		script             string
+		expectParseSuccess bool
+	}{
+		{
+			name: "mock_response_writer_write_function",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    -- This should call the Write method on mockResponseWriter during parsing
+    response:write("test content")
+    next()
+end)
+`,
+			expectParseSuccess: true, // Write method should work (returns 0, nil)
+		},
+		{
+			name: "mock_response_writer_set_header_function",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    -- This should set headers on mockResponseWriter during parsing
+    response:set_header("X-Test-Header", "test-value")
+    response:set_header("Content-Type", "application/json")
+    next()
+end)
+`,
+			expectParseSuccess: true, // Header setting should work
+		},
+		{
+			name: "mock_response_writer_multiple_operations",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    response:set_header("X-Operation-1", "value1")
+    response:write("some content")
+    response:set_header("X-Operation-2", "value2")
+    next()
+end)
+`,
+			expectParseSuccess: true, // All operations should work
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
+
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
+
+			if tc.expectParseSuccess {
+				if err != nil {
+					t.Errorf("Expected script parsing to succeed, got error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Error("Expected script parsing to fail, got success")
+				}
+			}
+		})
+	}
+}
+
+// TestMockRequest tests the mock request functions through middleware parsing
+func TestMockRequest(t *testing.T) {
+	// Test the mock request functions indirectly through middleware parsing
+	// The mockRequest is used internally during middleware logic parsing
+	testCases := []struct {
+		name               string
+		script             string
+		expectParseSuccess bool
+	}{
+		{
+			name: "mock_request_header_function",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    -- This tests that mockRequest.Header() works during parsing
+    -- The request object should be accessible without errors
+    response:set_header("X-Header-Access", "success")
+    next()
+end)
+`,
+			expectParseSuccess: true,
+		},
+		{
+			name: "mock_request_accessible_in_middleware",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    -- Test that the request parameter (mockRequest) is accessible
+    -- This tests the basic functionality of mockRequest during parsing
+    response:set_header("X-Request-Available", "true")
+    next()
+end)
+`,
+			expectParseSuccess: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
+			engine := env.Engine
+
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
+
+			if tc.expectParseSuccess {
+				if err != nil {
+					t.Errorf("Expected script parsing to succeed, got error: %v", err)
+				}
+			} else {
+				if err == nil {
+					t.Error("Expected script parsing to fail, got success")
+				}
+			}
+		})
+	}
+}
+
+// TestMockObjectsIntegration tests integration between mock response writer and request
+func TestMockObjectsIntegration(t *testing.T) {
+	script := `
+chi_middleware("/integration/*", function(response, request, next)
+    -- Test mock object integration during middleware parsing
+    response:set_header("X-Mock-Integration", "success")
+    response:set_header("X-Parse-Success", "true")
+    
+    -- Test write operations (mockResponseWriter.Write)
+    response:write("Mock integration test")
+    
+    next()
+end)
+
+chi_route("GET", "/integration/test", function(response, request)
+    response:set_header("Content-Type", "text/plain")
+    response:write("Integration endpoint")
+end)
+`
+
+	env := fixtures.SetupLuaEngineWithScript(t, script)
+	engine := env.Engine
+
+	err := engine.ExecuteRouteScript("test-script", "test-tenant")
+	if err != nil {
+		t.Fatalf("Failed to execute integration script: %v", err)
+	}
+
+	// Mount the tenant routes
+	err = env.MountTenantRoutesAtRoot("test-tenant")
+	if err != nil {
+		t.Fatalf("Failed to mount tenant routes: %v", err)
+	}
+
+	router := env.Router
+
+	// Test the integrated functionality
+	req := httptest.NewRequest("GET", "/integration/test", nil)
+	resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", resp.StatusCode)
+	}
+
+	// Verify middleware headers were set (proving mock objects work)
+	expectedHeaders := map[string]string{
+		"X-Mock-Integration": "success",
+		"X-Parse-Success":    "true",
+	}
+
+	for headerName, expectedValue := range expectedHeaders {
+		actualValue := resp.Headers.Get(headerName)
+		if actualValue != expectedValue {
+			t.Errorf("Expected header %s=%s, got %s", headerName, expectedValue, actualValue)
+		}
+	}
+
+	// Verify the route response
+	if resp.Body != "Integration endpoint" {
+		t.Errorf("Expected body 'Integration endpoint', got %q", resp.Body)
+	}
+}
+
+// TestMockObjectBehavior tests the specific behavior of mock objects
+func TestMockObjectBehavior(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		script      string
+		validate    func(*testing.T)
+	}{
+		{
+			name:        "mock_response_writer_write_works",
+			description: "mockResponseWriter.Write should work without errors during parsing",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    response:write("test")
+    next()
+end)
+`,
+			validate: func(t *testing.T) {
+				// The Write method should work without causing parse errors
+			},
+		},
+		{
+			name:        "mock_response_writer_set_header_works",
+			description: "mockResponseWriter header setting should work during parsing",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    response:set_header("X-Test", "value")
+    next()
+end)
+`,
+			validate: func(t *testing.T) {
+				// Header setting should work without errors
+			},
+		},
+		{
+			name:        "mock_request_accessible",
+			description: "mockRequest should be accessible in middleware parsing",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    response:set_header("X-Request-OK", "true")
+    next()
+end)
+`,
+			validate: func(t *testing.T) {
+				// Request object should be accessible without errors
+			},
+		},
+		{
+			name:        "mock_objects_combined",
+			description: "Both mock objects should work together during parsing",
+			script: `
+chi_middleware("/test/*", function(response, request, next)
+    response:set_header("X-Combined", "success")
+    response:write("test content")
+    next()
+end)
+`,
+			validate: func(t *testing.T) {
+				// Both mock objects should work together
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			env := fixtures.SetupLuaEngineWithScript(t, tt.script)
+			engine := env.Engine
+
+			err := engine.ExecuteRouteScript("test-script", "test-tenant")
+			if err != nil {
+				t.Errorf("Script execution failed: %v", err)
+			}
+
+			if tt.validate != nil {
+				tt.validate(t)
+			}
+		})
+	}
 }

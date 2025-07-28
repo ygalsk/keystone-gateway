@@ -107,7 +107,7 @@ func CreateConfigWithMultipleBackends(tenantName, pathPrefix string, backendURLs
 			Health: "/health",
 		}
 	}
-	
+
 	return &config.Config{
 		Tenants: []config.Tenant{
 			{

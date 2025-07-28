@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -102,7 +103,7 @@ func (p *LuaStatePool) Close() {
 	p.mu.Lock()
 	p.closed = true
 	p.mu.Unlock()
-	
+
 	close(p.pool)
 	for L := range p.pool {
 		L.Close()
@@ -313,7 +314,9 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 			startIdx = 2
 		}
 		content := L.ToString(startIdx)
-		w.w.Write([]byte(content))
+		if _, err := w.w.Write([]byte(content)); err != nil {
+			log.Printf("Failed to write response content: %v", err)
+		}
 		return 0
 	})
 
@@ -345,7 +348,9 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 		}
 		jsonContent := L.ToString(startIdx)
 		w.w.Header().Set("Content-Type", "application/json")
-		w.w.Write([]byte(jsonContent))
+		if _, err := w.w.Write([]byte(jsonContent)); err != nil {
+			log.Printf("Failed to write JSON response: %v", err)
+		}
 		return 0
 	})
 

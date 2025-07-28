@@ -92,7 +92,7 @@ tenants:
 		t.Run(tc.name, func(t *testing.T) {
 			tempDir := t.TempDir()
 			configPath := tempDir + "/config.yaml"
-			
+
 			err := os.WriteFile(configPath, []byte(tc.configContent), 0644)
 			if err != nil {
 				t.Fatalf("Failed to write test config: %v", err)
@@ -316,8 +316,8 @@ func TestHTTPErrorHandling(t *testing.T) {
 				return env, func() { env.Cleanup() }
 			},
 			requestMethod:  "GET",
-			requestPath:    "/api/test%20encoded", // Valid percent encoding for space  
-			expectedStatus: http.StatusNotFound, // Backend only responds to /test, not encoded paths
+			requestPath:    "/api/test%20encoded", // Valid percent encoding for space
+			expectedStatus: http.StatusNotFound,   // Backend only responds to /test, not encoded paths
 		},
 	}
 
@@ -427,7 +427,7 @@ func TestRoutingErrorHandling(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			env := fixtures.SetupGateway(t, tc.setupConfig)
-			
+
 			tenantRouter, _ := env.Gateway.MatchRoute(tc.requestHost, tc.requestPath)
 			found := tenantRouter != nil
 
@@ -467,7 +467,7 @@ end)
 	if err != nil {
 		t.Fatalf("Failed to mount tenant routes: %v", err)
 	}
-	
+
 	router := luaEnv.Router
 
 	// Run concurrent requests
@@ -485,7 +485,7 @@ end)
 
 			req := httptest.NewRequest("GET", "/concurrent", nil)
 			resp := fixtures.ExecuteHTTPTestWithRequest(router, req)
-			
+
 			if resp.StatusCode != http.StatusOK {
 				done <- fmt.Errorf("request %d failed with status %d", requestID, resp.StatusCode)
 				return
@@ -576,7 +576,7 @@ end)
 			env := fixtures.SetupLuaEngineWithScript(t, tc.script)
 
 			err := env.Engine.ExecuteRouteScript("test-script", "test-tenant")
-			
+
 			if tc.expectSuccess {
 				if err != nil {
 					t.Errorf("Expected success, got error: %v", err)

@@ -25,13 +25,59 @@ type TLSConfig struct {
 	KeyFile  string `yaml:"key_file"`
 }
 
+// CompressionConfig represents HTTP response compression configuration
+type CompressionConfig struct {
+	Enabled     bool     `yaml:"enabled"`
+	Level       int      `yaml:"level,omitempty"`       // Compression level (1-9, default: 5)
+	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
+}
+
+// GetCompressionConfig returns compression configuration with defaults
+func (c *Config) GetCompressionConfig() CompressionConfig {
+	if c.Compression == nil {
+		// Return default compression settings when not configured
+		return CompressionConfig{
+			Enabled: true, // Enable compression by default
+			Level:   5,    // Balanced compression level
+			ContentTypes: []string{
+				"text/html",
+				"text/css", 
+				"text/javascript",
+				"application/json",
+				"application/xml",
+				"text/plain",
+			},
+		}
+	}
+
+	config := *c.Compression
+	
+	// Apply defaults for missing values
+	if config.Level == 0 {
+		config.Level = 5 // Default to balanced compression
+	}
+	if len(config.ContentTypes) == 0 {
+		config.ContentTypes = []string{
+			"text/html",
+			"text/css", 
+			"text/javascript",
+			"application/json",
+			"application/xml",
+			"text/plain",
+		}
+	}
+	
+	return config
+}
+
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
-	Tenants       []Tenant          `yaml:"tenants"`
-	AdminBasePath string            `yaml:"admin_base_path,omitempty"`
-	LuaRouting    *LuaRoutingConfig `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
-	TLS           *TLSConfig        `yaml:"tls,omitempty"`
+	Tenants       []Tenant             `yaml:"tenants"`
+	AdminBasePath string               `yaml:"admin_base_path,omitempty"`
+	LuaRouting    *LuaRoutingConfig    `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
+	TLS           *TLSConfig           `yaml:"tls,omitempty"`
+	Compression   *CompressionConfig   `yaml:"compression,omitempty"`
 }
 
 // Tenant represents a routing configuration for a specific application or service,
@@ -61,12 +107,12 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	
+
 	// Handle empty or whitespace-only files gracefully
 	if len(strings.TrimSpace(string(data))) == 0 {
 		return &cfg, nil // Return empty config for whitespace-only files
 	}
-	
+
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
@@ -106,12 +152,12 @@ func isValidDomain(domain string) bool {
 	if domain == "" || strings.Contains(domain, " ") {
 		return false
 	}
-	
+
 	// Reject IP addresses (both IPv4 and IPv6)
 	if net.ParseIP(domain) != nil {
 		return false
 	}
-	
+
 	// Basic domain validation: must contain a dot and have valid format
 	return strings.Contains(domain, ".")
 }

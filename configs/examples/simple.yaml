@@ -3,6 +3,18 @@
 
 admin_base_path: "/admin"
 
+# HTTP Response Compression Configuration
+compression:
+  enabled: true        # Enable/disable compression (default: true)
+  level: 5            # Compression level 1-9 (default: 5, balanced)
+  content_types:      # MIME types to compress (defaults shown)
+    - "text/html"
+    - "text/css"
+    - "text/javascript"
+    - "application/json"
+    - "application/xml"
+    - "text/plain"
+
 lua_routing:
   enabled: true
   scripts_dir: "./scripts"

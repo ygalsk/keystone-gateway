@@ -44,8 +44,8 @@ func TestLuaEngineCreation(t *testing.T) {
 			name: "engine with multiple scripts",
 			setupFunc: func(t *testing.T) (*lua.Engine, string) {
 				scripts := map[string]string{
-					"routes1.lua": fixtures.CreateChiBindingsScript(),
-					"routes2.lua": fixtures.CreateRouteGroupScript(),
+					"routes1.lua":    fixtures.CreateChiBindingsScript(),
+					"routes2.lua":    fixtures.CreateRouteGroupScript(),
 					"middleware.lua": fixtures.CreateMiddlewareScript(),
 				}
 				env := fixtures.SetupLuaEngineWithScripts(t, scripts)
@@ -83,34 +83,34 @@ func TestLuaEngineCreation(t *testing.T) {
 // TestLuaScriptLoading tests script loading functionality
 func TestLuaScriptLoading(t *testing.T) {
 	testCases := []struct {
-		name         string
-		scriptName   string
+		name          string
+		scriptName    string
 		scriptContent string
-		expectFound  bool
+		expectFound   bool
 	}{
 		{
-			name:         "load existing script",
-			scriptName:   "test-script",
+			name:          "load existing script",
+			scriptName:    "test-script",
 			scriptContent: fixtures.CreateChiBindingsScript(),
-			expectFound:  true,
+			expectFound:   true,
 		},
 		{
-			name:         "load non-existent script",
-			scriptName:   "missing-script",
+			name:          "load non-existent script",
+			scriptName:    "missing-script",
 			scriptContent: "",
-			expectFound:  false,
+			expectFound:   false,
 		},
 		{
-			name:         "load empty script",
-			scriptName:   "empty-script",
+			name:          "load empty script",
+			scriptName:    "empty-script",
 			scriptContent: "",
-			expectFound:  true,
+			expectFound:   true,
 		},
 		{
-			name:         "load script with special characters",
-			scriptName:   "special-script",
+			name:          "load script with special characters",
+			scriptName:    "special-script",
 			scriptContent: "-- Script with special chars: éñ中文\nprint('Hello')",
-			expectFound:  true,
+			expectFound:   true,
 		},
 	}
 
@@ -120,7 +120,7 @@ func TestLuaScriptLoading(t *testing.T) {
 			var env *fixtures.LuaTestEnv
 			if tc.expectFound {
 				// Create the script file (even if empty) when we expect it to be found
-				scripts[tc.scriptName + ".lua"] = tc.scriptContent
+				scripts[tc.scriptName+".lua"] = tc.scriptContent
 				env = fixtures.SetupLuaEngineWithScripts(t, scripts)
 			} else {
 				// Don't create any script file when we expect it not to be found
@@ -377,7 +377,7 @@ func TestLuaEngineEdgeCases(t *testing.T) {
 			},
 			testFunc: func(t *testing.T, engine *lua.Engine) {
 				done := make(chan error, 3)
-				
+
 				// Execute same script concurrently
 				for i := 0; i < 3; i++ {
 					go func() {
@@ -420,7 +420,7 @@ func TestLuaEngineEdgeCases(t *testing.T) {
 // TestLuaEngineIntegration tests integration with routing system
 func TestLuaEngineIntegration(t *testing.T) {
 	env := fixtures.SetupSimpleGateway(t, "lua-tenant", "/lua/")
-	
+
 	// Test that engine integrates properly with gateway
 	registry := env.Gateway.GetRouteRegistry()
 	if registry == nil {
@@ -430,7 +430,7 @@ func TestLuaEngineIntegration(t *testing.T) {
 	// Test script execution through the integration
 	script := fixtures.CreateChiBindingsScript()
 	luaEnv := fixtures.SetupLuaEngineWithScript(t, script)
-	
+
 	err := luaEnv.Engine.ExecuteRouteScript("test-script", "lua-tenant")
 	if err != nil {
 		t.Errorf("Integration script execution failed: %v", err)

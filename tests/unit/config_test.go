@@ -12,9 +12,9 @@ import (
 // TestConfigLoading tests YAML configuration loading
 func TestConfigLoading(t *testing.T) {
 	testCases := []struct {
-		name        string
-		configYAML  string
-		expectError bool
+		name          string
+		configYAML    string
+		expectError   bool
 		errorContains string
 	}{
 		{
@@ -111,12 +111,12 @@ tenants:
         health: /health
       invalid_yaml: [
 `,
-			expectError: true,
+			expectError:   true,
 			errorContains: "failed to parse config",
 		},
 		{
-			name: "empty configuration",
-			configYAML: ``,
+			name:        "empty configuration",
+			configYAML:  ``,
 			expectError: false, // Empty config is valid, just no tenants
 		},
 		{
@@ -129,7 +129,7 @@ tenants:
         url: http://localhost:8080
         health: /health
 `,
-			expectError: true,
+			expectError:   true,
 			errorContains: "must specify either domains or path_prefix",
 		},
 		{
@@ -143,7 +143,7 @@ tenants:
         url: http://localhost:8080
         health: /health
 `,
-			expectError: true,
+			expectError:   true,
 			errorContains: "invalid domain",
 		},
 		{
@@ -157,7 +157,7 @@ tenants:
         url: http://localhost:8080
         health: /health
 `,
-			expectError: true,
+			expectError:   true,
 			errorContains: "path_prefix must start and end with '/'",
 		},
 	}
@@ -198,9 +198,9 @@ tenants:
 // TestTenantValidation tests tenant validation logic
 func TestTenantValidation(t *testing.T) {
 	testCases := []struct {
-		name        string
-		tenant      config.Tenant
-		expectError bool
+		name          string
+		tenant        config.Tenant
+		expectError   bool
 		errorContains string
 	}{
 		{
@@ -253,7 +253,7 @@ func TestTenantValidation(t *testing.T) {
 					Health: "/health",
 				}},
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "must specify either domains or path_prefix",
 		},
 		{
@@ -267,7 +267,7 @@ func TestTenantValidation(t *testing.T) {
 					Health: "/health",
 				}},
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "invalid domain",
 		},
 		{
@@ -281,7 +281,7 @@ func TestTenantValidation(t *testing.T) {
 					Health: "/health",
 				}},
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "invalid domain",
 		},
 		{
@@ -295,7 +295,7 @@ func TestTenantValidation(t *testing.T) {
 					Health: "/health",
 				}},
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "path_prefix must start and end with '/'",
 		},
 		{
@@ -309,7 +309,7 @@ func TestTenantValidation(t *testing.T) {
 					Health: "/health",
 				}},
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "path_prefix must start and end with '/'",
 		},
 		{
@@ -431,9 +431,9 @@ func TestDomainValidation(t *testing.T) {
 // TestConfigFileHandling tests file system operations
 func TestConfigFileHandling(t *testing.T) {
 	testCases := []struct {
-		name        string
-		setupFunc   func(t *testing.T) string
-		expectError bool
+		name          string
+		setupFunc     func(t *testing.T) string
+		expectError   bool
 		errorContains string
 	}{
 		{
@@ -441,7 +441,7 @@ func TestConfigFileHandling(t *testing.T) {
 			setupFunc: func(t *testing.T) string {
 				return "/non/existent/config.yaml"
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "failed to read config",
 		},
 		{
@@ -449,7 +449,7 @@ func TestConfigFileHandling(t *testing.T) {
 			setupFunc: func(t *testing.T) string {
 				return t.TempDir()
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "failed to read config",
 		},
 		{
@@ -483,7 +483,7 @@ func TestConfigFileHandling(t *testing.T) {
 			setupFunc: func(t *testing.T) string {
 				tempDir := t.TempDir()
 				configPath := filepath.Join(tempDir, "large.yaml")
-				
+
 				// Generate large config with many tenants
 				var configBuilder strings.Builder
 				configBuilder.WriteString("tenants:\n")
@@ -496,7 +496,7 @@ func TestConfigFileHandling(t *testing.T) {
 					configBuilder.WriteString(string(rune('0' + i%10)))
 					configBuilder.WriteString("\n        health: /health\n")
 				}
-				
+
 				err := os.WriteFile(configPath, []byte(configBuilder.String()), 0644)
 				if err != nil {
 					t.Fatalf("Failed to create large file: %v", err)
@@ -517,7 +517,7 @@ func TestConfigFileHandling(t *testing.T) {
 				}
 				return configPath
 			},
-			expectError: true,
+			expectError:   true,
 			errorContains: "failed to parse config",
 		},
 	}
@@ -632,7 +632,7 @@ lua_routing:
 				if len(cfg.LuaRouting.GlobalScripts) != len(expectedGlobals) {
 					t.Errorf("Expected %d global scripts, got %d", len(expectedGlobals), len(cfg.LuaRouting.GlobalScripts))
 				}
-				
+
 				// Check tenant has Lua routes
 				if len(cfg.Tenants) == 0 {
 					t.Fatal("Expected at least one tenant")

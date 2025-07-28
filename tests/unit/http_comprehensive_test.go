@@ -108,10 +108,10 @@ func TestHTTPEndpointsComprehensive(t *testing.T) {
 
 		// Header validation
 		{
-			Name:           "Request with custom headers",
-			Method:         "GET",
-			Path:           "/api/data",
-			Headers:        map[string]string{
+			Name:   "Request with custom headers",
+			Method: "GET",
+			Path:   "/api/data",
+			Headers: map[string]string{
 				"X-Custom-Header": "custom-value",
 				"Authorization":   "Bearer token123",
 				"User-Agent":      "test-client/1.0",

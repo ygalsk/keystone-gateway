@@ -23,10 +23,10 @@ type MiddlewareAction struct {
 
 // MiddlewareLogic represents the cached logic for a middleware function
 type MiddlewareLogic struct {
-	Pattern     string              `json:"pattern"`
-	TenantName  string              `json:"tenant_name"`
-	Actions     []MiddlewareAction  `json:"actions"`
-	CallNext    bool                `json:"call_next"`
+	Pattern    string             `json:"pattern"`
+	TenantName string             `json:"tenant_name"`
+	Actions    []MiddlewareAction `json:"actions"`
+	CallNext   bool               `json:"call_next"`
 }
 
 // MiddlewareCache provides thread-safe caching of middleware logic
@@ -37,7 +37,6 @@ type MiddlewareCache struct {
 
 // Mock types for parsing middleware logic
 type mockResponseWriter struct {
-	actions []MiddlewareAction
 	headers http.Header
 }
 
@@ -71,11 +70,6 @@ func (m *mockResponseWriter) getActions() []MiddlewareAction {
 	return actions
 }
 
-type mockRequest struct{}
-
-func (m *mockRequest) Method() string       { return "GET" }
-func (m *mockRequest) URL() string         { return "/" }
-func (m *mockRequest) Header() http.Header { return make(http.Header) }
 
 // setupChiBindings sets up Lua bindings for Chi router functions
 func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
@@ -121,7 +115,7 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
 		L.ArgError(1, "chi_route requires method, pattern, and handler function")
 		return 0
 	}
-	
+
 	// Check if we're inside a group context
 	var groupPattern string
 	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
@@ -146,8 +140,6 @@ func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
 	// Create a thread-safe handler using the state pool
 	luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, scriptTag, e.statePool, e)
 
-	
-	
 	// Register the route with the simplified registry
 	err := e.routeRegistry.RegisterRoute(routing.RouteDefinition{
 		TenantName:   tenantName,
@@ -178,7 +170,6 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
 		groupPattern = groupCtx.String()
 	}
-	
 
 	// Check if we already have cached logic for this middleware
 	if cachedLogic, exists := e.getCachedMiddleware(tenantName, pattern, groupPattern); exists {
@@ -188,7 +179,7 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 				e.executeMiddlewareLogic(cachedLogic, w, r, next)
 			})
 		}
-		
+
 		// Register with the route registry, including group context
 		err := e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
 			TenantName:   tenantName,
@@ -208,11 +199,11 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 		L.RaiseError("Failed to parse middleware logic: %v", err)
 		return 0
 	}
-	
+
 	// Cache the parsed logic
 	logic.TenantName = tenantName
 	e.setCachedMiddleware(tenantName, pattern, groupPattern, logic)
-	
+
 	// Create Go middleware that executes the cached logic directly
 	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,7 +238,7 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 	// Execute the setup function to collect group routes and middleware
 	// Save current group context
 	oldGroupContext := L.GetGlobal("__current_group_pattern")
-	
+
 	// Build nested group pattern by combining with parent group
 	var fullPattern string
 	if oldGroupContext != lua.LNil {
@@ -260,26 +251,25 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 	} else {
 		fullPattern = pattern
 	}
-	
+
 	L.SetGlobal("__current_group_pattern", lua.LString(fullPattern))
-	
+
 	// Execute the setup function
 	err := L.CallByParam(lua.P{
 		Fn:      setupFunc,
 		NRet:    0,
 		Protect: true,
 	})
-	
+
 	// Restore previous group context
 	L.SetGlobal("__current_group_pattern", oldGroupContext)
-	
+
 	if err != nil {
 		L.RaiseError("Failed to execute group setup function: %v", err)
 	}
 
 	return 0
 }
-
 
 // Cache methods for middleware logic
 
@@ -292,7 +282,7 @@ func (e *Engine) getCachedMiddleware(tenantName, pattern, groupPattern string) (
 	return logic, exists
 }
 
-// setCachedMiddleware stores middleware logic thread-safely  
+// setCachedMiddleware stores middleware logic thread-safely
 func (e *Engine) setCachedMiddleware(tenantName, pattern, groupPattern string, logic *MiddlewareLogic) {
 	key := fmt.Sprintf("%s_%s_%s", tenantName, groupPattern, pattern)
 	e.middlewareCache.mu.Lock()
@@ -304,7 +294,7 @@ func (e *Engine) setCachedMiddleware(tenantName, pattern, groupPattern string, l
 func (e *Engine) parseLuaMiddlewareLogic(L *lua.LState, middlewareFunc *lua.LFunction, pattern string) (*MiddlewareLogic, error) {
 	// Execute the function in a controlled environment to extract its logic
 	// Create a mock HTTP request and response writer to capture actions
-	
+
 	// Create a proper mock request with URL
 	mockURL := &url.URL{Path: "/"}
 	mockReq := &http.Request{
@@ -312,36 +302,36 @@ func (e *Engine) parseLuaMiddlewareLogic(L *lua.LState, middlewareFunc *lua.LFun
 		URL:    mockURL,
 		Header: make(http.Header),
 	}
-	
+
 	mockWriter := &mockResponseWriter{}
 	respWriter := &luaResponseWriter{w: mockWriter}
 	respTable := createLuaResponse(L, respWriter)
 	reqTable := createLuaRequest(L, mockReq)
-	
+
 	nextCalled := false
 	nextFunc := L.NewFunction(func(L *lua.LState) int {
 		nextCalled = true
 		return 0
 	})
-	
+
 	// Execute the middleware function to capture its actions
 	err := L.CallByParam(lua.P{
 		Fn:      middlewareFunc,
 		NRet:    0,
 		Protect: true,
 	}, respTable, reqTable, nextFunc)
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse middleware logic: %v", err)
 	}
-	
+
 	// Extract actions from the mock response writer
 	actions := mockWriter.getActions()
-	
+
 	return &MiddlewareLogic{
-		Pattern:    pattern,
-		Actions:    actions,
-		CallNext:   nextCalled,
+		Pattern:  pattern,
+		Actions:  actions,
+		CallNext: nextCalled,
 	}, nil
 }
 
@@ -356,10 +346,10 @@ func (e *Engine) executeMiddlewareLogic(logic *MiddlewareLogic, w http.ResponseW
 			w.Header().Add(action.Key, action.Value)
 		case "delete_header":
 			w.Header().Del(action.Key)
-		// Add more action types as needed
+			// Add more action types as needed
 		}
 	}
-	
+
 	// Call next handler if the original middleware called next
 	if logic.CallNext && next != nil {
 		next.ServeHTTP(w, r)

@@ -6,6 +6,7 @@ This document provides a complete reference for configuring Keystone Gateway usi
 
 - [Configuration File Structure](#configuration-file-structure)
 - [Global Settings](#global-settings)
+- [Compression Configuration](#compression-configuration)
 - [Lua Routing Configuration](#lua-routing-configuration)
 - [Tenant Configuration](#tenant-configuration)
 - [Service Configuration](#service-configuration)
@@ -21,6 +22,12 @@ A Keystone Gateway configuration file has the following top-level structure:
 ```yaml
 # Global gateway settings
 admin_base_path: "/admin"
+
+# HTTP response compression
+compression:
+  enabled: true
+  level: 5
+  content_types: ["application/json", "text/html"]
 
 # Lua routing configuration
 lua_routing:
@@ -68,6 +75,159 @@ admin_base_path: "/management"
 admin_base_path: "/"
 # Access: http://localhost:8080/health
 ```
+
+## Compression Configuration
+
+### `compression`
+
+**Type:** `object`  
+**Optional:** Yes
+
+Configuration for HTTP response compression to improve performance and reduce bandwidth usage.
+
+#### `compression.enabled`
+
+**Type:** `boolean`  
+**Default:** `true`  
+**Optional:** Yes
+
+Enables or disables HTTP response compression globally.
+
+```yaml
+compression:
+  enabled: true   # Enable compression (default)
+  enabled: false  # Disable compression completely
+```
+
+#### `compression.level`
+
+**Type:** `integer`  
+**Default:** `5`  
+**Range:** `1-9`  
+**Optional:** Yes
+
+Compression level for gzip encoding:
+- `1`: Fastest compression, largest file size
+- `5`: Balanced compression and speed (recommended)
+- `9`: Best compression, slowest speed
+
+```yaml
+compression:
+  level: 1  # Fast compression for high-traffic scenarios
+  level: 5  # Balanced (default)
+  level: 9  # Maximum compression for bandwidth-limited environments
+```
+
+#### `compression.content_types`
+
+**Type:** `array[string]`  
+**Default:** `["text/html", "text/css", "text/javascript", "application/json", "application/xml", "text/plain"]`  
+**Optional:** Yes
+
+MIME types that should be compressed. Only responses with these content types will be compressed.
+
+```yaml
+compression:
+  content_types:
+    - "application/json"      # API responses
+    - "text/html"            # HTML pages
+    - "text/css"             # Stylesheets
+    - "text/javascript"      # JavaScript files
+    - "application/xml"      # XML documents
+    - "text/plain"           # Plain text
+```
+
+**Note:** Binary content types (images, videos, archives) are typically not included as they don't benefit from compression or are already compressed.
+
+### Compression Examples
+
+#### Default Configuration
+
+When no compression configuration is specified, the gateway uses these defaults:
+
+```yaml
+# Implicit default configuration (no need to specify)
+compression:
+  enabled: true
+  level: 5
+  content_types:
+    - "text/html"
+    - "text/css" 
+    - "text/javascript"
+    - "application/json"
+    - "application/xml"
+    - "text/plain"
+```
+
+#### API-Only Compression
+
+For API gateways handling primarily JSON responses:
+
+```yaml
+compression:
+  enabled: true
+  level: 6
+  content_types:
+    - "application/json"
+    - "application/xml"
+```
+
+#### High-Performance Configuration
+
+For high-traffic scenarios where CPU usage should be minimized:
+
+```yaml
+compression:
+  enabled: true
+  level: 1  # Fastest compression
+  content_types:
+    - "application/json"  # Only compress JSON APIs
+```
+
+#### Maximum Bandwidth Savings
+
+For environments with limited bandwidth:
+
+```yaml
+compression:
+  enabled: true
+  level: 9  # Maximum compression
+  content_types:
+    - "text/html"
+    - "text/css"
+    - "text/javascript"
+    - "application/json"
+    - "application/xml"
+    - "text/plain"
+    - "application/javascript"
+    - "text/xml"
+```
+
+#### Disabled Compression
+
+To disable compression entirely:
+
+```yaml
+compression:
+  enabled: false
+```
+
+### Performance Considerations
+
+**Compression Level Trade-offs:**
+- **Level 1-3**: Fast compression, lower CPU usage, moderate file size reduction
+- **Level 4-6**: Balanced compression, reasonable CPU usage, good file size reduction
+- **Level 7-9**: Slower compression, higher CPU usage, maximum file size reduction
+
+**Content Type Recommendations:**
+- **Always compress:** JSON, XML, HTML, CSS, JavaScript, plain text
+- **Never compress:** Images (JPEG, PNG, GIF), videos (MP4, WebM), archives (ZIP, GZIP)
+- **Consider carefully:** Large binary APIs, already-compressed formats
+
+**Bandwidth Savings:**
+- JSON responses: 60-80% size reduction
+- HTML pages: 70-85% size reduction
+- CSS/JavaScript: 70-90% size reduction
 
 ## Lua Routing Configuration
 

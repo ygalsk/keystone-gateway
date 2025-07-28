@@ -6,6 +6,7 @@ A high-performance, programmable reverse proxy and API gateway written in Go wit
 
 - **Multi-tenant routing**: Host-based, path-based, and hybrid routing strategies
 - **Embedded Lua scripting**: Dynamic route definition and middleware without recompilation
+- **HTTP compression**: Configurable gzip compression for improved performance
 - **Load balancing**: Round-robin load balancing with health checking
 - **Admin API**: Health monitoring and tenant management endpoints
 - **Thread-safe architecture**: Lua state pools and atomic operations for concurrent safety
@@ -36,6 +37,15 @@ go install github.com/your-org/keystone-gateway/cmd@latest
 1. **Create a basic configuration** (`config.yaml`):
 ```yaml
 admin_base_path: "/admin"
+
+# Optional: Configure HTTP compression
+compression:
+  enabled: true
+  level: 5
+  content_types:
+    - "application/json"
+    - "text/html"
+
 lua_routing:
   enabled: true
   scripts_dir: "./scripts"
