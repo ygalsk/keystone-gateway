@@ -217,6 +217,18 @@ Keystone Gateway uses a layered architecture with embedded Lua scripting:
 
 Key components interact through thread-safe Lua state pools, ensuring concurrent safety while maintaining the flexibility of dynamic scripting.
 
+## Performance Optimizations
+
+Keystone Gateway includes several built-in performance optimizations:
+
+- **HTTP/2 Support**: Automatic HTTP/2 multiplexing for supported backends
+- **Connection Pooling**: Optimized connection reuse with configurable pool sizes
+- **Garbage Collection Tuning**: GOGC=200 for reduced GC overhead in high-throughput scenarios
+- **Response Compression**: Configurable gzip compression for text-based content
+- **Request Caching**: Proxy object caching to eliminate per-request allocations
+
+These optimizations provide excellent performance for lightweight gateway use cases while maintaining simplicity and extensibility.
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on:

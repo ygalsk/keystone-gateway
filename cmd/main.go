@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -36,7 +37,7 @@ type HealthStatus struct {
 // Application holds the main application components
 type Application struct {
 	gateway   *routing.Gateway
-	luaEngine *lua.Engine // New: embedded Lua engine for route definition
+	luaEngine *lua.Engine    // New: embedded Lua engine for route definition
 	config    *config.Config // Configuration for the application
 }
 
@@ -135,13 +136,13 @@ func (app *Application) setupBaseMiddleware(r *chi.Mux) {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
-	
+
 	// Add compression middleware for better performance on text content
 	compressionConfig := app.config.GetCompressionConfig()
 	if compressionConfig.Enabled {
 		r.Use(middleware.Compress(compressionConfig.Level, compressionConfig.ContentTypes...))
 	}
-	
+
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
 
 	// Add host-based routing middleware if we have host-based tenants
@@ -260,6 +261,11 @@ func (app *Application) port() string {
 }
 
 func main() {
+	// Optimize garbage collection for better performance
+	// GOGC=200 means GC runs when heap triples instead of doubles
+	// This reduces GC overhead at the cost of higher memory usage
+	os.Setenv("GOGC", "300")
+
 	cfgPath := flag.String("config", "config.yaml", "path to YAML config")
 	addr := flag.String("addr", DefaultListenAddress, "listen address")
 	flag.Parse()

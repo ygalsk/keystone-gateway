@@ -8,6 +8,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,9 @@ import (
 type GatewayBackend struct {
 	URL   *url.URL
 	Alive atomic.Bool
+
+	// ✅ ADD: Cache proxies per strip prefix to avoid recreation
+	proxyCache sync.Map // map[string]*httputil.ReverseProxy
 }
 
 // TenantRouter manages load balancing and backend selection for a specific tenant.
@@ -41,7 +45,7 @@ type Gateway struct {
 	// New: Dynamic route registry for Lua-defined routes
 	routeRegistry *LuaRouteRegistry
 
-	// ✅ ADD: Shared HTTP transport for connection pooling
+	// Shared HTTP transport for connection pooling
 	transport *http.Transport
 }
 
@@ -55,19 +59,20 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 		startTime:     time.Now(),
 		routeRegistry: NewLuaRouteRegistry(router, nil),
 
-		// ✅ ADD: Configure optimized HTTP transport
+		// Configure optimized HTTP transport
 		transport: &http.Transport{
-			MaxIdleConns:        100,              // Total idle connections across all hosts
-			MaxIdleConnsPerHost: 20,               // Idle connections per backend host
-			IdleConnTimeout:     90 * time.Second, // How long to keep idle connections
-			DisableKeepAlives:   false,            // Enable HTTP keep-alive
+			MaxIdleConns:        100,               // Total idle connections across all hosts
+			MaxIdleConnsPerHost: 50,                // Idle connections per backend host (increased for better performance)
+			IdleConnTimeout:     120 * time.Second, // How long to keep idle connections (extended for better reuse)
+			DisableKeepAlives:   false,             // Enable HTTP keep-alive
+			ForceAttemptHTTP2:   true,              // Enable HTTP/2 for multiplexing and improved performance
 
 			// Connection timeouts
 			TLSHandshakeTimeout:   10 * time.Second,
 			ResponseHeaderTimeout: 10 * time.Second,
 
 			// Prevent connection leaks
-			MaxConnsPerHost:       50, // Max total connections per host
+			MaxConnsPerHost:       100, // Max total connections per host (increased for high-traffic scenarios)
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
@@ -105,8 +110,6 @@ func (gw *Gateway) initializeRouters() {
 
 		// Route based on configuration
 		gw.registerTenantRoutes(tenant, tr)
-
-		// TODO: Start health checks (will be moved to health package)
 
 		log.Printf("Initialized tenant %s with %d backends", tenant.Name, len(tr.Backends))
 	}
@@ -248,14 +251,24 @@ func (gw *Gateway) findBestPathMatch(path string, routers map[string]*TenantRout
 	return matched, matchedPrefix
 }
 
-// CreateProxy creates a reverse proxy for the given backend
-// ✅ FIXED: Now uses shared transport with connection pooling
+// CreateProxy creates or retrieves a cached reverse proxy for the given backend
+// ✅ FIXED: Now caches proxy objects to eliminate per-request allocation
 func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
+	// Use stripPrefix as cache key since proxy behavior depends on it
+	cacheKey := stripPrefix
+
+	// Try to get existing proxy from cache
+	if cached, ok := backend.proxyCache.Load(cacheKey); ok {
+		return cached.(*httputil.ReverseProxy)
+	}
+
+	// Create new proxy if not cached
 	proxy := httputil.NewSingleHostReverseProxy(backend.URL)
 
-	// ✅ ADD: Use the shared transport with connection pooling
+	// Use the shared transport with connection pooling
 	proxy.Transport = gw.transport
 
+	// Create director function (this closure is only created once per proxy)
 	proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = backend.URL.Scheme
 		req.URL.Host = backend.URL.Host
@@ -289,16 +302,73 @@ func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *htt
 		}
 	}
 
+	// Cache the proxy for future use
+	backend.proxyCache.Store(cacheKey, proxy)
+
 	return proxy
 }
 
-// ✅ ADD: Optional method to get transport stats for monitoring
+// Optional method to get transport stats for monitoring
 func (gw *Gateway) GetTransportStats() map[string]interface{} {
-	// Note: Go's http.Transport doesn't expose detailed stats by default
-	// But you can add custom metrics here or use third-party libraries
 	return map[string]interface{}{
 		"max_idle_conns":          gw.transport.MaxIdleConns,
 		"max_idle_conns_per_host": gw.transport.MaxIdleConnsPerHost,
+		"max_conns_per_host":      gw.transport.MaxConnsPerHost,
 		"idle_conn_timeout":       gw.transport.IdleConnTimeout.String(),
+		"force_attempt_http2":     gw.transport.ForceAttemptHTTP2,
 	}
+}
+
+// ✅ ADD: Method to get proxy cache stats for monitoring
+func (gw *Gateway) GetProxyCacheStats() map[string]int {
+	stats := make(map[string]int)
+	totalCached := 0
+
+	// Count cached proxies across all tenants and backends
+	for _, tr := range gw.pathRouters {
+		for _, backend := range tr.Backends {
+			count := 0
+			backend.proxyCache.Range(func(key, value interface{}) bool {
+				count++
+				return true
+			})
+			if count > 0 {
+				stats[backend.URL.String()] = count
+				totalCached += count
+			}
+		}
+	}
+
+	for _, tr := range gw.hostRouters {
+		for _, backend := range tr.Backends {
+			count := 0
+			backend.proxyCache.Range(func(key, value interface{}) bool {
+				count++
+				return true
+			})
+			if count > 0 {
+				stats[backend.URL.String()] = count
+				totalCached += count
+			}
+		}
+	}
+
+	for _, hostMap := range gw.hybridRouters {
+		for _, tr := range hostMap {
+			for _, backend := range tr.Backends {
+				count := 0
+				backend.proxyCache.Range(func(key, value interface{}) bool {
+					count++
+					return true
+				})
+				if count > 0 {
+					stats[backend.URL.String()] = count
+					totalCached += count
+				}
+			}
+		}
+	}
+
+	stats["total_cached_proxies"] = totalCached
+	return stats
 }

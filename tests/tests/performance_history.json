@@ -86,5 +86,27 @@
     "timestamp": "2025-07-27T23:22:47.90932009+02:00",
     "total_requests": 50,
     "memory_allocated": 2000000
+  },
+  {
+    "test_name": "performance_history",
+    "request_duration": 158897,
+    "memory_per_request": 40000,
+    "requests_per_second": 6293.363635459681,
+    "concurrent_duration": 7944877,
+    "success_rate": 1,
+    "timestamp": "2025-07-28T12:55:42.512455545+02:00",
+    "total_requests": 50,
+    "memory_allocated": 2000000
+  },
+  {
+    "test_name": "performance_history",
+    "request_duration": 138187,
+    "memory_per_request": 40000,
+    "requests_per_second": 7236.537218524029,
+    "concurrent_duration": 6909382,
+    "success_rate": 1,
+    "timestamp": "2025-07-28T12:56:02.401787404+02:00",
+    "total_requests": 50,
+    "memory_allocated": 2000000
   }
 ]
