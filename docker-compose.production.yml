@@ -1,0 +1,198 @@
+version: '3.8'
+
+services:
+  # Keystone Gateway - Main Application
+  keystone-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: keystone-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs/production.yaml:/app/config.yaml:ro
+      - ./scripts:/app/scripts:ro
+      - ./logs:/app/logs
+    environment:
+      - ENV=production
+      - LOG_LEVEL=info
+      - PORT=8080
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - gateway-network
+    depends_on:
+      - demo-api-1
+      - demo-api-2
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./ssl:/etc/ssl:ro
+      - nginx-logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/admin/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      keystone-gateway:
+        condition: service_healthy
+    networks:
+      - gateway-network
+
+  # Demo Backend 1 - HTTPBin
+  demo-api-1:
+    image: kennethreitz/httpbin
+    container_name: demo-api-1
+    restart: unless-stopped
+    environment:
+      - PORT=80
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/status/200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Demo Backend 2 - HTTPBin (for load balancing)
+  demo-api-2:
+    image: kennethreitz/httpbin
+    container_name: demo-api-2
+    restart: unless-stopped
+    environment:
+      - PORT=80
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/status/200"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Mock API Server
+  mock-api:
+    image: mockserver/mockserver
+    container_name: mock-api
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+    environment:
+      - MOCKSERVER_PROPERTY_FILE=/config/mockserver.properties
+      - MOCKSERVER_INITIALIZATION_JSON_PATH=/config/expectations.json
+      - MOCKSERVER_LOG_LEVEL=INFO
+    volumes:
+      - ./mock-config:/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1080/mockserver/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Redis Cache (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+      - '--web.route-prefix=/'
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - gateway-network
+
+  # Load Testing Container
+  wrk-tester:
+    image: williamyeh/wrk
+    container_name: wrk-tester
+    profiles: ["testing"]  # Only start when explicitly requested
+    volumes:
+      - ./tests:/tests:ro
+      - ./logs:/results
+    networks:
+      - gateway-network
+    command: ["sleep", "infinity"]  # Keep container running
+
+networks:
+  gateway-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  nginx-logs:
+    driver: local

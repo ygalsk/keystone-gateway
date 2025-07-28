@@ -1,0 +1,77 @@
+[
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/users"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"],
+        "X-Mock-Backend": ["mock-api"]
+      },
+      "body": {
+        "users": [
+          {"id": 1, "name": "John Doe", "email": "john@example.com"},
+          {"id": 2, "name": "Jane Smith", "email": "jane@example.com"},
+          {"id": 3, "name": "Bob Johnson", "email": "bob@example.com"}
+        ],
+        "total": 3,
+        "page": 1,
+        "timestamp": "2024-01-01T00:00:00Z"
+      },
+      "delay": {
+        "timeUnit": "MILLISECONDS",
+        "value": 50
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/api/products"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"],
+        "X-Mock-Backend": ["mock-api"]
+      },
+      "body": {
+        "products": [
+          {"id": 1, "name": "Laptop", "price": 999.99, "category": "Electronics"},
+          {"id": 2, "name": "Phone", "price": 699.99, "category": "Electronics"},
+          {"id": 3, "name": "Book", "price": 29.99, "category": "Education"}
+        ],
+        "total": 3,
+        "page": 1
+      },
+      "delay": {
+        "timeUnit": "MILLISECONDS",
+        "value": 75
+      }
+    }
+  },
+  {
+    "httpRequest": {
+      "method": "GET",
+      "path": "/slow"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": ["application/json"],
+        "X-Mock-Backend": ["mock-api"]
+      },
+      "body": {
+        "message": "This is a slow endpoint",
+        "delay": "500ms",
+        "timestamp": "2024-01-01T00:00:00Z"
+      },
+      "delay": {
+        "timeUnit": "MILLISECONDS",
+        "value": 500
+      }
+    }
+  }
+]
