@@ -3,12 +3,15 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -261,11 +264,6 @@ func (app *Application) port() string {
 }
 
 func main() {
-	// Optimize garbage collection for better performance
-	// GOGC=200 means GC runs when heap triples instead of doubles
-	// This reduces GC overhead at the cost of higher memory usage
-	os.Setenv("GOGC", "300")
-
 	cfgPath := flag.String("config", "config.yaml", "path to YAML config")
 	addr := flag.String("addr", DefaultListenAddress, "listen address")
 	flag.Parse()
@@ -284,17 +282,46 @@ func main() {
 	app := NewApplicationWithLuaRouting(cfg, router)
 	router = app.SetupRouter()
 
-	log.Printf("Keystone Gateway v%s (Chi Router) listening on %s", Version, *addr)
+	// Create HTTP server
+	server := &http.Server{
+		Addr:    *addr,
+		Handler: router,
+	}
 
-	// Start server with TLS support if configured
-	if cfg.TLS != nil && cfg.TLS.Enabled {
-		log.Printf("Starting server with TLS enabled")
-		if err := http.ListenAndServeTLS(*addr, cfg.TLS.CertFile, cfg.TLS.KeyFile, router); err != nil {
-			log.Fatal(err)
+	// Setup graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Keystone Gateway v%s (Chi Router) listening on %s", Version, *addr)
+
+		// Start server with TLS support if configured
+		if cfg.TLS != nil && cfg.TLS.Enabled {
+			log.Printf("Starting server with TLS enabled")
+			if err := server.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
+				log.Fatal(err)
+			}
+		} else {
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatal(err)
+			}
 		}
+	}()
+
+	// Wait for shutdown signal
+	<-stop
+	log.Println("Shutting down server...")
+
+	// Stop health checks first
+	app.gateway.StopHealthChecks()
+
+	// Graceful shutdown with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("Server forced to shutdown: %v", err)
 	} else {
-		if err := http.ListenAndServe(*addr, router); err != nil {
-			log.Fatal(err)
-		}
+		log.Println("Server gracefully stopped")
 	}
 }

@@ -3,6 +3,7 @@
 package routing
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -19,8 +20,9 @@ import (
 
 // GatewayBackend represents a proxied backend server with health status tracking.
 type GatewayBackend struct {
-	URL   *url.URL
-	Alive atomic.Bool
+	URL        *url.URL
+	Alive      atomic.Bool
+	HealthPath string // Health check endpoint path
 
 	// ✅ ADD: Cache proxies per strip prefix to avoid recreation
 	proxyCache sync.Map // map[string]*httputil.ReverseProxy
@@ -47,10 +49,17 @@ type Gateway struct {
 
 	// Shared HTTP transport for connection pooling
 	transport *http.Transport
+
+	// Health check management
+	healthCtx    context.Context
+	healthCancel context.CancelFunc
+	healthWG     sync.WaitGroup
 }
 
 // NewGatewayWithRouter creates a Gateway with an existing Chi router for dynamic routing
 func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
+	healthCtx, healthCancel := context.WithCancel(context.Background())
+
 	gw := &Gateway{
 		config:        cfg,
 		pathRouters:   make(map[string]*TenantRouter),
@@ -58,6 +67,8 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 		hybridRouters: make(map[string]map[string]*TenantRouter),
 		startTime:     time.Now(),
 		routeRegistry: NewLuaRouteRegistry(router, nil),
+		healthCtx:     healthCtx,
+		healthCancel:  healthCancel,
 
 		// Configure optimized HTTP transport
 		transport: &http.Transport{
@@ -78,6 +89,7 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 	}
 
 	gw.initializeRouters()
+	gw.StartHealthChecks()
 	return gw
 }
 
@@ -103,8 +115,11 @@ func (gw *Gateway) initializeRouters() {
 				continue
 			}
 
-			backend := &GatewayBackend{URL: u}
-			backend.Alive.Store(false) // Start as unhealthy
+			backend := &GatewayBackend{
+				URL:        u,
+				HealthPath: svc.Health,
+			}
+			backend.Alive.Store(false) // Start as unhealthy, will be updated by health checks
 			tr.Backends = append(tr.Backends, backend)
 		}
 
@@ -371,4 +386,130 @@ func (gw *Gateway) GetProxyCacheStats() map[string]int {
 
 	stats["total_cached_proxies"] = totalCached
 	return stats
+}
+
+// StartHealthChecks starts background health check monitoring for all backends
+func (gw *Gateway) StartHealthChecks() {
+	for _, tenant := range gw.config.Tenants {
+		tr := gw.GetTenantRouter(tenant.Name)
+		if tr == nil {
+			continue
+		}
+
+		// Default health check interval to 30 seconds if not configured
+		interval := 30 * time.Second
+		if tenant.Interval > 0 {
+			interval = time.Duration(tenant.Interval) * time.Second
+		}
+
+		// Start health checker for each backend in this tenant
+		for _, backend := range tr.Backends {
+			if backend.HealthPath == "" {
+				log.Printf("Warning: no health path configured for backend %s, skipping health checks", backend.URL.String())
+				// If no health path, assume backend is healthy
+				backend.Alive.Store(true)
+				continue
+			}
+
+			gw.healthWG.Add(1)
+			go gw.healthCheckWorker(backend, interval)
+		}
+
+		log.Printf("Started health checks for tenant %s with %d backends (interval: %v)", tenant.Name, len(tr.Backends), interval)
+	}
+}
+
+// healthCheckWorker runs periodic health checks for a single backend
+func (gw *Gateway) healthCheckWorker(backend *GatewayBackend, interval time.Duration) {
+	defer gw.healthWG.Done()
+
+	// Perform initial health check
+	gw.performHealthCheck(backend)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-gw.healthCtx.Done():
+			log.Printf("Health check worker for %s stopping", backend.URL.String())
+			return
+		case <-ticker.C:
+			gw.performHealthCheck(backend)
+		}
+	}
+}
+
+// performHealthCheck performs a single health check against a backend
+func (gw *Gateway) performHealthCheck(backend *GatewayBackend) {
+	// Build health check URL
+	healthURL := &url.URL{
+		Scheme: backend.URL.Scheme,
+		Host:   backend.URL.Host,
+		Path:   backend.HealthPath,
+	}
+
+	// Create health check request with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "GET", healthURL.String(), nil)
+	if err != nil {
+		log.Printf("Health check error for %s: failed to create request: %v", backend.URL.String(), err)
+		gw.markBackendHealth(backend, false)
+		return
+	}
+
+	// Use a dedicated HTTP client for health checks to avoid interference with proxy traffic
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:          10,
+			MaxIdleConnsPerHost:   2,
+			IdleConnTimeout:       30 * time.Second,
+			TLSHandshakeTimeout:   5 * time.Second,
+			ResponseHeaderTimeout: 5 * time.Second,
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Health check failed for %s: %v", backend.URL.String(), err)
+		gw.markBackendHealth(backend, false)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Consider 2xx status codes as healthy
+	healthy := resp.StatusCode >= 200 && resp.StatusCode < 300
+	gw.markBackendHealth(backend, healthy)
+
+	if healthy {
+		log.Printf("Health check passed for %s (status: %d)", backend.URL.String(), resp.StatusCode)
+	} else {
+		log.Printf("Health check failed for %s (status: %d)", backend.URL.String(), resp.StatusCode)
+	}
+}
+
+// markBackendHealth updates the health status of a backend with logging
+func (gw *Gateway) markBackendHealth(backend *GatewayBackend, healthy bool) {
+	wasAlive := backend.Alive.Load()
+	backend.Alive.Store(healthy)
+
+	// Log status changes
+	if wasAlive != healthy {
+		if healthy {
+			log.Printf("Backend %s is now HEALTHY", backend.URL.String())
+		} else {
+			log.Printf("Backend %s is now UNHEALTHY", backend.URL.String())
+		}
+	}
+}
+
+// StopHealthChecks gracefully stops all health check workers
+func (gw *Gateway) StopHealthChecks() {
+	log.Println("Stopping health check workers...")
+	gw.healthCancel()
+	gw.healthWG.Wait()
+	log.Println("All health check workers stopped")
 }

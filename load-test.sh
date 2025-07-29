@@ -7,12 +7,7 @@ if ! command -v wrk &> /dev/null; then
     echo "Installing wrk..."
     apt update
     apt install -y build-essential libssl-dev git
-    cd /tmp
-    git clone https://github.com/wg/wrk.git
-    cd wrk
-    make
-    cp wrk /usr/local/bin/
-    cd /
+    sudo apt install wrk
 fi
 
 echo ""
