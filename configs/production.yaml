@@ -1,68 +1,45 @@
-# =============================================================================
-# config/production.yaml - Keystone Gateway Production Configuration
-# =============================================================================
-
-# Admin API configuration
 admin_base_path: "/admin"
 
-# Lua routing configuration
 lua_routing:
   enabled: true
   scripts_dir: "./scripts"
 
-# Tenant configurations
 tenants:
-  # API Tenant - Host-based routing (api.keystone-gateway.dev)
-  - name: "api-tenant"
+  # API tenant for api.keystone-gateway.dev
+  - name: "api-production"
     domains:
       - "api.keystone-gateway.dev"
-      - "api.localhost"         # For local testing
     lua_routes: "api-routes.lua"
-    interval: 30               # Health check interval in seconds
+    health_interval: 30
     services:
       - name: "httpbin-primary"
-        url: "http://demo-api-1"
+        url: "http://httpbin-1"
         health: "/status/200"
-        weight: 100
       - name: "httpbin-secondary"
-        url: "http://demo-api-2"
+        url: "http://httpbin-2"
         health: "/status/200"
-        weight: 100
 
-  # Web Tenant - Path-based routing (/web/*)
-  - name: "web-tenant"
-    path_prefix: "/web/"
-    interval: 30
+  # Main domain tenant
+  - name: "main-production"
+    domains:
+      - "keystone-gateway.dev"
+    health_interval: 30
     services:
-      - name: "mock-service"
-        url: "http://mock-api:1080"
-        health: "/mockserver/status"
-        weight: 100
+      - name: "jsonplaceholder"
+        url: "http://jsonplaceholder-mock"
+        health: "/"
 
-  # Load Balancing Demo Tenant (/lb/*)
-  - name: "loadbalancer-tenant"
+  # Load balancing demonstration
+  - name: "lb-production"
     path_prefix: "/lb/"
-    interval: 30
+    health_interval: 30
     services:
       - name: "backend-1"
-        url: "http://demo-api-1"
+        url: "http://httpbin-1"
         health: "/status/200"
-        weight: 100
       - name: "backend-2"
-        url: "http://demo-api-2"
+        url: "http://httpbin-2"
         health: "/status/200"
-        weight: 100
       - name: "backend-3"
-        url: "http://mock-api:1080"
-        health: "/mockserver/status"
-        weight: 50              # Lower weight for mock service
-
-  # Performance Testing Tenant (/perf/*)
-  - name: "performance-tenant"
-    path_prefix: "/perf/"
-    interval: 30
-    services:
-      - name: "fast-backend"
-        url: "http://demo-api-1"
-        health: "/status/200"
-        weight: 100
+        url: "http://jsonplaceholder-mock"
+        health: "/"

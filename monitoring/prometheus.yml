@@ -5,19 +5,18 @@ global:
 scrape_configs:
   - job_name: 'keystone-gateway'
     static_configs:
-      - targets: ['keystone-gateway:8080']
+      - targets: ['keystone-gateway-prod:8080']
     metrics_path: '/admin/metrics'
-    scrape_interval: 15s
-    scrape_timeout: 10s
+    scrape_interval: 5s
+    scrape_timeout: 3s
 
   - job_name: 'nginx'
     static_configs:
-      - targets: ['nginx:80']
+      - targets: ['nginx-prod:80']
     scrape_interval: 15s
-    scrape_timeout: 10s
+    scrape_timeout: 5s
 
-  - job_name: 'prometheus'
+  - job_name: 'node-exporter'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['localhost:9100']
     scrape_interval: 15s
-    scrape_timeout: 10s
