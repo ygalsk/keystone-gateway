@@ -13,10 +13,10 @@ tenants:
     health_interval: 30
     services:
       - name: "httpbin-primary"
-        url: "http://httpbin-1"
+        url: "http://httpbin-1:8080"
         health: "/status/200"
       - name: "httpbin-secondary"
-        url: "http://httpbin-2"
+        url: "http://httpbin-2:8080"
         health: "/status/200"
 
   # Main domain tenant
@@ -35,10 +35,10 @@ tenants:
     health_interval: 30
     services:
       - name: "backend-1"
-        url: "http://httpbin-1"
+        url: "http://httpbin-1:8080"
         health: "/status/200"
       - name: "backend-2"
-        url: "http://httpbin-2"
+        url: "http://httpbin-2:8080"
         health: "/status/200"
       - name: "backend-3"
         url: "http://jsonplaceholder-mock"

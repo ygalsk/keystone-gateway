@@ -1,46 +1,44 @@
 # Project: Keystone Gateway
-A high-performance, programmable reverse proxy and API gateway written in Go with embedded Lua scripting for dynamic routing in multi-tenant environments.
+A high-performance, programmable reverse proxy and API gateway with embedded Lua scripting for dynamic multi-tenant routing.
 
 ## Features
-- **Multi-tenant routing**: Host-based, path-based, and hybrid routing strategies
-- **Embedded Lua scripting**: Dynamic route definition without recompilation
-- **Load balancing**: Round-robin load balancing with health checking
-- **Admin API**: Health monitoring, tenant management, and real-time status
-- **High-performance architecture**: Built on Chi router with thread-safe design
-- **Flexible configuration**: YAML-based configuration with example templates
+- Multi-tenant routing strategies (host-based, path-based, hybrid)
+- Embedded Lua scripting engine for dynamic route definition without recompilation
+- Round-robin load balancing with automatic failover and health checking
+- HTTP compression with configurable gzip for improved performance
+- Admin API for monitoring gateway and tenant health status
+- Thread-safe architecture with Lua state pools and atomic operations
+- TLS support with optional HTTPS termination
+- Graceful shutdown with proper cleanup and connection draining
 
 ## Tech Stack
-- **Go 1.19+**: Primary backend language with Chi router
-- **Lua**: Embedded scripting via gopher-lua for dynamic routing
-- **Libraries**: go-chi/chi/v5, yuin/gopher-lua, gopkg.in/yaml.v3
-- **Build**: Go modules, Makefile automation
-- **Testing**: Built-in Go testing with unit/integration/e2e tests
-- **CI/CD**: GitHub Actions with security scanning and multi-platform builds
+- **Languages**: Go 1.19+, Lua (embedded), Shell/Bash, YAML
+- **Frameworks**: Chi Router v5.2.2, Standard Library HTTP, Gopher-Lua v1.1.1
+- **Build Tools**: Go Modules, Docker Multi-stage Build, GNU Make
+- **Infrastructure**: Docker Compose, Alpine Linux, Nginx, Prometheus
 
 ## Structure
-- **cmd/**: Application entry point (main.go)
-- **internal/**: Core packages (config, lua, routing)
-- **configs/**: Configuration files and examples
-- **scripts/**: Lua route definition scripts
-- **tests/**: Test suites (unit/integration/e2e)
-- **testdata/**: Test fixtures and sample data
-- **bin/**: Built binaries
+- `/cmd/main.go` - Main application entry point
+- `/internal/config/` - Configuration management and YAML parsing
+- `/internal/routing/` - Core routing, load balancing, and proxy logic
+- `/internal/lua/` - Embedded Lua scripting engine for dynamic routing
+- `/configs/` - Configuration files with environment examples
+- `/scripts/` - Lua scripts for dynamic route definitions
+- `/tests/` - Comprehensive test suite (unit, integration, e2e, performance)
 
 ## Architecture
-- **HTTP Layer**: Chi router with middleware stack
-- **Gateway Layer**: Multi-tenant routing and load balancing
-- **Lua Engine**: Thread-safe state pools for dynamic scripting
-- **Configuration**: YAML-based tenant and service management
+Layered architecture with HTTP layer (Chi router), Application layer (Gateway with Lua engine), Business logic (Multi-tenant routing and load balancing), and Backend integration (Health checking and proxy management). Uses embedded Lua scripting for dynamic routing without restarts.
 
 ## Commands
-- Build: `make build` or `go build -o bin/keystone-gateway cmd/main.go`
-- Test: `make test` or `go test ./tests/...`
-- Lint: `make lint` or `golangci-lint run`
-- Dev/Run: `make run` or `./bin/keystone-gateway -config config.yaml`
+- Build: `make build` (local) or `make build` (Docker)
+- Test: `make test` (core tests) or `make test-all` (including performance)
+- Lint: `make lint` (requires golangci-lint)
+- Dev/Run: `make run` or `./bin/keystone-gateway -config configs/production.yaml`
 
 ## Testing
-- **Framework**: Go's built-in testing package with table-driven tests
-- **Organization**: Separate unit, integration, and e2e test directories
-- **Naming**: `*_test.go` files with `TestFunctionName` pattern
-- **Test data**: Located in `testdata/` with configs and Lua scripts
-- **Running**: Use `make test-unit`, `make test-integration`, `make test-e2e`
+Comprehensive testing infrastructure with Go's standard testing package:
+- **Unit tests** (`/tests/unit/`) - Fast, isolated component testing
+- **Integration tests** (`/tests/integration/`) - Component interaction testing
+- **E2E tests** (`/tests/e2e/`) - Full system workflow testing
+- **Performance tests** - Benchmarks, load tests, regression tracking
+- **Fixtures** - Extensive utilities for backends, configs, and HTTP clients
