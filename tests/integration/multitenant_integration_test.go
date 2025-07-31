@@ -104,7 +104,7 @@ func TestMultiTenantRouting(t *testing.T) {
 				}
 
 				if !strings.Contains(w.Body.String(), tc.expectedBody) {
-					t.Errorf("Expected body to contain '%s' for host %s, got '%s'", 
+					t.Errorf("Expected body to contain '%s' for host %s, got '%s'",
 						tc.expectedBody, tc.host, w.Body.String())
 				}
 			})
@@ -217,7 +217,7 @@ func TestMultiTenantRouting(t *testing.T) {
 				}
 
 				if !strings.Contains(w.Body.String(), tc.expectedBody) {
-					t.Errorf("Expected body to contain '%s' for path %s, got '%s'", 
+					t.Errorf("Expected body to contain '%s' for path %s, got '%s'",
 						tc.expectedBody, tc.path, w.Body.String())
 				}
 			})
@@ -331,7 +331,7 @@ func TestMultiTenantRouting(t *testing.T) {
 				}
 
 				if !strings.Contains(w.Body.String(), tc.expectedBody) {
-					t.Errorf("Expected body to contain '%s' for %s%s, got '%s'", 
+					t.Errorf("Expected body to contain '%s' for %s%s, got '%s'",
 						tc.expectedBody, tc.host, tc.path, w.Body.String())
 				}
 			})
@@ -342,10 +342,10 @@ func TestMultiTenantRouting(t *testing.T) {
 			host string
 			path string
 		}{
-			{"api.example.com", "/admin/panel"},     // wrong host for admin
-			{"web.example.com", "/v1/data"},        // wrong host for api v1
-			{"api.example.com", "/v3/data"},        // non-existent version
-			{"invalid.example.com", "/v1/data"},    // invalid host
+			{"api.example.com", "/admin/panel"}, // wrong host for admin
+			{"web.example.com", "/v1/data"},     // wrong host for api v1
+			{"api.example.com", "/v3/data"},     // non-existent version
+			{"invalid.example.com", "/v1/data"}, // invalid host
 		}
 
 		for _, tc := range mismatchTests {
@@ -653,7 +653,7 @@ func TestMultiTenantConcurrency(t *testing.T) {
 			for _, response := range responses {
 				expectedContent := fmt.Sprintf("Concurrent Tenant %s", tenant[len(tenant)-1:])
 				if !strings.Contains(response, expectedContent) {
-					t.Errorf("Expected response to contain '%s' for %s, got '%s'", 
+					t.Errorf("Expected response to contain '%s' for %s, got '%s'",
 						expectedContent, tenant, response)
 				}
 			}

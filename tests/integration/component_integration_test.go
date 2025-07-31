@@ -107,7 +107,7 @@ func TestConfigurationIntegration(t *testing.T) {
 							Health: "/health",
 						},
 						{
-							Name:   "health-service", 
+							Name:   "health-service",
 							URL:    healthBackend.URL,
 							Health: "/health",
 						},
@@ -259,7 +259,7 @@ func TestGatewayLifecycleIntegration(t *testing.T) {
 					},
 				},
 				{
-					Name:       "lifecycle-tenant-2", 
+					Name:       "lifecycle-tenant-2",
 					PathPrefix: "/v2/",
 					Interval:   30,
 					Services: []config.Service{

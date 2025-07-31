@@ -207,17 +207,17 @@ func TestLuaRoutingE2E(t *testing.T) {
 		// Start multiple backends for dynamic routing
 		primaryBackend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := primaryBackend.Stop(); err != nil {
-			t.Logf("Failed to stop primaryBackend: %v", err)
-		}
-	}()
+			if err := primaryBackend.Stop(); err != nil {
+				t.Logf("Failed to stop primaryBackend: %v", err)
+			}
+		}()
 
 		secondaryBackend := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := secondaryBackend.Stop(); err != nil {
-			t.Logf("Failed to stop secondaryBackend: %v", err)
-		}
-	}()
+			if err := secondaryBackend.Stop(); err != nil {
+				t.Logf("Failed to stop secondaryBackend: %v", err)
+			}
+		}()
 
 		// Create configuration with multiple services for Lua routing
 		cfg := &config.Config{
@@ -282,17 +282,17 @@ func TestLuaRoutingE2E(t *testing.T) {
 		// Start backends for conditional routing
 		fastBackend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := fastBackend.Stop(); err != nil {
-			t.Logf("Failed to stop fastBackend: %v", err)
-		}
-	}()
+			if err := fastBackend.Stop(); err != nil {
+				t.Logf("Failed to stop fastBackend: %v", err)
+			}
+		}()
 
 		slowBackend := fixtures.StartRealBackend(t, "slow")
 		defer func() {
-		if err := slowBackend.Stop(); err != nil {
-			t.Logf("Failed to stop slowBackend: %v", err)
-		}
-	}()
+			if err := slowBackend.Stop(); err != nil {
+				t.Logf("Failed to stop slowBackend: %v", err)
+			}
+		}()
 
 		// Create configuration for conditional routing
 		cfg := &config.Config{
@@ -424,7 +424,7 @@ func TestLuaPerformanceE2E(t *testing.T) {
 		// Performance expectations
 		maxExpectedDuration := 100 * time.Millisecond // Conservative expectation
 		if avgDuration > maxExpectedDuration {
-			t.Errorf("Average request duration too high: %v (expected < %v)", 
+			t.Errorf("Average request duration too high: %v (expected < %v)",
 				avgDuration, maxExpectedDuration)
 		}
 
@@ -433,7 +433,7 @@ func TestLuaPerformanceE2E(t *testing.T) {
 			t.Errorf("Success rate too low: %.2f%% (expected >= 90%%)", successRate*100)
 		}
 
-		t.Logf("✓ Lua processing performance: %d/%d requests, avg duration %v", 
+		t.Logf("✓ Lua processing performance: %d/%d requests, avg duration %v",
 			successCount, numRequests, avgDuration)
 	})
 
@@ -491,18 +491,18 @@ func TestLuaPerformanceE2E(t *testing.T) {
 		}
 
 		if successCount < concurrency/2 {
-			t.Errorf("Too few successful concurrent Lua requests: %d/%d", 
+			t.Errorf("Too few successful concurrent Lua requests: %d/%d",
 				successCount, concurrency)
 		}
 
 		// Performance check
 		maxExpectedDuration := 2 * time.Second
 		if duration > maxExpectedDuration {
-			t.Errorf("Concurrent Lua processing took too long: %v (expected < %v)", 
+			t.Errorf("Concurrent Lua processing took too long: %v (expected < %v)",
 				duration, maxExpectedDuration)
 		}
 
-		t.Logf("✓ Lua concurrent processing: %d/%d successful in %v", 
+		t.Logf("✓ Lua concurrent processing: %d/%d successful in %v",
 			successCount, concurrency, duration)
 	})
 }
@@ -571,17 +571,17 @@ func TestLuaErrorHandlingE2E(t *testing.T) {
 		// Start primary and fallback backends
 		primaryBackend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := primaryBackend.Stop(); err != nil {
-			t.Logf("Failed to stop primaryBackend: %v", err)
-		}
-	}()
+			if err := primaryBackend.Stop(); err != nil {
+				t.Logf("Failed to stop primaryBackend: %v", err)
+			}
+		}()
 
 		fallbackBackend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := fallbackBackend.Stop(); err != nil {
-			t.Logf("Failed to stop fallbackBackend: %v", err)
-		}
-	}()
+			if err := fallbackBackend.Stop(); err != nil {
+				t.Logf("Failed to stop fallbackBackend: %v", err)
+			}
+		}()
 
 		// Create configuration with fallback routing
 		cfg := &config.Config{

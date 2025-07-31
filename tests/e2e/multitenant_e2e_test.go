@@ -17,24 +17,24 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 		// Start different backends for each tenant
 		apiBackend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := apiBackend.Stop(); err != nil {
-			t.Logf("Failed to stop apiBackend: %v", err)
-		}
-	}()
+			if err := apiBackend.Stop(); err != nil {
+				t.Logf("Failed to stop apiBackend: %v", err)
+			}
+		}()
 
 		webBackend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := webBackend.Stop(); err != nil {
-			t.Logf("Failed to stop webBackend: %v", err)
-		}
-	}()
+			if err := webBackend.Stop(); err != nil {
+				t.Logf("Failed to stop webBackend: %v", err)
+			}
+		}()
 
 		mobileBackend := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := mobileBackend.Stop(); err != nil {
-			t.Logf("Failed to stop mobileBackend: %v", err)
-		}
-	}()
+			if err := mobileBackend.Stop(); err != nil {
+				t.Logf("Failed to stop mobileBackend: %v", err)
+			}
+		}()
 
 		// Create multi-tenant configuration with host-based routing
 		cfg := &config.Config{
@@ -48,7 +48,7 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 					},
 				},
 				{
-					Name:     "web-tenant", 
+					Name:     "web-tenant",
 					Domains:  []string{"web.example.com"},
 					Interval: 30,
 					Services: []config.Service{
@@ -132,7 +132,7 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 				defer resp.Body.Close()
 
 				if resp.StatusCode != tc.expectedStatus {
-					t.Errorf("Expected status %d for %s%s, got %d", 
+					t.Errorf("Expected status %d for %s%s, got %d",
 						tc.expectedStatus, tc.host, tc.path, resp.StatusCode)
 				}
 
@@ -166,24 +166,24 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 		// Start backends for path-based tenants
 		adminBackend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := adminBackend.Stop(); err != nil {
-			t.Logf("Failed to stop adminBackend: %v", err)
-		}
-	}()
+			if err := adminBackend.Stop(); err != nil {
+				t.Logf("Failed to stop adminBackend: %v", err)
+			}
+		}()
 
 		v1Backend := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := v1Backend.Stop(); err != nil {
-			t.Logf("Failed to stop v1Backend: %v", err)
-		}
-	}()
+			if err := v1Backend.Stop(); err != nil {
+				t.Logf("Failed to stop v1Backend: %v", err)
+			}
+		}()
 
 		v2Backend := fixtures.StartRealBackend(t, "health")
 		defer func() {
-		if err := v2Backend.Stop(); err != nil {
-			t.Logf("Failed to stop v2Backend: %v", err)
-		}
-	}()
+			if err := v2Backend.Stop(); err != nil {
+				t.Logf("Failed to stop v2Backend: %v", err)
+			}
+		}()
 
 		// Create configuration with path-based routing
 		cfg := &config.Config{
@@ -242,7 +242,7 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 				}
 
 				if !resp.HasStatus(tc.expectedStatus) {
-					t.Errorf("Expected status %d for %s, got %d", 
+					t.Errorf("Expected status %d for %s, got %d",
 						tc.expectedStatus, tc.path, resp.StatusCode)
 				}
 
@@ -288,24 +288,24 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 		// Start backends for hybrid routing
 		apiV1Backend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := apiV1Backend.Stop(); err != nil {
-			t.Logf("Failed to stop apiV1Backend: %v", err)
-		}
-	}()
+			if err := apiV1Backend.Stop(); err != nil {
+				t.Logf("Failed to stop apiV1Backend: %v", err)
+			}
+		}()
 
 		apiV2Backend := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := apiV2Backend.Stop(); err != nil {
-			t.Logf("Failed to stop apiV2Backend: %v", err)
-		}
-	}()
+			if err := apiV2Backend.Stop(); err != nil {
+				t.Logf("Failed to stop apiV2Backend: %v", err)
+			}
+		}()
 
 		webAdminBackend := fixtures.StartRealBackend(t, "health")
 		defer func() {
-		if err := webAdminBackend.Stop(); err != nil {
-			t.Logf("Failed to stop webAdminBackend: %v", err)
-		}
-	}()
+			if err := webAdminBackend.Stop(); err != nil {
+				t.Logf("Failed to stop webAdminBackend: %v", err)
+			}
+		}()
 
 		// Create configuration with hybrid (host + path) routing
 		cfg := &config.Config{
@@ -364,10 +364,10 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 		}
 
 		for _, tc := range testCases {
-			t.Run(fmt.Sprintf("hybrid_%s_%s", 
-				strings.ReplaceAll(tc.host, ".", "_"), 
+			t.Run(fmt.Sprintf("hybrid_%s_%s",
+				strings.ReplaceAll(tc.host, ".", "_"),
 				strings.ReplaceAll(tc.path, "/", "_")), func(t *testing.T) {
-				
+
 				resp, err := client.RequestWithHost("GET", tc.path, tc.host, nil)
 				if err != nil {
 					t.Fatalf("Failed to make hybrid request to %s%s: %v", tc.host, tc.path, err)
@@ -375,7 +375,7 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 				defer resp.Body.Close()
 
 				if resp.StatusCode != tc.expectedStatus {
-					t.Errorf("Expected status %d for %s%s, got %d", 
+					t.Errorf("Expected status %d for %s%s, got %d",
 						tc.expectedStatus, tc.host, tc.path, resp.StatusCode)
 				}
 
@@ -388,17 +388,17 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 			host string
 			path string
 		}{
-			{"api.example.com", "/admin/health"},   // wrong host for admin
-			{"web.example.com", "/v1/users"},      // wrong host for api v1
-			{"api.example.com", "/v3/users"},      // non-existent version
-			{"invalid.example.com", "/v1/users"},  // invalid host
+			{"api.example.com", "/admin/health"}, // wrong host for admin
+			{"web.example.com", "/v1/users"},     // wrong host for api v1
+			{"api.example.com", "/v3/users"},     // non-existent version
+			{"invalid.example.com", "/v1/users"}, // invalid host
 		}
 
 		for _, tc := range mismatchTests {
-			t.Run(fmt.Sprintf("mismatch_%s_%s", 
-				strings.ReplaceAll(tc.host, ".", "_"), 
+			t.Run(fmt.Sprintf("mismatch_%s_%s",
+				strings.ReplaceAll(tc.host, ".", "_"),
 				strings.ReplaceAll(tc.path, "/", "_")), func(t *testing.T) {
-				
+
 				resp, err := client.RequestWithHost("GET", tc.path, tc.host, nil)
 				if err != nil {
 					t.Fatalf("Failed to make mismatch request to %s%s: %v", tc.host, tc.path, err)
@@ -406,7 +406,7 @@ func TestMultiTenantRoutingE2E(t *testing.T) {
 				defer resp.Body.Close()
 
 				if resp.StatusCode != 404 {
-					t.Errorf("Expected status 404 for mismatched %s%s, got %d", 
+					t.Errorf("Expected status 404 for mismatched %s%s, got %d",
 						tc.host, tc.path, resp.StatusCode)
 				}
 			})
@@ -422,31 +422,31 @@ func TestMultiTenantLoadBalancingE2E(t *testing.T) {
 		// Create multiple backends for each tenant
 		tenant1Backend1 := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := tenant1Backend1.Stop(); err != nil {
-			t.Logf("Failed to stop tenant1Backend1: %v", err)
-		}
-	}()
+			if err := tenant1Backend1.Stop(); err != nil {
+				t.Logf("Failed to stop tenant1Backend1: %v", err)
+			}
+		}()
 
 		tenant1Backend2 := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := tenant1Backend2.Stop(); err != nil {
-			t.Logf("Failed to stop tenant1Backend2: %v", err)
-		}
-	}()
+			if err := tenant1Backend2.Stop(); err != nil {
+				t.Logf("Failed to stop tenant1Backend2: %v", err)
+			}
+		}()
 
 		tenant2Backend1 := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := tenant2Backend1.Stop(); err != nil {
-			t.Logf("Failed to stop tenant2Backend1: %v", err)
-		}
-	}()
+			if err := tenant2Backend1.Stop(); err != nil {
+				t.Logf("Failed to stop tenant2Backend1: %v", err)
+			}
+		}()
 
 		tenant2Backend2 := fixtures.StartRealBackend(t, "health")
 		defer func() {
-		if err := tenant2Backend2.Stop(); err != nil {
-			t.Logf("Failed to stop tenant2Backend2: %v", err)
-		}
-	}()
+			if err := tenant2Backend2.Stop(); err != nil {
+				t.Logf("Failed to stop tenant2Backend2: %v", err)
+			}
+		}()
 
 		// Create configuration with multiple backends per tenant
 		cfg := &config.Config{
@@ -483,7 +483,7 @@ func TestMultiTenantLoadBalancingE2E(t *testing.T) {
 		// Test load balancing for tenant 1
 		t.Run("tenant1_load_balancing", func(t *testing.T) {
 			responses := make(map[string]int)
-			
+
 			for i := 0; i < 10; i++ {
 				resp, err := client.GetResponse("/tenant1/test")
 				if err != nil {
@@ -504,7 +504,7 @@ func TestMultiTenantLoadBalancingE2E(t *testing.T) {
 			}
 
 			t.Logf("Tenant 1 load balancing distribution: %v", responses)
-			
+
 			// Should have some distribution (at least responses)
 			totalResponses := 0
 			for _, count := range responses {
@@ -518,7 +518,7 @@ func TestMultiTenantLoadBalancingE2E(t *testing.T) {
 		// Test load balancing for tenant 2
 		t.Run("tenant2_load_balancing", func(t *testing.T) {
 			responses := make(map[string]int)
-			
+
 			for i := 0; i < 10; i++ {
 				resp, err := client.GetResponse("/tenant2/users")
 				if err != nil {
@@ -539,7 +539,7 @@ func TestMultiTenantLoadBalancingE2E(t *testing.T) {
 			}
 
 			t.Logf("Tenant 2 load balancing distribution: %v", responses)
-			
+
 			totalResponses := 0
 			for _, count := range responses {
 				totalResponses += count
@@ -567,7 +567,7 @@ func TestMultiTenantLoadBalancingE2E(t *testing.T) {
 				t.Log("Tenant responses are identical - may indicate shared backend or simple responses")
 			}
 
-			t.Logf("✓ Tenant isolation: T1=%s, T2=%s", 
+			t.Logf("✓ Tenant isolation: T1=%s, T2=%s",
 				resp1.BodyString[:min(50, len(resp1.BodyString))],
 				resp2.BodyString[:min(50, len(resp2.BodyString))])
 		})
@@ -582,24 +582,24 @@ func TestMultiTenantConcurrencyE2E(t *testing.T) {
 		// Start backends for multiple tenants
 		tenant1Backend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := tenant1Backend.Stop(); err != nil {
-			t.Logf("Failed to stop tenant1Backend: %v", err)
-		}
-	}()
+			if err := tenant1Backend.Stop(); err != nil {
+				t.Logf("Failed to stop tenant1Backend: %v", err)
+			}
+		}()
 
 		tenant2Backend := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := tenant2Backend.Stop(); err != nil {
-			t.Logf("Failed to stop tenant2Backend: %v", err)
-		}
-	}()
+			if err := tenant2Backend.Stop(); err != nil {
+				t.Logf("Failed to stop tenant2Backend: %v", err)
+			}
+		}()
 
 		tenant3Backend := fixtures.StartRealBackend(t, "health")
 		defer func() {
-		if err := tenant3Backend.Stop(); err != nil {
-			t.Logf("Failed to stop tenant3Backend: %v", err)
-		}
-	}()
+			if err := tenant3Backend.Stop(); err != nil {
+				t.Logf("Failed to stop tenant3Backend: %v", err)
+			}
+		}()
 
 		// Create multi-tenant configuration
 		cfg := &config.Config{
@@ -685,7 +685,7 @@ func TestMultiTenantConcurrencyE2E(t *testing.T) {
 			tenantIndex := i % 3
 			tenantKey := fmt.Sprintf("t%d", tenantIndex+1)
 			tenantResults[tenantKey] = append(tenantResults[tenantKey], resp.StatusCode)
-			
+
 			resp.Body.Close()
 		}
 
@@ -697,30 +697,30 @@ func TestMultiTenantConcurrencyE2E(t *testing.T) {
 					successCount++
 				}
 			}
-			
+
 			expectedRequests := concurrency / 3
 			if len(statusCodes) != expectedRequests {
-				t.Errorf("Expected %d requests for %s, got %d", 
+				t.Errorf("Expected %d requests for %s, got %d",
 					expectedRequests, tenant, len(statusCodes))
 			}
 
 			if successCount < expectedRequests/2 {
-				t.Errorf("Too few successful requests for %s: %d/%d", 
+				t.Errorf("Too few successful requests for %s: %d/%d",
 					tenant, successCount, len(statusCodes))
 			}
 
-			t.Logf("Tenant %s: %d/%d successful requests", 
+			t.Logf("Tenant %s: %d/%d successful requests",
 				tenant, successCount, len(statusCodes))
 		}
 
 		// Performance verification
 		maxExpectedDuration := 3 * time.Second
 		if duration > maxExpectedDuration {
-			t.Errorf("Concurrent requests took too long: %v (expected < %v)", 
+			t.Errorf("Concurrent requests took too long: %v (expected < %v)",
 				duration, maxExpectedDuration)
 		}
 
-		t.Logf("✓ Concurrent multi-tenant access: %d requests in %v", 
+		t.Logf("✓ Concurrent multi-tenant access: %d requests in %v",
 			concurrency, duration)
 	})
 }
@@ -731,18 +731,18 @@ func TestMultiTenantErrorHandlingE2E(t *testing.T) {
 		// Create healthy backend for tenant 1
 		healthyBackend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := healthyBackend.Stop(); err != nil {
-			t.Logf("Failed to stop healthyBackend: %v", err)
-		}
-	}()
+			if err := healthyBackend.Stop(); err != nil {
+				t.Logf("Failed to stop healthyBackend: %v", err)
+			}
+		}()
 
 		// Create error backend for tenant 2
 		errorBackend := fixtures.StartRealBackend(t, "error")
 		defer func() {
-		if err := errorBackend.Stop(); err != nil {
-			t.Logf("Failed to stop errorBackend: %v", err)
-		}
-	}()
+			if err := errorBackend.Stop(); err != nil {
+				t.Logf("Failed to stop errorBackend: %v", err)
+			}
+		}()
 
 		// Create configuration with one healthy and one error-prone tenant
 		cfg := &config.Config{
@@ -808,7 +808,7 @@ func TestMultiTenantErrorHandlingE2E(t *testing.T) {
 				}
 
 				if !resp.HasStatus(tt.expectedStatus) {
-					t.Errorf("Expected status %d for %s, got %d", 
+					t.Errorf("Expected status %d for %s, got %d",
 						tt.expectedStatus, tt.path, resp.StatusCode)
 				}
 			}
@@ -833,11 +833,11 @@ func TestMultiTenantErrorHandlingE2E(t *testing.T) {
 			}
 
 			if !healthyResp.HasStatus(200) {
-				t.Errorf("Healthy tenant affected by error tenant, got status %d", 
+				t.Errorf("Healthy tenant affected by error tenant, got status %d",
 					healthyResp.StatusCode)
 			}
 
-			t.Logf("✓ Error isolation: Error tenant returned %d, healthy tenant returned %d", 
+			t.Logf("✓ Error isolation: Error tenant returned %d, healthy tenant returned %d",
 				errorResp.StatusCode, healthyResp.StatusCode)
 		})
 
@@ -851,31 +851,31 @@ func TestRealWorldMultiTenantE2E(t *testing.T) {
 		// Start backends for realistic scenario
 		publicAPIBackend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := publicAPIBackend.Stop(); err != nil {
-			t.Logf("Failed to stop publicAPIBackend: %v", err)
-		}
-	}()
+			if err := publicAPIBackend.Stop(); err != nil {
+				t.Logf("Failed to stop publicAPIBackend: %v", err)
+			}
+		}()
 
 		internalAPIBackend := fixtures.StartRealBackend(t, "health")
 		defer func() {
-		if err := internalAPIBackend.Stop(); err != nil {
-			t.Logf("Failed to stop internalAPIBackend: %v", err)
-		}
-	}()
+			if err := internalAPIBackend.Stop(); err != nil {
+				t.Logf("Failed to stop internalAPIBackend: %v", err)
+			}
+		}()
 
 		webFrontendBackend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := webFrontendBackend.Stop(); err != nil {
-			t.Logf("Failed to stop webFrontendBackend: %v", err)
-		}
-	}()
+			if err := webFrontendBackend.Stop(); err != nil {
+				t.Logf("Failed to stop webFrontendBackend: %v", err)
+			}
+		}()
 
 		adminBackend := fixtures.StartRealBackend(t, "json")
 		defer func() {
-		if err := adminBackend.Stop(); err != nil {
-			t.Logf("Failed to stop adminBackend: %v", err)
-		}
-	}()
+			if err := adminBackend.Stop(); err != nil {
+				t.Logf("Failed to stop adminBackend: %v", err)
+			}
+		}()
 
 		// Create realistic multi-tenant configuration
 		cfg := &config.Config{
@@ -1044,7 +1044,7 @@ func TestRealWorldMultiTenantE2E(t *testing.T) {
 					defer resp.Body.Close()
 
 					if resp.StatusCode != scenario.expected {
-						t.Errorf("%s: expected status %d, got %d", 
+						t.Errorf("%s: expected status %d, got %d",
 							scenario.description, scenario.expected, resp.StatusCode)
 					}
 				})
@@ -1054,4 +1054,3 @@ func TestRealWorldMultiTenantE2E(t *testing.T) {
 		t.Logf("✓ Comprehensive real-world multi-tenant scenario verified")
 	})
 }
-

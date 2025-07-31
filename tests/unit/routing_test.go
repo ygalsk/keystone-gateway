@@ -534,19 +534,19 @@ func TestRoutingEdgeCases(t *testing.T) {
 func TestCompressionIntegration(t *testing.T) {
 	// Create a router with compression middleware enabled (like in main.go)
 	r := chi.NewRouter()
-	
+
 	// Add compression middleware like in our main application
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.RequestID)
-	
+
 	// Add compression middleware for better performance on text content
-	r.Use(middleware.Compress(5, 
-		"text/html", 
-		"text/css", 
-		"text/javascript", 
-		"application/json", 
+	r.Use(middleware.Compress(5,
+		"text/html",
+		"text/css",
+		"text/javascript",
+		"application/json",
 		"application/xml",
 		"text/plain",
 	))
@@ -581,39 +581,39 @@ func TestCompressionIntegration(t *testing.T) {
 	})
 
 	testCases := []struct {
-		name           string
-		path           string
-		acceptEncoding string
+		name             string
+		path             string
+		acceptEncoding   string
 		expectCompressed bool
-		description    string
+		description      string
 	}{
 		{
-			name:           "Large JSON response with compression",
-			path:           "/api/json",
-			acceptEncoding: "gzip, deflate",
+			name:             "Large JSON response with compression",
+			path:             "/api/json",
+			acceptEncoding:   "gzip, deflate",
 			expectCompressed: true,
-			description:    "Large JSON responses should be compressed",
+			description:      "Large JSON responses should be compressed",
 		},
 		{
-			name:           "Large text response with compression",
-			path:           "/api/text",
-			acceptEncoding: "gzip",
+			name:             "Large text response with compression",
+			path:             "/api/text",
+			acceptEncoding:   "gzip",
 			expectCompressed: true,
-			description:    "Large text responses should be compressed",
+			description:      "Large text responses should be compressed",
 		},
 		{
-			name:           "No compression when not accepted",
-			path:           "/api/json",
-			acceptEncoding: "identity",
+			name:             "No compression when not accepted",
+			path:             "/api/json",
+			acceptEncoding:   "identity",
 			expectCompressed: false,
-			description:    "No compression when client doesn't accept it",
+			description:      "No compression when client doesn't accept it",
 		},
 		{
-			name:           "Small response may not be compressed",
-			path:           "/api/small",
-			acceptEncoding: "gzip",
+			name:             "Small response may not be compressed",
+			path:             "/api/small",
+			acceptEncoding:   "gzip",
 			expectCompressed: false, // Small responses might not be compressed
-			description:    "Small responses may not benefit from compression",
+			description:      "Small responses may not benefit from compression",
 		},
 	}
 
@@ -634,7 +634,7 @@ func TestCompressionIntegration(t *testing.T) {
 
 			// Check compression headers
 			contentEncoding := w.Header().Get("Content-Encoding")
-			
+
 			if tc.expectCompressed {
 				if contentEncoding == "" {
 					t.Errorf("%s: Expected compression but got no Content-Encoding header", tc.description)
@@ -648,13 +648,13 @@ func TestCompressionIntegration(t *testing.T) {
 					t.Errorf("%s: Expected Vary header to contain Accept-Encoding, got %q", tc.description, vary)
 				}
 
-				t.Logf("%s: Successfully compressed with %s (%d bytes)", 
+				t.Logf("%s: Successfully compressed with %s (%d bytes)",
 					tc.description, contentEncoding, w.Body.Len())
 			} else {
 				if contentEncoding != "" && tc.expectCompressed {
 					t.Errorf("%s: Expected no compression but got Content-Encoding: %q", tc.description, contentEncoding)
 				}
-				t.Logf("%s: Response %s (%d bytes)", tc.description, 
+				t.Logf("%s: Response %s (%d bytes)", tc.description,
 					func() string {
 						if contentEncoding != "" {
 							return "compressed with " + contentEncoding
@@ -665,5 +665,3 @@ func TestCompressionIntegration(t *testing.T) {
 		})
 	}
 }
-
-

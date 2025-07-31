@@ -18,92 +18,92 @@ import (
 // TestCompressionMiddleware tests the compression middleware functionality
 func TestCompressionMiddleware(t *testing.T) {
 	tests := []struct {
-		name           string
-		contentType    string
-		acceptEncoding string
-		body           string
+		name             string
+		contentType      string
+		acceptEncoding   string
+		body             string
 		expectCompressed bool
-		expectHeader   string
+		expectHeader     string
 	}{
 		{
-			name:           "JSON content with gzip acceptance",
-			contentType:    "application/json",
-			acceptEncoding: "gzip, deflate",
-			body:           `{"message": "Hello, World!", "data": [1, 2, 3, 4, 5]}`,
+			name:             "JSON content with gzip acceptance",
+			contentType:      "application/json",
+			acceptEncoding:   "gzip, deflate",
+			body:             `{"message": "Hello, World!", "data": [1, 2, 3, 4, 5]}`,
 			expectCompressed: true,
-			expectHeader:   "gzip",
+			expectHeader:     "gzip",
 		},
 		{
-			name:           "HTML content with gzip acceptance",
-			contentType:    "text/html",
-			acceptEncoding: "gzip",
-			body:           "<html><body><h1>Test Page</h1><p>This is a test page with content.</p></body></html>",
+			name:             "HTML content with gzip acceptance",
+			contentType:      "text/html",
+			acceptEncoding:   "gzip",
+			body:             "<html><body><h1>Test Page</h1><p>This is a test page with content.</p></body></html>",
 			expectCompressed: true,
-			expectHeader:   "gzip",
+			expectHeader:     "gzip",
 		},
 		{
-			name:           "CSS content with gzip acceptance",
-			contentType:    "text/css",
-			acceptEncoding: "gzip, deflate, br",
-			body:           "body { font-family: Arial, sans-serif; background-color: #f0f0f0; }",
+			name:             "CSS content with gzip acceptance",
+			contentType:      "text/css",
+			acceptEncoding:   "gzip, deflate, br",
+			body:             "body { font-family: Arial, sans-serif; background-color: #f0f0f0; }",
 			expectCompressed: true,
-			expectHeader:   "gzip",
+			expectHeader:     "gzip",
 		},
 		{
-			name:           "JavaScript content with gzip acceptance",
-			contentType:    "text/javascript",
-			acceptEncoding: "gzip",
-			body:           "function test() { console.log('Hello, World!'); return true; }",
+			name:             "JavaScript content with gzip acceptance",
+			contentType:      "text/javascript",
+			acceptEncoding:   "gzip",
+			body:             "function test() { console.log('Hello, World!'); return true; }",
 			expectCompressed: true,
-			expectHeader:   "gzip",
+			expectHeader:     "gzip",
 		},
 		{
-			name:           "Plain text with gzip acceptance",
-			contentType:    "text/plain",
-			acceptEncoding: "gzip",
-			body:           "This is a plain text response that should be compressed.",
+			name:             "Plain text with gzip acceptance",
+			contentType:      "text/plain",
+			acceptEncoding:   "gzip",
+			body:             "This is a plain text response that should be compressed.",
 			expectCompressed: true,
-			expectHeader:   "gzip",
+			expectHeader:     "gzip",
 		},
 		{
-			name:           "XML content with gzip acceptance",
-			contentType:    "application/xml",
-			acceptEncoding: "gzip",
-			body:           "<?xml version=\"1.0\"?><root><item>test</item></root>",
+			name:             "XML content with gzip acceptance",
+			contentType:      "application/xml",
+			acceptEncoding:   "gzip",
+			body:             "<?xml version=\"1.0\"?><root><item>test</item></root>",
 			expectCompressed: true,
-			expectHeader:   "gzip",
+			expectHeader:     "gzip",
 		},
 		{
-			name:           "Image content should not be compressed",
-			contentType:    "image/jpeg",
-			acceptEncoding: "gzip",
-			body:           "fake-image-binary-data",
+			name:             "Image content should not be compressed",
+			contentType:      "image/jpeg",
+			acceptEncoding:   "gzip",
+			body:             "fake-image-binary-data",
 			expectCompressed: false,
-			expectHeader:   "",
+			expectHeader:     "",
 		},
 		{
-			name:           "Binary content should not be compressed",
-			contentType:    "application/octet-stream",
-			acceptEncoding: "gzip",
-			body:           "binary-data-content",
+			name:             "Binary content should not be compressed",
+			contentType:      "application/octet-stream",
+			acceptEncoding:   "gzip",
+			body:             "binary-data-content",
 			expectCompressed: false,
-			expectHeader:   "",
+			expectHeader:     "",
 		},
 		{
-			name:           "No compression when client doesn't accept",
-			contentType:    "application/json",
-			acceptEncoding: "identity",
-			body:           `{"message": "Hello, World!"}`,
+			name:             "No compression when client doesn't accept",
+			contentType:      "application/json",
+			acceptEncoding:   "identity",
+			body:             `{"message": "Hello, World!"}`,
 			expectCompressed: false,
-			expectHeader:   "",
+			expectHeader:     "",
 		},
 		{
-			name:           "No Accept-Encoding header",
-			contentType:    "application/json",
-			acceptEncoding: "",
-			body:           `{"message": "Hello, World!"}`,
+			name:             "No Accept-Encoding header",
+			contentType:      "application/json",
+			acceptEncoding:   "",
+			body:             `{"message": "Hello, World!"}`,
 			expectCompressed: false,
-			expectHeader:   "",
+			expectHeader:     "",
 		},
 	}
 
@@ -111,11 +111,11 @@ func TestCompressionMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a test router with compression middleware
 			r := chi.NewRouter()
-			r.Use(middleware.Compress(5, 
-				"text/html", 
-				"text/css", 
-				"text/javascript", 
-				"application/json", 
+			r.Use(middleware.Compress(5,
+				"text/html",
+				"text/css",
+				"text/javascript",
+				"application/json",
 				"application/xml",
 				"text/plain",
 			))
@@ -314,11 +314,11 @@ func TestCompressionWithRealWorldScenarios(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
 			r := chi.NewRouter()
-			r.Use(middleware.Compress(5, 
-				"text/html", 
-				"text/css", 
-				"text/javascript", 
-				"application/json", 
+			r.Use(middleware.Compress(5,
+				"text/html",
+				"text/css",
+				"text/javascript",
+				"application/json",
 				"application/xml",
 				"text/plain",
 			))

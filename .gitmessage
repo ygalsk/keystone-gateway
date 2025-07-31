@@ -1,0 +1,19 @@
+# <type>(<scope>): <subject>
+#
+# <body>
+#
+# <footer>
+
+# --- COMMIT MESSAGE GUIDELINES ---
+# Type: feat, fix, docs, style, refactor, test, chore, perf, ci, build
+# Scope (optional): routing, config, health, proxy, lua, tests, ci, docker
+# Subject: imperative, lowercase, no period, max 50 chars
+# Body: explain what and why, not how (wrap at 72 chars)
+# Footer: breaking changes, issues closed
+
+# Examples:
+# feat(routing): add load balancing for multi-tenant environments
+# fix(health): prevent goroutine leak in health checker
+# docs: update README with new configuration options
+# test(integration): add realistic load testing scenarios
+# ci: add staging deployment pipeline

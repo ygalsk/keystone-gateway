@@ -18,10 +18,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start real backend server
 		backend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -40,10 +40,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start real gateway server
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create E2E client
 		client := fixtures.NewE2EClient()
@@ -76,10 +76,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start echo backend to inspect real HTTP details
 		backend := fixtures.StartRealBackend(t, "echo")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -98,10 +98,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client with custom headers
 		client := fixtures.NewE2EClient()
@@ -188,17 +188,17 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start multiple backends for different services
 		apiBackend := fixtures.StartRealBackend(t, "api")
 		defer func() {
-		if err := apiBackend.Stop(); err != nil {
-			t.Logf("Failed to stop apiBackend: %v", err)
-		}
-	}()
+			if err := apiBackend.Stop(); err != nil {
+				t.Logf("Failed to stop apiBackend: %v", err)
+			}
+		}()
 
 		healthBackend := fixtures.StartRealBackend(t, "health")
 		defer func() {
-		if err := healthBackend.Stop(); err != nil {
-			t.Logf("Failed to stop healthBackend: %v", err)
-		}
-	}()
+			if err := healthBackend.Stop(); err != nil {
+				t.Logf("Failed to stop healthBackend: %v", err)
+			}
+		}()
 
 		// Create comprehensive gateway configuration
 		cfg := &config.Config{
@@ -219,10 +219,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start gateway with configuration
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client
 		client := fixtures.NewE2EClient()
@@ -275,10 +275,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start error backend
 		backend := fixtures.StartRealBackend(t, "error")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -297,10 +297,10 @@ func TestBasicGatewayE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client
 		client := fixtures.NewE2EClient()
@@ -328,7 +328,7 @@ func TestBasicGatewayE2E(t *testing.T) {
 				}
 
 				if !resp.HasStatus(tt.expectedStatus) {
-					t.Errorf("Expected status %d for %s, got %d", 
+					t.Errorf("Expected status %d for %s, got %d",
 						tt.expectedStatus, tt.path, resp.StatusCode)
 				}
 
@@ -338,7 +338,7 @@ func TestBasicGatewayE2E(t *testing.T) {
 					t.Errorf("Failed to parse error response for %s: %v", tt.path, err)
 				} else {
 					if errorMsg, ok := errorData["error"].(string); !ok || errorMsg != tt.expectedError {
-						t.Errorf("Expected error message '%s' for %s, got: %v", 
+						t.Errorf("Expected error message '%s' for %s, got: %v",
 							tt.expectedError, tt.path, errorData["error"])
 					}
 				}
@@ -355,10 +355,10 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Start fast backend
 		backend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -377,10 +377,10 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client
 		client := fixtures.NewE2EClient()
@@ -421,7 +421,7 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Performance expectations
 		maxExpectedDuration := 2 * time.Second
 		if duration > maxExpectedDuration {
-			t.Errorf("Concurrent requests took too long: %v (expected < %v)", 
+			t.Errorf("Concurrent requests took too long: %v (expected < %v)",
 				duration, maxExpectedDuration)
 		}
 
@@ -432,10 +432,10 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Start backend
 		backend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -454,10 +454,10 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client
 		client := fixtures.NewE2EClient()
@@ -474,23 +474,23 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		}
 
 		if result.TotalErrors > result.TotalRequests/10 {
-			t.Errorf("Too many errors during load test: %d/%d (>10%%)", 
+			t.Errorf("Too many errors during load test: %d/%d (>10%%)",
 				result.TotalErrors, result.TotalRequests)
 		}
 
 		if result.SuccessRate() < 0.9 {
-			t.Errorf("Success rate too low: %.2f%% (expected >= 90%%)", 
+			t.Errorf("Success rate too low: %.2f%% (expected >= 90%%)",
 				result.SuccessRate()*100)
 		}
 
 		expectedMinRPS := float64(concurrency) * 0.3 // Conservative expectation
 		if result.RequestsPerSecond() < expectedMinRPS {
-			t.Errorf("Requests per second too low: %.2f (expected >= %.2f)", 
+			t.Errorf("Requests per second too low: %.2f (expected >= %.2f)",
 				result.RequestsPerSecond(), expectedMinRPS)
 		}
 
-		t.Logf("✓ Load test: %d requests in %v (%.2f RPS, %.1f%% success)", 
-			result.TotalRequests, result.Duration, 
+		t.Logf("✓ Load test: %d requests in %v (%.2f RPS, %.1f%% success)",
+			result.TotalRequests, result.Duration,
 			result.RequestsPerSecond(), result.SuccessRate()*100)
 	})
 
@@ -498,10 +498,10 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Start backend with controlled delay
 		backend := fixtures.StartRealBackend(t, "slow")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -520,10 +520,10 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client
 		client := fixtures.NewE2EClient()
@@ -571,18 +571,18 @@ func TestGatewayPerformanceE2E(t *testing.T) {
 		}
 
 		avgTime := totalTime / time.Duration(len(responseTimes))
-		
+
 		// Response time expectations
-		expectedMinTime := 100 * time.Millisecond  // Backend delay
-		expectedMaxTime := 2 * time.Second         // Reasonable maximum
+		expectedMinTime := 100 * time.Millisecond // Backend delay
+		expectedMaxTime := 2 * time.Second        // Reasonable maximum
 
 		if avgTime < expectedMinTime {
-			t.Errorf("Average response time too fast: %v (expected >= %v)", 
+			t.Errorf("Average response time too fast: %v (expected >= %v)",
 				avgTime, expectedMinTime)
 		}
 
 		if maxTime > expectedMaxTime {
-			t.Errorf("Maximum response time too slow: %v (expected <= %v)", 
+			t.Errorf("Maximum response time too slow: %v (expected <= %v)",
 				maxTime, expectedMaxTime)
 		}
 
@@ -619,10 +619,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client
 		client := fixtures.NewE2EClient()
@@ -634,10 +634,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 			t.Fatalf("Failed to make initial request: %v", err)
 		}
 		defer func() {
-		if err := resp1.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+			if err := resp1.Body.Close(); err != nil {
+				t.Logf("Failed to close response body: %v", err)
+			}
+		}()
 
 		if resp1.StatusCode != 200 {
 			t.Errorf("Expected status 200 for healthy backend, got %d", resp1.StatusCode)
@@ -656,15 +656,15 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 			t.Logf("Expected network error when backend is down: %v", err)
 		} else {
 			defer func() {
-		if err := resp2.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp2.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 			// Gateway should return appropriate error status
 			if resp2.StatusCode == 200 {
 				t.Error("Gateway should not return 200 when backend is down")
 			} else {
-				t.Logf("Gateway correctly returned error status %d when backend is down", 
+				t.Logf("Gateway correctly returned error status %d when backend is down",
 					resp2.StatusCode)
 			}
 		}
@@ -676,10 +676,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 		// Start backend
 		backend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -698,10 +698,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client for malformed requests
 		client := fixtures.NewE2EClient()
@@ -714,10 +714,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 			t.Logf("Long path request failed as expected: %v", err)
 		} else {
 			defer func() {
-		if err := resp1.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp1.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 			if resp1.StatusCode != 404 && resp1.StatusCode != 414 {
 				t.Logf("Long path returned status %d (expected 404 or 414)", resp1.StatusCode)
 			}
@@ -730,10 +730,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 			t.Errorf("Failed to send malformed JSON: %v", err)
 		} else {
 			defer func() {
-		if err := resp2.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp2.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 			// Backend should handle this, but gateway should pass it through
 			if resp2.StatusCode == 200 {
 				t.Log("Gateway passed malformed JSON to backend successfully")
@@ -746,10 +746,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 			t.Logf("Invalid HTTP method failed as expected: %v", err)
 		} else {
 			defer func() {
-		if err := resp3.Body.Close(); err != nil {
-			t.Logf("Failed to close response body: %v", err)
-		}
-	}()
+				if err := resp3.Body.Close(); err != nil {
+					t.Logf("Failed to close response body: %v", err)
+				}
+			}()
 			if resp3.StatusCode != 405 && resp3.StatusCode != 501 {
 				t.Logf("Invalid method returned status %d", resp3.StatusCode)
 			}
@@ -765,10 +765,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 		// Start backend
 		backend := fixtures.StartRealBackend(t, "simple")
 		defer func() {
-		if err := backend.Stop(); err != nil {
-			t.Logf("Failed to stop backend: %v", err)
-		}
-	}()
+			if err := backend.Stop(); err != nil {
+				t.Logf("Failed to stop backend: %v", err)
+			}
+		}()
 
 		// Create gateway configuration
 		cfg := &config.Config{
@@ -787,10 +787,10 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 		// Start gateway
 		gateway := fixtures.StartRealGateway(t, cfg)
 		defer func() {
-		if err := gateway.Stop(); err != nil {
-			t.Logf("Failed to stop gateway: %v", err)
-		}
-	}()
+			if err := gateway.Stop(); err != nil {
+				t.Logf("Failed to stop gateway: %v", err)
+			}
+		}()
 
 		// Create client with shorter timeout for faster cycling
 		client := fixtures.NewE2EClientWithTimeout(5 * time.Second)
@@ -820,11 +820,11 @@ func TestGatewayRobustnessE2E(t *testing.T) {
 		// Verify most requests succeeded
 		successRate := float64(successCount) / float64(numRequests)
 		if successRate < 0.8 {
-			t.Errorf("Success rate too low for cleanup test: %.2f%% (expected >= 80%%)", 
+			t.Errorf("Success rate too low for cleanup test: %.2f%% (expected >= 80%%)",
 				successRate*100)
 		}
 
-		t.Logf("✓ Resource cleanup: %d/%d requests successful (%.1f%%)", 
+		t.Logf("✓ Resource cleanup: %d/%d requests successful (%.1f%%)",
 			successCount, numRequests, successRate*100)
 	})
 }

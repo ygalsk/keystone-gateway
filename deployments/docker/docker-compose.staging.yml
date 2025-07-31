@@ -1,0 +1,40 @@
+services:
+  keystone-gateway:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: keystone-gateway:staging
+    container_name: keystone-gateway-staging
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - ../../configs/environments/staging.yaml:/app/config.yaml:ro
+      - ../../scripts/lua:/app/scripts:ro
+    environment:
+      - GOGC=200
+      - GOMAXPROCS=2  # Limited for staging
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/admin/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file" 
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Simple mock backend for testing
+  mock-backend:
+    image: kennethreitz/httpbin:latest
+    container_name: mock-backend-staging
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/status/200 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

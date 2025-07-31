@@ -25,10 +25,10 @@ type E2EBackend struct {
 // StartRealBackend starts a real backend server for E2E testing
 func StartRealBackend(t *testing.T, backendType string) *E2EBackend {
 	port := GetRandomPort()
-	
+
 	// Create handler based on backend type
 	handler := createBackendHandler(backendType)
-	
+
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: handler,
@@ -37,27 +37,27 @@ func StartRealBackend(t *testing.T, backendType string) *E2EBackend {
 		WriteTimeout: 5 * time.Second,
 		IdleTimeout:  15 * time.Second,
 	}
-	
+
 	// Start listening
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		t.Fatalf("Failed to start E2E backend listener: %v", err)
 	}
-	
+
 	// Start server in goroutine
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			t.Errorf("E2E backend server error: %v", err)
 		}
 	}()
-	
+
 	url := fmt.Sprintf("http://localhost:%d", port)
-	
+
 	// Wait for backend to be ready
 	if !waitForServer(url, 3*time.Second) {
 		t.Fatalf("E2E backend server failed to start within timeout")
 	}
-	
+
 	backend := &E2EBackend{
 		Server:   server,
 		URL:      url,
@@ -65,7 +65,7 @@ func StartRealBackend(t *testing.T, backendType string) *E2EBackend {
 		Type:     backendType,
 		listener: listener,
 	}
-	
+
 	t.Logf("Started E2E %s backend at %s", backendType, url)
 	return backend
 }
@@ -75,18 +75,18 @@ func (b *E2EBackend) Stop() error {
 	if b.Server == nil {
 		return nil
 	}
-	
+
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	
+
 	err := b.Server.Shutdown(ctx)
 	if b.listener != nil {
 		if closeErr := b.listener.Close(); closeErr != nil {
 			log.Printf("Failed to close listener: %v", closeErr)
 		}
 	}
-	
+
 	return err
 }
 
@@ -118,7 +118,7 @@ func createSimpleBackendHandler() http.Handler {
 		w.Header().Set("Content-Type", "text/plain")
 		w.Header().Set("X-Backend-Type", "simple")
 		w.WriteHeader(http.StatusOK)
-		
+
 		response := fmt.Sprintf("Simple backend response for %s %s", r.Method, r.URL.Path)
 		if _, err := w.Write([]byte(response)); err != nil {
 			log.Printf("Failed to write response: %v", err)
@@ -131,22 +131,22 @@ func createEchoBackendHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Backend-Type", "echo")
-		
+
 		// Read request body
 		body, _ := io.ReadAll(r.Body)
-		
+
 		// Create echo response
 		response := map[string]interface{}{
-			"method":  r.Method,
-			"path":    r.URL.Path,
-			"query":   r.URL.RawQuery,
-			"headers": r.Header,
-			"body":    string(body),
-			"host":    r.Host,
-			"remote":  r.RemoteAddr,
+			"method":    r.Method,
+			"path":      r.URL.Path,
+			"query":     r.URL.RawQuery,
+			"headers":   r.Header,
+			"body":      string(body),
+			"host":      r.Host,
+			"remote":    r.RemoteAddr,
 			"timestamp": time.Now().Format(time.RFC3339),
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("Failed to encode JSON response: %v", err)
@@ -157,15 +157,15 @@ func createEchoBackendHandler() http.Handler {
 // createHealthBackendHandler creates a backend with health check endpoints
 func createHealthBackendHandler() http.Handler {
 	startTime := time.Now()
-	
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Backend-Type", "health")
-		
+
 		switch r.URL.Path {
 		case "/health":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			
+
 			health := map[string]interface{}{
 				"status":    "healthy",
 				"uptime":    time.Since(startTime).String(),
@@ -175,11 +175,11 @@ func createHealthBackendHandler() http.Handler {
 			if err := json.NewEncoder(w).Encode(health); err != nil {
 				log.Printf("Failed to encode health response: %v", err)
 			}
-			
+
 		case "/ready":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			
+
 			ready := map[string]interface{}{
 				"ready":     true,
 				"timestamp": time.Now().Format(time.RFC3339),
@@ -187,7 +187,7 @@ func createHealthBackendHandler() http.Handler {
 			if err := json.NewEncoder(w).Encode(ready); err != nil {
 				log.Printf("Failed to encode ready response: %v", err)
 			}
-			
+
 		default:
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
@@ -203,28 +203,28 @@ func createAPIBackendHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Backend-Type", "api")
-		
+
 		// Extract resource from path
 		pathParts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
 		resource := "unknown"
 		if len(pathParts) > 0 && pathParts[0] != "" {
 			resource = pathParts[0]
 		}
-		
+
 		switch r.Method {
 		case "GET":
 			if len(pathParts) > 1 && pathParts[1] != "" {
 				// GET specific resource
 				response := map[string]interface{}{
-					"id":       pathParts[1],
-					"resource": resource,
-					"data":     fmt.Sprintf("Details for %s %s", resource, pathParts[1]),
+					"id":        pathParts[1],
+					"resource":  resource,
+					"data":      fmt.Sprintf("Details for %s %s", resource, pathParts[1]),
 					"timestamp": time.Now().Format(time.RFC3339),
 				}
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Failed to encode JSON response: %v", err)
-		}
+					log.Printf("Failed to encode JSON response: %v", err)
+				}
 			} else {
 				// GET collection
 				response := map[string]interface{}{
@@ -233,19 +233,19 @@ func createAPIBackendHandler() http.Handler {
 						{"id": "1", "name": fmt.Sprintf("First %s", resource)},
 						{"id": "2", "name": fmt.Sprintf("Second %s", resource)},
 					},
-					"count": 2,
+					"count":     2,
 					"timestamp": time.Now().Format(time.RFC3339),
 				}
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Failed to encode JSON response: %v", err)
-		}
+					log.Printf("Failed to encode JSON response: %v", err)
+				}
 			}
-			
+
 		case "POST":
 			// Read request body
 			body, _ := io.ReadAll(r.Body)
-			
+
 			response := map[string]interface{}{
 				"resource":  resource,
 				"action":    "created",
@@ -255,13 +255,13 @@ func createAPIBackendHandler() http.Handler {
 			}
 			w.WriteHeader(http.StatusCreated)
 			if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Failed to encode JSON response: %v", err)
-		}
-			
+				log.Printf("Failed to encode JSON response: %v", err)
+			}
+
 		case "PUT", "PATCH":
 			if len(pathParts) > 1 && pathParts[1] != "" {
 				body, _ := io.ReadAll(r.Body)
-				
+
 				response := map[string]interface{}{
 					"resource":  resource,
 					"action":    "updated",
@@ -271,15 +271,15 @@ func createAPIBackendHandler() http.Handler {
 				}
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Failed to encode JSON response: %v", err)
-		}
+					log.Printf("Failed to encode JSON response: %v", err)
+				}
 			} else {
 				w.WriteHeader(http.StatusBadRequest)
 				if err := json.NewEncoder(w).Encode(map[string]string{"error": "ID required for update"}); err != nil {
 					log.Printf("Failed to encode error response: %v", err)
 				}
 			}
-			
+
 		case "DELETE":
 			if len(pathParts) > 1 && pathParts[1] != "" {
 				response := map[string]interface{}{
@@ -290,15 +290,15 @@ func createAPIBackendHandler() http.Handler {
 				}
 				w.WriteHeader(http.StatusOK)
 				if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("Failed to encode JSON response: %v", err)
-		}
+					log.Printf("Failed to encode JSON response: %v", err)
+				}
 			} else {
 				w.WriteHeader(http.StatusBadRequest)
 				if err := json.NewEncoder(w).Encode(map[string]string{"error": "ID required for delete"}); err != nil {
 					log.Printf("Failed to encode error response: %v", err)
 				}
 			}
-			
+
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			if err := json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"}); err != nil {
@@ -318,20 +318,20 @@ func createSlowBackendHandler() http.Handler {
 				delay = parsedDelay
 			}
 		}
-		
+
 		time.Sleep(delay)
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Backend-Type", "slow")
 		w.Header().Set("X-Processing-Time", delay.String())
-		
+
 		response := map[string]interface{}{
-			"message":        "Slow backend response",
+			"message":         "Slow backend response",
 			"processing_time": delay.String(),
-			"timestamp":      time.Now().Format(time.RFC3339),
-			"path":          r.URL.Path,
+			"timestamp":       time.Now().Format(time.RFC3339),
+			"path":            r.URL.Path,
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("Failed to encode JSON response: %v", err)
@@ -344,10 +344,10 @@ func createErrorBackendHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Backend-Type", "error")
-		
+
 		// Determine error type from path
 		path := strings.Trim(r.URL.Path, "/")
-		
+
 		switch path {
 		case "400", "bad-request":
 			w.WriteHeader(http.StatusBadRequest)
@@ -401,12 +401,12 @@ func createJSONBackendHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("X-Backend-Type", "json")
-		
+
 		// Sample JSON data based on path
 		path := strings.Trim(r.URL.Path, "/")
-		
+
 		var response interface{}
-		
+
 		switch path {
 		case "users":
 			response = []map[string]interface{}{
@@ -431,7 +431,7 @@ func createJSONBackendHandler() http.Handler {
 				"timestamp": time.Now().Format(time.RFC3339),
 			}
 		}
-		
+
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("Failed to encode JSON response: %v", err)
@@ -450,15 +450,15 @@ func StartBackendCluster(t *testing.T, backendType string, count int) *E2EBacken
 	if count <= 0 {
 		t.Fatal("Backend cluster must have at least 1 backend")
 	}
-	
+
 	var backends []E2EBackend
-	
+
 	for i := 0; i < count; i++ {
 		backend := StartRealBackend(t, backendType)
 		backends = append(backends, *backend)
 		t.Logf("Started backend %d/%d of type %s at %s", i+1, count, backendType, backend.URL)
 	}
-	
+
 	return &E2EBackendCluster{
 		Backends: backends,
 		Type:     backendType,
@@ -468,13 +468,13 @@ func StartBackendCluster(t *testing.T, backendType string, count int) *E2EBacken
 // Stop stops all backends in the cluster
 func (c *E2EBackendCluster) Stop() error {
 	var lastErr error
-	
+
 	for i := range c.Backends {
 		if err := c.Backends[i].Stop(); err != nil {
 			lastErr = err
 		}
 	}
-	
+
 	return lastErr
 }
 

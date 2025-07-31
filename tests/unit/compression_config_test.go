@@ -15,12 +15,12 @@ import (
 // TestCompressionConfiguration tests that compression can be configured via config
 func TestCompressionConfiguration(t *testing.T) {
 	tests := []struct {
-		name               string
-		compressionConfig  *config.CompressionConfig
-		expectCompression  bool
-		expectedLevel      int
-		expectedTypes      []string
-		description        string
+		name              string
+		compressionConfig *config.CompressionConfig
+		expectCompression bool
+		expectedLevel     int
+		expectedTypes     []string
+		description       string
 	}{
 		{
 			name:              "Default compression when no config provided",
@@ -33,8 +33,8 @@ func TestCompressionConfiguration(t *testing.T) {
 		{
 			name: "Custom compression level and types",
 			compressionConfig: &config.CompressionConfig{
-				Enabled: true,
-				Level:   9,
+				Enabled:      true,
+				Level:        9,
 				ContentTypes: []string{"application/json", "text/plain"},
 			},
 			expectCompression: true,
@@ -45,8 +45,8 @@ func TestCompressionConfiguration(t *testing.T) {
 		{
 			name: "Compression disabled",
 			compressionConfig: &config.CompressionConfig{
-				Enabled: false,
-				Level:   5,
+				Enabled:      false,
+				Level:        5,
 				ContentTypes: []string{"application/json"},
 			},
 			expectCompression: false,
@@ -109,7 +109,7 @@ func TestCompressionConfiguration(t *testing.T) {
 				}
 			}
 
-			t.Logf("%s: Configuration test passed - Enabled: %v, Level: %d, Types: %v", 
+			t.Logf("%s: Configuration test passed - Enabled: %v, Level: %d, Types: %v",
 				tt.description, compressionConfig.Enabled, compressionConfig.Level, compressionConfig.ContentTypes)
 		})
 	}
@@ -128,8 +128,8 @@ func TestCompressionConfigurationIntegration(t *testing.T) {
 		{
 			name: "JSON compression with custom config",
 			config: &config.CompressionConfig{
-				Enabled: true,
-				Level:   7,
+				Enabled:      true,
+				Level:        7,
 				ContentTypes: []string{"application/json"},
 			},
 			contentType: "application/json",
@@ -140,8 +140,8 @@ func TestCompressionConfigurationIntegration(t *testing.T) {
 		{
 			name: "HTML not compressed with JSON-only config",
 			config: &config.CompressionConfig{
-				Enabled: true,
-				Level:   5,
+				Enabled:      true,
+				Level:        5,
 				ContentTypes: []string{"application/json"},
 			},
 			contentType: "text/html",
@@ -199,7 +199,7 @@ func TestCompressionConfigurationIntegration(t *testing.T) {
 			}
 
 			contentEncoding := w.Header().Get("Content-Encoding")
-			
+
 			if tc.expectComp {
 				if contentEncoding == "" {
 					t.Errorf("%s: Expected compression but got no Content-Encoding header", tc.description)

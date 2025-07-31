@@ -70,7 +70,6 @@ func (m *mockResponseWriter) getActions() []MiddlewareAction {
 	return actions
 }
 
-
 // setupChiBindings sets up Lua bindings for Chi router functions
 func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 	// Register Lua functions that can be called from scripts

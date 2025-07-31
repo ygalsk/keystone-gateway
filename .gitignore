@@ -64,5 +64,41 @@ Thumbs.db
 # Local development
 /tmp/
 /temp/
+main
+curl
+response.html
+log
 
-/todos/worktrees/
+# Coverage reports
+coverage.html
+coverage.out
+
+# Archive directory
+.archive/
+
+# Local configuration overrides
+Makefile.local
+*.local.yaml
+*.local.yml
+
+# Backup files
+*.bak
+*.backup
+backups/
+
+# Test artifacts
+test-results/
+junit.xml
+
+# Performance test results
+*.bench
+benchmarks/
+
+# Certificate files
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+ssl/
+certificates/

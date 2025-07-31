@@ -118,7 +118,7 @@ func CreateVariableBackend(t *testing.T) *httptest.Server {
 	return CreatePerformanceBackend(t, PerformanceBackendConfig{
 		Type:           "variable",
 		ResponseSize:   300,
-		ProcessingTime: 0, // Variable timing handled in handler
+		ProcessingTime: 0,    // Variable timing handled in handler
 		ErrorRate:      0.05, // 5% error rate
 		MemoryAlloc:    2048, // 2KB
 	})
@@ -141,7 +141,7 @@ func CreateReliableBackend(t *testing.T) *httptest.Server {
 		Type:           "fast",
 		ResponseSize:   200,
 		ProcessingTime: 5 * time.Millisecond,
-		ErrorRate:      0, // No errors
+		ErrorRate:      0,   // No errors
 		MemoryAlloc:    512, // 512 bytes
 	})
 }
@@ -304,13 +304,13 @@ type PerformanceMetrics struct {
 
 // BenchmarkResult represents the result of a performance benchmark
 type BenchmarkResult struct {
-	TestName          string
-	TotalRequests     int
+	TestName           string
+	TotalRequests      int
 	SuccessfulRequests int
-	FailedRequests    int
-	Duration          time.Duration
-	Metrics           PerformanceMetrics
-	Timestamp         time.Time
+	FailedRequests     int
+	Duration           time.Duration
+	Metrics            PerformanceMetrics
+	Timestamp          time.Time
 }
 
 // CreateBenchmarkConfig creates a configuration optimized for benchmarking
@@ -336,35 +336,35 @@ func CreateBenchmarkConfig(tenantName string) *config.Config {
 // WarmupBackend performs warmup requests to ensure consistent performance measurements
 func WarmupBackend(backend *httptest.Server, requests int) error {
 	client := &http.Client{Timeout: 5 * time.Second}
-	
+
 	for i := 0; i < requests; i++ {
 		resp, err := client.Get(backend.URL + "/warmup")
 		if err != nil {
 			return fmt.Errorf("warmup request %d failed: %w", i, err)
 		}
 		resp.Body.Close()
-		
+
 		// Small delay between warmup requests
 		time.Sleep(10 * time.Millisecond)
 	}
-	
+
 	return nil
 }
 
 // CreateScalingTestBackends creates backends for scaling tests
 func CreateScalingTestBackends(t *testing.T, count int) []*httptest.Server {
 	backends := make([]*httptest.Server, count)
-	
+
 	for i := 0; i < count; i++ {
 		backends[i] = CreatePerformanceBackend(t, PerformanceBackendConfig{
 			Type:           "fast",
-			ResponseSize:   100 + (i * 50), // Varying response sizes
+			ResponseSize:   100 + (i * 50),                        // Varying response sizes
 			ProcessingTime: time.Duration(i*5) * time.Millisecond, // Varying delays
 			ErrorRate:      0,
 			MemoryAlloc:    1024 * (i + 1), // Varying memory usage
 		})
 	}
-	
+
 	return backends
 }
 

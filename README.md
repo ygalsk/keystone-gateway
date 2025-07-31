@@ -11,79 +11,93 @@ A high-performance, programmable reverse proxy and API gateway written in Go wit
 - **Admin API**: Health monitoring and tenant management endpoints
 - **Thread-safe architecture**: Lua state pools and atomic operations for concurrent safety
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Go 1.21 or later
-- Basic knowledge of YAML configuration
+- **Go 1.22 or later**
+- **Docker and Docker Compose** for development and deployment
+- **Make** for build automation (cross-platform)
 
-### Installation
+### Installation & Development
 
-**From source:**
 ```bash
+# Clone the repository
 git clone https://github.com/your-org/keystone-gateway.git
 cd keystone-gateway
-go build -o keystone-gateway ./cmd/
+
+# View all available commands
+make help
+
+# Start development environment
+make dev
+
+# Run tests
+make test
+
+# Deploy to staging
+make staging
 ```
 
-**Or install directly:**
+### Makefile System
+
+Keystone Gateway uses a comprehensive **Makefile system** for all operations:
+
 ```bash
-go install github.com/your-org/keystone-gateway/cmd@latest
+# 🏗️  Development
+make dev             # Start development environment
+make dev-health      # Check development health
+make feature-start FEATURE=my-feature  # Start new feature
+
+# 🧪 Testing & Quality
+make test            # Run comprehensive tests
+make lint            # Code quality checks
+make fmt             # Format code
+
+# 🚀 Deployment
+make staging         # Deploy to staging
+make production      # Deploy to production (with confirmation)
+make health          # Check all environment health
+
+# 🔧 Maintenance
+make clean           # Clean up resources
+make validate        # Validate repository setup
+make info            # Show project information
 ```
 
-### Basic Usage
+### Configuration Examples
 
-1. **Create a basic configuration** (`config.yaml`):
-```yaml
-admin_base_path: "/admin"
+See the `configs/` directory for configuration examples:
+- **`configs/examples/simple.yaml`** - Basic single-tenant setup
+- **`configs/examples/multi-tenant.yaml`** - Multi-tenant configuration
+- **`configs/environments/staging.yaml`** - Staging environment
+- **`configs/environments/production-high-load.yaml`** - Production setup
 
-# Optional: Configure HTTP compression
-compression:
-  enabled: true
-  level: 5
-  content_types:
-    - "application/json"
-    - "text/html"
+## 📁 Project Structure
 
-lua_routing:
-  enabled: true
-  scripts_dir: "./scripts"
-
-tenants:
-  - name: "api"
-    domains: ["localhost"]
-    lua_routes: "basic-routes.lua"
-    services:
-      - name: "backend"
-        url: "http://localhost:3001"
-        health: "/health"
 ```
-
-2. **Create a basic Lua routing script** (`scripts/basic-routes.lua`):
-```lua
--- Register a simple route
-chi_route("GET", "/api/hello", function(request, response)
-    response:header("Content-Type", "application/json")
-    response:write('{"message": "Hello from Keystone Gateway!"}')
-end)
-
--- Add middleware
-chi_middleware("/api/*", function(request, response, next)
-    response:header("X-Gateway", "Keystone")
-    next()
-end)
-```
-
-3. **Run the gateway**:
-```bash
-./keystone-gateway -config config.yaml
-```
-
-4. **Test your setup**:
-```bash
-curl http://localhost:8080/api/hello
-# {"message": "Hello from Keystone Gateway!"}
+keystone-gateway/
+├── 📂 cmd/                     # Application entry points
+├── 📂 internal/                # Private Go packages
+│   ├── config/                 # Configuration management  
+│   ├── lua/                    # Lua engine integration
+│   └── routing/                # HTTP routing and load balancing
+├── 📂 configs/                 # Configuration files
+│   ├── environments/           # Environment-specific configs
+│   └── examples/               # Example configurations
+├── 📂 scripts/                 # Scripts and tools
+│   ├── lua/                    # Lua routing scripts
+│   └── tools/                  # Development tools
+├── 📂 tests/                   # Comprehensive test suite
+│   ├── unit/                   # Unit tests
+│   ├── integration/            # Integration tests
+│   └── e2e/                    # End-to-end tests
+├── 📂 deployments/             # Deployment configurations
+│   └── docker/                 # Docker Compose files
+├── 📂 docs/                    # Documentation
+├── 🐳 docker-compose.production.yml  # Production deployment
+├── 🔨 Makefile                 # Unified build system
+└── 📋 README.md                # This file
 ```
 
 ## Configuration
@@ -207,15 +221,22 @@ For development guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
 - [Lua Scripting Guide](docs/lua-scripting.md) - Comprehensive Lua API documentation
 - [Examples](configs/examples/) - Configuration examples for different scenarios
 
-## Architecture
+## 🏗️ Architecture
 
-Keystone Gateway uses a layered architecture with embedded Lua scripting:
+Keystone Gateway uses a **clean, layered architecture** with embedded Lua scripting:
 
-- **HTTP Layer**: Chi router for high-performance request handling
-- **Application Layer**: Gateway logic with embedded Lua engine
-- **Business Logic**: Multi-tenant routing and load balancing
+### Core Components
+- **🌐 HTTP Layer**: Chi router for high-performance request handling
+- **🚀 Application Layer**: Gateway logic with embedded Lua engine  
+- **🏢 Business Logic**: Multi-tenant routing and load balancing
+- **🐳 Deployment Layer**: Docker-first with Makefile automation
 
-Key components interact through thread-safe Lua state pools, ensuring concurrent safety while maintaining the flexibility of dynamic scripting.
+### Key Features
+- **Thread-safe Lua state pools** for concurrent safety
+- **Zero-downtime deployments** with health checking
+- **Environment-based configuration** (dev, staging, production)
+- **Comprehensive testing** (unit, integration, e2e, load)
+- **Simple Docker deployment** focused purely on the gateway
 
 ## Performance Optimizations
 

@@ -22,13 +22,13 @@ type E2EScenario struct {
 func RunE2EScenario(t *testing.T, scenario E2EScenario) {
 	t.Run(scenario.Name, func(t *testing.T) {
 		t.Logf("Running E2E scenario: %s", scenario.Description)
-		
+
 		// Setup
 		env := scenario.Setup(t)
 		if env == nil {
 			t.Fatal("Scenario setup returned nil environment")
 		}
-		
+
 		// Cleanup
 		defer func() {
 			if scenario.Cleanup != nil {
@@ -39,11 +39,11 @@ func RunE2EScenario(t *testing.T, scenario E2EScenario) {
 				}
 			}
 		}()
-		
+
 		// Create client
 		client := NewE2EClient()
 		client.SetBaseURL(env.Gateway.URL)
-		
+
 		// Run test
 		scenario.Test(t, env, client)
 	})
@@ -68,7 +68,7 @@ func CreateSimpleE2EScenario(name, description string) E2EScenario {
 					},
 				},
 			}
-			
+
 			return SetupE2EEnvironment(t, cfg)
 		},
 		Test: func(t *testing.T, env *E2ETestEnvironment, client *E2EClient) {
@@ -77,7 +77,7 @@ func CreateSimpleE2EScenario(name, description string) E2EScenario {
 			if err != nil {
 				t.Fatalf("Failed to get health response: %v", err)
 			}
-			
+
 			if !resp.HasStatus(200) {
 				t.Errorf("Expected status 200, got %d", resp.StatusCode)
 			}
@@ -112,7 +112,7 @@ func CreateMultiTenantE2EScenario(name, description string) E2EScenario {
 					},
 				},
 			}
-			
+
 			return SetupE2EEnvironment(t, cfg)
 		},
 		Test: func(t *testing.T, env *E2ETestEnvironment, client *E2EClient) {
@@ -126,11 +126,11 @@ func CreateMultiTenantE2EScenario(name, description string) E2EScenario {
 					log.Printf("Failed to close response body: %v", err)
 				}
 			}()
-			
+
 			if resp1.StatusCode != 200 {
 				t.Errorf("Expected status 200 for host-based routing, got %d", resp1.StatusCode)
 			}
-			
+
 			// Test path-based routing
 			resp2, err := client.Get("/web/")
 			if err != nil {
@@ -141,7 +141,7 @@ func CreateMultiTenantE2EScenario(name, description string) E2EScenario {
 					log.Printf("Failed to close response body: %v", err)
 				}
 			}()
-			
+
 			if resp2.StatusCode != 200 {
 				t.Errorf("Expected status 200 for path-based routing, got %d", resp2.StatusCode)
 			}
@@ -170,24 +170,24 @@ func CreateLoadBalancingE2EScenario(name, description string) E2EScenario {
 					},
 				},
 			}
-			
+
 			return SetupE2EEnvironment(t, cfg)
 		},
 		Test: func(t *testing.T, env *E2ETestEnvironment, client *E2EClient) {
 			// Make multiple requests to test load balancing
 			responses := make(map[string]int)
-			
+
 			for i := 0; i < 15; i++ {
 				resp, err := client.GetResponse("/lb/")
 				if err != nil {
 					t.Fatalf("Failed to make load balancing request %d: %v", i+1, err)
 				}
-				
+
 				if resp.HasStatus(200) {
 					responses[resp.BodyString]++
 				}
 			}
-			
+
 			// Should have received responses from multiple backends
 			if len(responses) < 1 {
 				t.Logf("Load balancing responses: %v", responses)
@@ -215,13 +215,13 @@ func CreatePerformanceE2EScenario(name, description string, concurrency int, dur
 					},
 				},
 			}
-			
+
 			return SetupE2EEnvironment(t, cfg)
 		},
 		Test: func(t *testing.T, env *E2ETestEnvironment, client *E2EClient) {
 			// Run load test
 			result := client.LoadTest("/perf/", concurrency, duration)
-			
+
 			t.Logf("Performance test results:")
 			t.Logf("  Duration: %v", result.Duration)
 			t.Logf("  Concurrency: %d", result.Concurrency)
@@ -230,19 +230,19 @@ func CreatePerformanceE2EScenario(name, description string, concurrency int, dur
 			t.Logf("  Requests/second: %.2f", result.RequestsPerSecond())
 			t.Logf("  Success rate: %.2f%%", result.SuccessRate()*100)
 			t.Logf("  Status codes: %v", result.StatusCodes)
-			
+
 			// Basic performance assertions
 			if result.TotalRequests == 0 {
 				t.Error("No requests completed during performance test")
 			}
-			
+
 			if result.SuccessRate() < 0.95 { // Expect 95% success rate
 				t.Errorf("Success rate too low: %.2f%% (expected >= 95%%)", result.SuccessRate()*100)
 			}
-			
+
 			expectedMinRPS := float64(concurrency) * 0.5 // Expect at least 50% of theoretical max
 			if result.RequestsPerSecond() < expectedMinRPS {
-				t.Errorf("Requests per second too low: %.2f (expected >= %.2f)", 
+				t.Errorf("Requests per second too low: %.2f (expected >= %.2f)",
 					result.RequestsPerSecond(), expectedMinRPS)
 			}
 		},
@@ -257,7 +257,7 @@ func CreateErrorHandlingE2EScenario(name, description string) E2EScenario {
 		Setup: func(t *testing.T) *E2ETestEnvironment {
 			// Start error backend directly and get its URL
 			errorBackend := StartRealBackend(t, "error")
-			
+
 			cfg := &config.Config{
 				Tenants: []config.Tenant{
 					{
@@ -270,10 +270,10 @@ func CreateErrorHandlingE2EScenario(name, description string) E2EScenario {
 					},
 				},
 			}
-			
+
 			// Start gateway with error backend config
 			gateway := StartRealGateway(t, cfg)
-			
+
 			return &E2ETestEnvironment{
 				Gateway:  gateway,
 				Backends: []*E2EBackend{errorBackend},
@@ -291,18 +291,18 @@ func CreateErrorHandlingE2EScenario(name, description string) E2EScenario {
 				{"/error/500", 500},
 				{"/error/503", 503},
 			}
-			
+
 			for _, tt := range errorTests {
 				resp, err := client.GetResponse(tt.path)
 				if err != nil {
 					t.Fatalf("Failed to make error request to %s: %v", tt.path, err)
 				}
-				
+
 				if !resp.HasStatus(tt.expectedStatus) {
-					t.Errorf("Expected status %d for %s, got %d", 
+					t.Errorf("Expected status %d for %s, got %d",
 						tt.expectedStatus, tt.path, resp.StatusCode)
 				}
-				
+
 				// Verify error response is JSON
 				var errorData map[string]interface{}
 				if err := resp.JSON(&errorData); err != nil {
@@ -353,7 +353,7 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 					},
 				},
 			}
-			
+
 			return SetupE2EEnvironment(t, cfg)
 		},
 		Test: func(t *testing.T, env *E2ETestEnvironment, client *E2EClient) {
@@ -364,12 +364,12 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 					t.Fatalf("Failed to access public API: %v", err)
 				}
 				defer resp.Body.Close()
-				
+
 				if resp.StatusCode != 200 {
 					t.Errorf("Expected status 200 for public API, got %d", resp.StatusCode)
 				}
 			})
-			
+
 			// Test internal API access
 			t.Run("internal_api_access", func(t *testing.T) {
 				resp, err := client.Get("/internal/admin")
@@ -377,12 +377,12 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 					t.Fatalf("Failed to access internal API: %v", err)
 				}
 				defer resp.Body.Close()
-				
+
 				if resp.StatusCode != 200 {
 					t.Errorf("Expected status 200 for internal API, got %d", resp.StatusCode)
 				}
 			})
-			
+
 			// Test web frontend access
 			t.Run("web_frontend_access", func(t *testing.T) {
 				resp, err := client.RequestWithHost("GET", "/", "web.example.com", nil)
@@ -390,22 +390,22 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 					t.Fatalf("Failed to access web frontend: %v", err)
 				}
 				defer resp.Body.Close()
-				
+
 				if resp.StatusCode != 200 {
 					t.Errorf("Expected status 200 for web frontend, got %d", resp.StatusCode)
 				}
 			})
-			
+
 			// Test load balancing across API services
 			t.Run("api_load_balancing", func(t *testing.T) {
 				responses := make(map[string]int)
-				
+
 				for i := 0; i < 10; i++ {
 					resp, err := client.RequestWithHost("GET", "/users", "api.example.com", nil)
 					if err != nil {
 						t.Fatalf("Failed load balancing request %d: %v", i+1, err)
 					}
-					
+
 					if resp.StatusCode == 200 {
 						body := make([]byte, 100)
 						n, _ := resp.Body.Read(body)
@@ -413,16 +413,16 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 					}
 					resp.Body.Close()
 				}
-				
+
 				// Should have some distribution across backends
 				t.Logf("Load balancing distribution: %v", responses)
 			})
-			
+
 			// Test concurrent access across tenants
 			t.Run("concurrent_tenant_access", func(t *testing.T) {
 				concurrency := 10
 				requests := make([]func() (*http.Response, error), concurrency)
-				
+
 				for i := 0; i < concurrency; i++ {
 					switch i % 3 {
 					case 0:
@@ -442,9 +442,9 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 						}
 					}
 				}
-				
+
 				responses, errors := client.ParallelRequests(requests)
-				
+
 				// Check results
 				successCount := 0
 				for i, resp := range responses {
@@ -455,11 +455,11 @@ func CreateRealWorldE2EScenario(name, description string) E2EScenario {
 						resp.Body.Close()
 					}
 				}
-				
+
 				if successCount < concurrency/2 {
 					t.Errorf("Too few successful concurrent requests: %d/%d", successCount, concurrency)
 				}
-				
+
 				t.Logf("Concurrent requests: %d successful out of %d", successCount, concurrency)
 			})
 		},

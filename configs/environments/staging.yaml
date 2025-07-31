@@ -1,0 +1,27 @@
+admin_base_path: "/admin"
+
+lua_routing:
+  enabled: true
+  scripts_dir: "./scripts/lua"
+
+tenants:
+  # API tenant for staging environment
+  - name: "api-staging"
+    domains:
+      - "localhost"
+      - "127.0.0.1"
+    lua_routes: "api-routes.lua"
+    health_interval: 30
+    services:
+      - name: "mock-backend"
+        url: "http://mock-backend-staging:80"
+        health: "/status/200"
+
+  # Load balancing testing
+  - name: "lb-staging" 
+    path_prefix: "/lb/"
+    health_interval: 30
+    services:
+      - name: "mock-backend-lb"
+        url: "http://mock-backend-staging:80"
+        health: "/status/200"

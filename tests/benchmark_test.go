@@ -38,7 +38,7 @@ func BenchmarkGatewayRouting(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected status 200, got %d", w.Code)
 		}
@@ -68,7 +68,7 @@ func BenchmarkGatewayRoutingConcurrent(b *testing.B) {
 		for pb.Next() {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
-			
+
 			if w.Code != http.StatusOK {
 				b.Fatalf("Expected status 200, got %d", w.Code)
 			}
@@ -123,7 +123,7 @@ func BenchmarkLoadBalancing(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected status 200, got %d", w.Code)
 		}
@@ -180,7 +180,7 @@ func BenchmarkLoadBalancingConcurrent(b *testing.B) {
 		for pb.Next() {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
-			
+
 			if w.Code != http.StatusOK {
 				b.Fatalf("Expected status 200, got %d", w.Code)
 			}
@@ -263,7 +263,7 @@ func BenchmarkMultiTenantRouting(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				w := httptest.NewRecorder()
 				handler.ServeHTTP(w, tc.req)
-				
+
 				if w.Code != http.StatusOK {
 					b.Fatalf("Expected status 200, got %d", w.Code)
 				}
@@ -301,7 +301,7 @@ func BenchmarkLuaScriptExecution(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected status 200, got %d", w.Code)
 		}
@@ -337,7 +337,7 @@ func BenchmarkLuaScriptExecutionConcurrent(b *testing.B) {
 		for pb.Next() {
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
-			
+
 			if w.Code != http.StatusOK {
 				b.Fatalf("Expected status 200, got %d", w.Code)
 			}
@@ -449,7 +449,7 @@ func BenchmarkConfigurationParsing(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		router := chi.NewRouter()
 		gateway := routing.NewGatewayWithRouter(cfg, router)
-		
+
 		if gateway == nil {
 			b.Fatal("Failed to create gateway from config")
 		}
@@ -478,7 +478,7 @@ func BenchmarkMemoryUsage(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		var req *http.Request
-		
+
 		switch i % 3 {
 		case 0:
 			req = httptest.NewRequest("GET", "/memory/small", nil)
@@ -491,10 +491,10 @@ func BenchmarkMemoryUsage(b *testing.B) {
 			req.Header.Set("Content-Type", "text/plain")
 			req.ContentLength = int64(len(largeData))
 		}
-		
+
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, req)
-		
+
 		if w.Code != http.StatusOK {
 			b.Fatalf("Expected status 200, got %d", w.Code)
 		}

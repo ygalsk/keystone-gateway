@@ -1,342 +1,337 @@
-# Keystone Gateway Production Setup
-# ===================================
+# Keystone Gateway - Unified Build & Deployment System
+# ====================================================
 
-# Variables
-COMPOSE_FILE := docker-compose.production.yml
+# Project Configuration
 PROJECT_NAME := keystone-gateway
-GATEWAY_PORT := 8080
-NGINX_PORT := 80
-DOMAIN := keystone-gateway.dev
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+BUILD_TIME := $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+# Environment Configuration
+STAGING_COMPOSE := deployments/docker/docker-compose.staging.yml
+PRODUCTION_COMPOSE := docker-compose.production.yml
+
+# Port Configuration
+STAGING_PORT := 8081
+PRODUCTION_PORT := 8080
+DEV_PORT := 8082
 
 # Colors for output
+RED := \033[0;31m
 GREEN := \033[0;32m
 YELLOW := \033[1;33m
-RED := \033[0;31m
-NC := \033[0m # No Color
+BLUE := \033[0;34m
+CYAN := \033[0;36m
+NC := \033[0m
 
 .DEFAULT_GOAL := help
 
 # =============================================================================
-# HELP & INFO
+# HELP & INFORMATION
 # =============================================================================
 
 .PHONY: help
-help: ## Show this help message
-	@echo "$(GREEN)Keystone Gateway - Production Setup$(NC)"
-	@echo "===================================="
+help: ## Show available commands
+	@echo "$(BLUE)🚀 Keystone Gateway - Unified Build & Deploy$(NC)"
+	@echo "=============================================="
 	@echo ""
-	@echo "$(YELLOW)Prerequisites:$(NC)"
-	@echo "  - Docker & Docker Compose installed"
-	@echo "  - $(COMPOSE_FILE) file present"
-	@echo "  - config/ directory with production.yaml"
+	@echo "$(CYAN)⚡ Quick Commands:$(NC)"
+	@echo "  $(GREEN)make dev$(NC)        Start development environment"
+	@echo "  $(GREEN)make staging$(NC)    Deploy to staging"
+	@echo "  $(GREEN)make production$(NC) Deploy to production"
+	@echo "  $(GREEN)make test$(NC)       Run all tests"
+	@echo "  $(GREEN)make clean$(NC)      Clean up everything"
 	@echo ""
-	@echo "$(YELLOW)Quick Start:$(NC)"
-	@echo "  make up        # Start all services"
-	@echo "  make test      # Run load tests"
-	@echo "  make status    # Check service status"
+	@echo "$(CYAN)📋 All Commands:$(NC)"
+	@awk 'BEGIN {FS = ":.*?## "}; /^[a-zA-Z0-9_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
 	@echo ""
-	@echo "$(YELLOW)Available commands:$(NC)"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo "$(CYAN)🌍 Project Info:$(NC)"
+	@echo "  Version: $(VERSION)"
+	@echo "  Commit:  $(GIT_COMMIT)"
+	@echo "  Built:   $(BUILD_TIME)"
 
-.PHONY: check-requirements
-check-requirements: ## Check if all required files exist
-	@echo "$(YELLOW)🔍 Checking requirements...$(NC)"
-	@test -f $(COMPOSE_FILE) || (echo "$(RED)❌ $(COMPOSE_FILE) not found$(NC)" && exit 1)
-	@test -f Dockerfile || (echo "$(RED)❌ Dockerfile not found$(NC)" && exit 1)
-	@test -f configs/production.yaml || (echo "$(RED)❌ configs/production.yaml not found$(NC)" && exit 1)
-	@test -d scripts || (echo "$(RED)❌ scripts/ directory not found$(NC)" && exit 1)
-	@command -v docker >/dev/null || (echo "$(RED)❌ Docker not installed$(NC)" && exit 1)
-	@command -v docker-compose >/dev/null || (echo "$(RED)❌ Docker Compose not installed$(NC)" && exit 1)
-	@echo "$(GREEN)✅ All requirements satisfied$(NC)"
-
-.PHONY: status
-status: ## Show current status
-	@echo "$(YELLOW)🔍 Service Status:$(NC)"
-	@docker-compose -f $(COMPOSE_FILE) ps
+.PHONY: info
+info: ## Show detailed project information
+	@echo "$(BLUE)📊 Project Status$(NC)"
+	@echo "=================="
+	@echo "Project: $(PROJECT_NAME)"
+	@echo "Version: $(VERSION)"
+	@echo "Commit:  $(GIT_COMMIT)"
+	@echo "Build:   $(BUILD_TIME)"
 	@echo ""
-	@echo "$(YELLOW)📊 Resource Usage:$(NC)"
-	@docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" 2>/dev/null | head -6 || echo "No containers running"
+	@echo "$(BLUE)🐳 Container Status:$(NC)"
+	@docker ps --filter "name=$(PROJECT_NAME)" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "No containers running"
 
 # =============================================================================
-# DOCKER OPERATIONS
+# VALIDATION & BUILD
 # =============================================================================
+
+.PHONY: validate
+validate: ## Validate setup and dependencies
+	@echo "$(YELLOW)🔍 Validating setup...$(NC)"
+	@command -v docker >/dev/null || (echo "$(RED)❌ Docker required$(NC)" && exit 1)
+	@command -v docker-compose >/dev/null || (echo "$(RED)❌ Docker Compose required$(NC)" && exit 1)
+	@test -f Dockerfile || (echo "$(RED)❌ Dockerfile missing$(NC)" && exit 1)
+	@test -f configs/environments/staging.yaml || (echo "$(RED)❌ Staging config missing$(NC)" && exit 1)
+	@test -f configs/environments/production-high-load.yaml || (echo "$(RED)❌ Production config missing$(NC)" && exit 1)
+	@echo "$(GREEN)✅ Validation passed$(NC)"
 
 .PHONY: build
-build: check-requirements ## Build all Docker images
-	@echo "$(YELLOW)🔨 Building Docker images...$(NC)"
-	@docker-compose -f $(COMPOSE_FILE) build
+build: validate ## Build Docker image
+	@echo "$(YELLOW)🔨 Building image...$(NC)"
+	@docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg BUILD_TIME=$(BUILD_TIME) \
+		--build-arg GIT_COMMIT=$(GIT_COMMIT) \
+		-t $(PROJECT_NAME):latest \
+		-t $(PROJECT_NAME):$(VERSION) \
+		.
+	@echo "$(GREEN)✅ Build completed: $(PROJECT_NAME):$(VERSION)$(NC)"
 
-.PHONY: up
-up: check-requirements ## Start all services
-	@echo "$(YELLOW)🚀 Starting all services...$(NC)"
-	@docker-compose -f $(COMPOSE_FILE) up -d
-	@echo "$(YELLOW)⏳ Waiting for services to be ready...$(NC)"
+# =============================================================================
+# DEVELOPMENT
+# =============================================================================
+
+.PHONY: dev
+dev: build ## Start development environment
+	@echo "$(YELLOW)🚀 Starting development...$(NC)"
+	@docker stop $(PROJECT_NAME)-dev 2>/dev/null || true
+	@docker run -d \
+		--name $(PROJECT_NAME)-dev \
+		--rm \
+		-p $(DEV_PORT):8080 \
+		-v $(PWD)/configs/environments/staging.yaml:/app/config.yaml:ro \
+		-v $(PWD)/scripts/lua:/app/scripts:ro \
+		$(PROJECT_NAME):latest
+	@echo "$(YELLOW)⏳ Waiting for startup...$(NC)"
+	@sleep 5
+	@$(MAKE) dev-health
+	@echo "$(GREEN)✅ Development ready at http://localhost:$(DEV_PORT)$(NC)"
+
+.PHONY: dev-logs
+dev-logs: ## Show development logs
+	@docker logs -f $(PROJECT_NAME)-dev
+
+.PHONY: dev-health
+dev-health: ## Check development health
+	@curl -sf http://localhost:$(DEV_PORT)/admin/health >/dev/null && \
+		echo "$(GREEN)✅ Development healthy$(NC)" || \
+		echo "$(RED)❌ Development unhealthy$(NC)"
+
+.PHONY: dev-stop
+dev-stop: ## Stop development environment
+	@echo "$(YELLOW)⏹️  Stopping development...$(NC)"
+	@docker stop $(PROJECT_NAME)-dev 2>/dev/null || true
+	@echo "$(GREEN)✅ Development stopped$(NC)"
+
+# =============================================================================
+# STAGING
+# =============================================================================
+
+.PHONY: staging
+staging: validate build ## Deploy to staging
+	@echo "$(YELLOW)🚀 Deploying to staging...$(NC)"
+	@docker-compose -f $(STAGING_COMPOSE) down --remove-orphans 2>/dev/null || true
+	@docker-compose -f $(STAGING_COMPOSE) up -d --build
+	@echo "$(YELLOW)⏳ Waiting for staging...$(NC)"
+	@sleep 10
+	@$(MAKE) staging-health
+	@echo "$(GREEN)🎉 Staging ready at http://localhost:$(STAGING_PORT)$(NC)"
+
+.PHONY: staging-logs
+staging-logs: ## Show staging logs
+	@docker-compose -f $(STAGING_COMPOSE) logs -f
+
+.PHONY: staging-health
+staging-health: ## Check staging health
+	@curl -sf http://localhost:$(STAGING_PORT)/admin/health >/dev/null && \
+		echo "$(GREEN)✅ Staging healthy$(NC)" || \
+		echo "$(RED)❌ Staging unhealthy$(NC)"
+
+.PHONY: staging-stop
+staging-stop: ## Stop staging environment
+	@echo "$(YELLOW)⏹️  Stopping staging...$(NC)"
+	@docker-compose -f $(STAGING_COMPOSE) down --remove-orphans
+	@echo "$(GREEN)✅ Staging stopped$(NC)"
+
+# =============================================================================
+# PRODUCTION
+# =============================================================================
+
+.PHONY: production
+production: validate build ## Deploy to production (with confirmation)
+	@echo "$(RED)⚠️  PRODUCTION DEPLOYMENT$(NC)"
+	@echo "This will deploy to production!"
+	@read -p "Continue? (yes/no): " confirm && \
+		if [ "$$confirm" != "yes" ]; then echo "Cancelled."; exit 1; fi
+	@echo "$(YELLOW)🚀 Deploying to production...$(NC)"
+	@$(MAKE) production-backup
+	@docker-compose -f $(PRODUCTION_COMPOSE) up -d --build
+	@echo "$(YELLOW)⏳ Waiting for production...$(NC)"
 	@sleep 15
-	@$(MAKE) -s health-check
+	@$(MAKE) production-health
+	@echo "$(GREEN)🎉 Production deployed at http://localhost:$(PRODUCTION_PORT)$(NC)"
 
-.PHONY: down
-down: ## Stop all services
-	@echo "$(YELLOW)⏹️  Stopping all services...$(NC)"
-	@docker-compose -f $(COMPOSE_FILE) down
+.PHONY: production-logs
+production-logs: ## Show production logs
+	@docker-compose -f $(PRODUCTION_COMPOSE) logs -f
 
-.PHONY: restart
-restart: down up ## Restart all services
+.PHONY: production-health
+production-health: ## Check production health
+	@curl -sf http://localhost:$(PRODUCTION_PORT)/admin/health >/dev/null && \
+		echo "$(GREEN)✅ Production healthy$(NC)" || \
+		echo "$(RED)❌ Production unhealthy$(NC)"
 
-.PHONY: rebuild
-rebuild: down build up ## Rebuild and restart all services
+.PHONY: production-stop
+production-stop: ## Stop production environment (with confirmation)
+	@echo "$(RED)⚠️  PRODUCTION SHUTDOWN$(NC)"
+	@read -p "Stop production? (yes/no): " confirm && \
+		if [ "$$confirm" != "yes" ]; then echo "Cancelled."; exit 1; fi
+	@echo "$(YELLOW)⏹️  Stopping production...$(NC)"
+	@docker-compose -f $(PRODUCTION_COMPOSE) down
+	@echo "$(GREEN)✅ Production stopped$(NC)"
 
-.PHONY: logs
-logs: ## Show logs from all services
-	@docker-compose -f $(COMPOSE_FILE) logs -f
-
-.PHONY: logs-gateway
-logs-gateway: ## Show gateway logs only
-	@docker-compose -f $(COMPOSE_FILE) logs -f keystone-gateway
-
-.PHONY: logs-nginx
-logs-nginx: ## Show nginx logs only
-	@docker-compose -f $(COMPOSE_FILE) logs -f nginx
+.PHONY: production-backup
+production-backup: ## Create production backup
+	@echo "$(YELLOW)💾 Creating backup...$(NC)"
+	@mkdir -p backups/$(shell date +%Y%m%d-%H%M%S)
+	@backup_dir="backups/$(shell date +%Y%m%d-%H%M%S)" && \
+		docker-compose -f $(PRODUCTION_COMPOSE) ps > $$backup_dir/containers.txt && \
+		docker images $(PROJECT_NAME):* > $$backup_dir/images.txt && \
+		echo "$(GREEN)✅ Backup: $$backup_dir$(NC)"
 
 # =============================================================================
-# TESTING & MONITORING
+# TESTING & QUALITY
 # =============================================================================
-
-.PHONY: health-check
-health-check: ## Run health checks
-	@echo "$(YELLOW)🏥 Running health checks...$(NC)"
-	@curl -sf http://localhost/admin/health > /dev/null && echo "$(GREEN)✅ Gateway: healthy$(NC)" || echo "$(RED)❌ Gateway: unhealthy$(NC)"
-	@curl -sf http://localhost/api/time > /dev/null && echo "$(GREEN)✅ API: healthy$(NC)" || echo "$(RED)❌ API: unhealthy$(NC)"
-	@curl -sf http://localhost:9090/-/healthy > /dev/null 2>&1 && echo "$(GREEN)✅ Prometheus: healthy$(NC)" || echo "$(RED)❌ Prometheus: not available$(NC)"
 
 .PHONY: test
-test: ## Run comprehensive load tests
-	@echo "$(YELLOW)🧪 Running load tests...$(NC)"
-	@docker-compose -f $(COMPOSE_FILE) run --rm wrk-tester /tests/run-all-tests.sh
-	@echo "$(GREEN)✅ Load tests completed!$(NC)"
-	@$(MAKE) -s show-results
+test: ## Run all tests
+	@echo "$(YELLOW)🧪 Running tests...$(NC)"
+	@go test -v ./...
+	@echo "$(GREEN)✅ Tests passed$(NC)"
 
-.PHONY: test-quick
-test-quick: ## Run quick performance test (30s)
-	@echo "$(YELLOW)⚡ Quick performance test...$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t4 -c50 -d30s --latency http://keystone-gateway:8080/admin/health
+.PHONY: test-unit
+test-unit: ## Run unit tests
+	@echo "$(YELLOW)🔬 Running unit tests...$(NC)"
+	@go test -v ./tests/unit/...
 
-.PHONY: test-api
-test-api: ## Test API endpoints specifically
-	@echo "$(YELLOW)🌐 Testing API endpoints...$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t4 -c100 -d60s --latency http://nginx/api/time
+.PHONY: test-integration
+test-integration: ## Run integration tests
+	@echo "$(YELLOW)🔗 Running integration tests...$(NC)"
+	@go test -v ./tests/integration/...
 
-.PHONY: test-stress
-test-stress: ## Run stress test (high load)
-	@echo "$(YELLOW)💪 Stress testing (200 connections)...$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t8 -c200 -d60s --timeout 10s --latency http://nginx/api/time
+.PHONY: test-load
+test-load: ## Run load tests
+	@echo "$(YELLOW)⚡ Running load tests...$(NC)"
+	@go test -v ./tests/ -run "TestRealisticProductionLoadTesting"
 
-.PHONY: test-sustained
-test-sustained: ## Run sustained load test (5 minutes)
-	@echo "$(YELLOW)⏱️  Sustained load test (5 minutes)...$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t6 -c150 -d300s --latency http://nginx/lb/status/200
+.PHONY: lint
+lint: ## Run code linting
+	@echo "$(YELLOW)🔍 Linting code...$(NC)"
+	@golangci-lint run ./... 2>/dev/null || echo "$(YELLOW)⚠️ golangci-lint not found, skipping$(NC)"
+	@go vet ./...
+	@echo "$(GREEN)✅ Linting completed$(NC)"
 
-.PHONY: benchmark
-benchmark: ## Run comprehensive benchmarks
-	@echo "$(YELLOW)📊 Running benchmarks...$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Test 1: Health endpoint$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t2 -c10 -d10s --latency http://nginx/admin/health | grep -E "(Requests/sec|Latency)"
-	@echo ""
-	@echo "$(YELLOW)Test 2: API endpoint$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t4 -c50 -d30s --latency http://nginx/api/time | grep -E "(Requests/sec|Latency)"
-	@echo ""
-	@echo "$(YELLOW)Test 3: Load balancing$(NC)"
-	@docker run --rm --network $(PROJECT_NAME)_gateway-network williamyeh/wrk \
-		-t4 -c100 -d30s --latency http://nginx/lb/status/200 | grep -E "(Requests/sec|Latency)"
-	@echo ""
-	@echo "$(GREEN)✅ Benchmarks completed!$(NC)"
-
-.PHONY: show-results
-show-results: ## Show test results summary
-	@echo "$(YELLOW)📈 Test Results Summary:$(NC)"
-	@if [ -f logs/load-tests/summary.txt ]; then \
-		cat logs/load-tests/summary.txt; \
-	else \
-		echo "No test results found. Run 'make test' first."; \
-	fi
+.PHONY: fmt
+fmt: ## Format Go code
+	@echo "$(YELLOW)✨ Formatting code...$(NC)"
+	@go fmt ./...
+	@echo "$(GREEN)✅ Code formatted$(NC)"
 
 # =============================================================================
-# DEVELOPMENT & DEBUGGING
+# MONITORING & HEALTH
 # =============================================================================
 
-.PHONY: shell
-shell: ## Get shell in gateway container
-	@docker-compose -f $(COMPOSE_FILE) exec keystone-gateway sh
+.PHONY: health
+health: ## Check health of all environments
+	@echo "$(YELLOW)🏥 Health Check Summary$(NC)"
+	@echo "======================="
+	@echo -n "Development: " && $(MAKE) dev-health 2>/dev/null || echo "$(RED)Not running$(NC)"
+	@echo -n "Staging: " && $(MAKE) staging-health 2>/dev/null || echo "$(RED)Not running$(NC)"
+	@echo -n "Production: " && $(MAKE) production-health 2>/dev/null || echo "$(RED)Not running$(NC)"
 
-.PHONY: shell-nginx
-shell-nginx: ## Get shell in nginx container
-	@docker-compose -f $(COMPOSE_FILE) exec nginx sh
+.PHONY: status
+status: ## Show status of all environments
+	@echo "$(CYAN)📊 Environment Status$(NC)"
+	@echo "====================="
+	@echo ""
+	@echo "$(YELLOW)Development:$(NC)"
+	@docker ps --filter "name=$(PROJECT_NAME)-dev" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "Not running"
+	@echo ""
+	@echo "$(YELLOW)Staging:$(NC)"
+	@docker-compose -f $(STAGING_COMPOSE) ps 2>/dev/null || echo "Not running"
+	@echo ""
+	@echo "$(YELLOW)Production:$(NC)"
+	@docker-compose -f $(PRODUCTION_COMPOSE) ps 2>/dev/null || echo "Not running"
 
-.PHONY: debug
-debug: ## Show debug information
-	@echo "$(YELLOW)🐛 Debug Information:$(NC)"
-	@echo "Docker version: $(shell docker --version 2>/dev/null || echo 'Not installed')"
-	@echo "Docker Compose version: $(shell docker-compose --version 2>/dev/null || echo 'Not installed')"
-	@echo ""
-	@echo "Project: $(PROJECT_NAME)"
-	@echo "Compose file: $(COMPOSE_FILE)"
-	@echo ""
-	@echo "Services:"
-	@docker-compose -f $(COMPOSE_FILE) ps 2>/dev/null || echo "No services running"
-	@echo ""
-	@echo "Networks:"
-	@docker network ls 2>/dev/null | grep $(PROJECT_NAME) || echo "No project networks found"
-	@echo ""
-	@echo "Volumes:"
-	@docker volume ls 2>/dev/null | grep $(PROJECT_NAME) || echo "No project volumes found"
-
-.PHONY: metrics
-metrics: ## Show performance metrics
-	@echo "$(YELLOW)📊 Performance Metrics:$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Gateway Health:$(NC)"
-	@curl -s http://localhost/admin/health 2>/dev/null | jq . 2>/dev/null || curl -s http://localhost/admin/health 2>/dev/null || echo "Gateway not accessible"
-	@echo ""
-	@echo "$(YELLOW)Container Resources:$(NC)"
-	@docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}" 2>/dev/null || echo "No containers running"
-
-.PHONY: endpoints
-endpoints: ## Test all available endpoints
-	@echo "$(YELLOW)🌐 Testing all endpoints:$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Gateway Health:$(NC)"
-	@curl -s -w "Status: %{http_code}, Time: %{time_total}s\n" -o /dev/null http://localhost/admin/health 2>/dev/null || echo "❌ Failed"
-	@echo ""
-	@echo "$(YELLOW)API Time:$(NC)"
-	@curl -s -w "Status: %{http_code}, Time: %{time_total}s\n" -o /dev/null http://localhost/api/time 2>/dev/null || echo "❌ Failed"
-	@echo ""
-	@echo "$(YELLOW)Load Balancer:$(NC)"
-	@curl -s -w "Status: %{http_code}, Time: %{time_total}s\n" -o /dev/null http://localhost/lb/status/200 2>/dev/null || echo "❌ Failed"
-	@echo ""
-	@echo "$(YELLOW)Web Interface:$(NC)"
-	@curl -s -w "Status: %{http_code}, Time: %{time_total}s\n" -o /dev/null http://localhost/web/ 2>/dev/null || echo "❌ Failed"
+.PHONY: logs
+logs: ## Show all available log commands
+	@echo "$(CYAN)📜 Available Log Commands$(NC)"
+	@echo "============================"
+	@echo "  make dev-logs        - Development logs"
+	@echo "  make staging-logs    - Staging logs"
+	@echo "  make production-logs - Production logs"
 
 # =============================================================================
-# CLEANUP
+# WORKFLOW HELPERS
+# =============================================================================
+
+.PHONY: feature-start
+feature-start: ## Start new feature (usage: make feature-start FEATURE=name)
+	@if [ -z "$(FEATURE)" ]; then echo "$(RED)Usage: make feature-start FEATURE=name$(NC)"; exit 1; fi
+	@echo "$(YELLOW)🌿 Starting feature: $(FEATURE)$(NC)"
+	@git checkout staging 2>/dev/null || git checkout -b staging
+	@git pull origin staging 2>/dev/null || true
+	@git checkout -b feature/$(FEATURE)
+	@echo "$(GREEN)✅ Feature branch: feature/$(FEATURE)$(NC)"
+	@$(MAKE) dev
+
+.PHONY: hotfix-start
+hotfix-start: ## Start hotfix (usage: make hotfix-start HOTFIX=name)
+	@if [ -z "$(HOTFIX)" ]; then echo "$(RED)Usage: make hotfix-start HOTFIX=name$(NC)"; exit 1; fi
+	@echo "$(RED)🚨 Starting hotfix: $(HOTFIX)$(NC)"
+	@git checkout main
+	@git pull origin main 2>/dev/null || true
+	@git checkout -b hotfix/$(HOTFIX)
+	@echo "$(GREEN)✅ Hotfix branch: hotfix/$(HOTFIX)$(NC)"
+
+# =============================================================================
+# MAINTENANCE & CLEANUP
 # =============================================================================
 
 .PHONY: clean
-clean: ## Clean up Docker resources
-	@echo "$(YELLOW)🧹 Cleaning up Docker resources...$(NC)"
-	@docker-compose -f $(COMPOSE_FILE) down -v --remove-orphans 2>/dev/null || true
+clean: ## Clean up all environments and resources
+	@echo "$(YELLOW)🧹 Cleaning up...$(NC)"
+	@$(MAKE) dev-stop 2>/dev/null || true
+	@$(MAKE) staging-stop 2>/dev/null || true
 	@docker system prune -f
-
-.PHONY: clean-images
-clean-images: ## Remove project Docker images
-	@echo "$(YELLOW)🗑️  Removing project images...$(NC)"
-	@docker images | grep $(PROJECT_NAME) | awk '{print $$3}' | xargs docker rmi -f 2>/dev/null || true
+	@echo "$(GREEN)✅ Cleanup completed$(NC)"
 
 .PHONY: clean-all
-clean-all: down clean clean-images ## Complete cleanup (containers, volumes, images)
+clean-all: ## Complete cleanup including images (with confirmation)
+	@echo "$(RED)⚠️  This will remove ALL project containers, images, and volumes$(NC)"
+	@read -p "Continue? (yes/no): " confirm && \
+		if [ "$$confirm" != "yes" ]; then echo "Cancelled."; exit 1; fi
+	@$(MAKE) clean
+	@docker images $(PROJECT_NAME) -q | xargs -r docker rmi -f 2>/dev/null || true
+	@docker volume ls -q --filter name=$(PROJECT_NAME) | xargs -r docker volume rm 2>/dev/null || true
 	@echo "$(GREEN)✅ Complete cleanup finished$(NC)"
 
-# =============================================================================
-# MONITORING & DASHBOARDS
-# =============================================================================
-
-.PHONY: dashboard
-dashboard: ## Open monitoring dashboards
-	@echo "$(YELLOW)📊 Available dashboards:$(NC)"
-	@echo "  • Prometheus: http://localhost:9090"
-	@echo "  • Grafana: http://localhost:3000 (admin/admin)"
-	@echo "  • Gateway Admin: http://localhost/admin/health"
-	@echo ""
-	@if command -v open >/dev/null 2>&1; then \
-		echo "Opening Grafana..."; \
-		open http://localhost:3000; \
-	elif command -v xdg-open >/dev/null 2>&1; then \
-		echo "Opening Grafana..."; \
-		xdg-open http://localhost:3000; \
-	else \
-		echo "Please open http://localhost:3000 manually"; \
-	fi
-
-.PHONY: prometheus
-prometheus: ## Show Prometheus targets status
-	@echo "$(YELLOW)🎯 Prometheus Targets:$(NC)"
-	@curl -s http://localhost:9090/api/v1/targets 2>/dev/null | jq -r '.data.activeTargets[] | "\(.labels.job): \(.health) \(.lastError // "")"' 2>/dev/null || echo "Prometheus not accessible"
+.PHONY: reset
+reset: clean-all build ## Complete reset and rebuild
 
 # =============================================================================
-# PRODUCTION HELPERS
+# SHORTCUTS & ALIASES
 # =============================================================================
 
-.PHONY: deploy
-deploy: check-requirements build up health-check ## Full deployment workflow
-	@echo "$(GREEN)🚀 Deployment completed successfully!$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Available services:$(NC)"
-	@echo "  • Gateway: http://localhost:$(NGINX_PORT)"
-	@echo "  • Admin: http://localhost:$(NGINX_PORT)/admin/health"
-	@echo "  • API: http://localhost:$(NGINX_PORT)/api/time"
-	@echo "  • Monitoring: http://localhost:9090"
+.PHONY: up
+up: dev ## Alias for 'make dev'
 
-.PHONY: smoke-test
-smoke-test: ## Run smoke tests to verify deployment
-	@echo "$(YELLOW)💨 Running smoke tests...$(NC)"
-	@$(MAKE) -s endpoints
-	@$(MAKE) -s test-quick
-	@echo "$(GREEN)✅ Smoke tests passed!$(NC)"
+.PHONY: down  
+down: dev-stop ## Alias for 'make dev-stop'
 
-.PHONY: production-check
-production-check: ## Comprehensive production readiness check
-	@echo "$(YELLOW)🔍 Production Readiness Check:$(NC)"
-	@echo ""
-	@$(MAKE) -s check-requirements
-	@$(MAKE) -s health-check
-	@$(MAKE) -s endpoints
-	@echo ""
-	@echo "$(YELLOW)Performance baseline:$(NC)"
-	@$(MAKE) -s test-quick
-	@echo ""
-	@echo "$(GREEN)✅ Production check completed!$(NC)"
+.PHONY: restart
+restart: dev-stop dev ## Restart development environment
 
-# =============================================================================
-# UTILITY TARGETS
-# =============================================================================
-
-.PHONY: ps
-ps: ## Show running containers (alias for status)
-	@$(MAKE) -s status
-
-.PHONY: top
-top: ## Show real-time container stats
-	@docker stats
-
-.PHONY: inspect
-inspect: ## Show detailed container information
-	@docker-compose -f $(COMPOSE_FILE) config
-
-.PHONY: network
-network: ## Show network information
-	@echo "$(YELLOW)🌐 Network Information:$(NC)"
-	@docker network ls | grep $(PROJECT_NAME) || echo "No project networks found"
-	@echo ""
-	@docker network inspect $(PROJECT_NAME)_gateway-network 2>/dev/null | jq '.[0].Containers' 2>/dev/null || echo "Network details not available"
-
-# =============================================================================
-# PERFORMANCE TESTING SUITE
-# =============================================================================
-
-.PHONY: perf-suite
-perf-suite: ## Run complete performance testing suite
-	@echo "$(YELLOW)🏁 Complete Performance Suite$(NC)"
-	@echo "=============================="
-	@echo ""
-	@$(MAKE) -s test-quick
-	@echo ""
-	@$(MAKE) -s test-api
-	@echo ""
-	@$(MAKE) -s benchmark
-	@echo ""
-	@echo "$(GREEN)✅ Performance suite completed!$(NC)"
+# Include local overrides if they exist
+-include Makefile.local

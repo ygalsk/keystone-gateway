@@ -17,7 +17,7 @@ compression:
 
 lua_routing:
   enabled: true
-  scripts_dir: "./scripts"
+  scripts_dir: "./scripts/lua"
   # global_scripts: ["global-security"]
 
 tenants:

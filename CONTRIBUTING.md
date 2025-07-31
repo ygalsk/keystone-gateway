@@ -4,6 +4,8 @@ Thank you for your interest in contributing to Keystone Gateway! This document p
 
 ## Table of Contents
 
+- [Branching Strategy](#branching-strategy)
+- [Commit Message Guidelines](#commit-message-guidelines)
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [Code Standards](#code-standards)
@@ -14,15 +16,135 @@ Thank you for your interest in contributing to Keystone Gateway! This document p
 - [Documentation Guidelines](#documentation-guidelines)
 - [Issue Reporting](#issue-reporting)
 
+## 🌿 Branching Strategy
+
+We use **GitLab Flow with Environment Branches** for our development workflow:
+
+### Branch Structure
+
+- **`main`** - Production-ready code. Protected branch with required reviews.
+- **`staging`** - Pre-production testing environment. Automatically deployed to staging.
+- **`feature/*`** - Feature development branches (e.g., `feature/add-rate-limiting`)
+- **`bugfix/*`** - Bug fix branches (e.g., `bugfix/fix-memory-leak`)
+- **`hotfix/*`** - Critical production fixes (e.g., `hotfix/security-patch`)
+
+### Workflow
+
+1. **Feature Development**:
+   ```bash
+   git checkout -b feature/your-feature-name
+   # Make changes, commit, push
+   # Create Pull Request to staging
+   ```
+
+2. **Testing on Staging**:
+   - PRs are merged to `staging` after code review
+   - Staging environment automatically deploys for testing
+   - QA and integration testing happens on staging
+
+3. **Production Release**:
+   ```bash
+   # After staging testing passes
+   git checkout main
+   git merge staging
+   git push origin main
+   # Production deployment happens automatically
+   ```
+
+4. **Hotfixes**:
+   ```bash
+   git checkout -b hotfix/critical-fix main
+   # Fix the issue, test thoroughly
+   # Create PR to main (fast-track review)
+   # After merge, cherry-pick to staging if needed
+   ```
+
+## 📝 Commit Message Guidelines
+
+We follow [Conventional Commits](https://www.conventionalcommits.org/) with project-specific scopes:
+
+### Format
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### Types
+- **feat**: New feature
+- **fix**: Bug fix
+- **docs**: Documentation changes
+- **style**: Code formatting (no logic changes)
+- **refactor**: Code restructuring (no behavior changes)
+- **perf**: Performance improvements
+- **test**: Adding or updating tests
+- **chore**: Build process, tools, dependencies
+- **ci**: CI/CD pipeline changes
+- **build**: Build system changes
+
+### Scopes
+- **routing**: Gateway routing logic
+- **config**: Configuration management
+- **health**: Health checking system
+- **proxy**: Reverse proxy functionality
+- **lua**: Lua script integration
+- **admin**: Admin API endpoints
+- **tests**: Test infrastructure 
+- **ci**: CI/CD pipeline
+- **docker**: Containerization
+- **security**: Security improvements
+- **perf**: Performance optimizations
+
+### Examples
+```bash
+feat(routing): add load balancing for multi-tenant environments
+fix(health): prevent goroutine leak in health checker
+docs: update README with new configuration options
+test(integration): add realistic load testing scenarios
+ci: add staging deployment pipeline
+```
+
+### Commit Message Template
+Set up the commit message template:
+```bash
+git config commit.template .gitmessage
+```
+
 ## Getting Started
 
 ### Prerequisites
 
-- **Go 1.21 or later**
+- **Go 1.22 or later**
 - **Git** for version control
+- **Docker and Docker Compose** for development and deployment
+- **Make** for build automation
 - **Basic knowledge of Go** for core gateway development
 - **Basic knowledge of Lua** for routing script development
-- **Docker** (optional, for containerized testing)
+
+### Makefile System
+
+Keystone Gateway uses a comprehensive **Makefile system** for all development and deployment tasks. This eliminates the need for scattered bash scripts and provides a consistent interface.
+
+```bash
+# View all available commands
+make help
+
+# Common development commands
+make dev-up        # Start development environment
+make test          # Run test suite
+make lint          # Code quality checks
+make clean         # Clean up resources
+
+# Deployment commands
+make staging-up    # Deploy to staging
+make prod-up       # Deploy to production
+
+# Workflow helpers
+make feature-start FEATURE=my-feature  # Start new feature
+make feature-test                       # Test current feature
+```
 
 ### First-Time Setup
 
@@ -320,19 +442,10 @@ end
 
 ### Commit Message Format
 
-Use clear, descriptive commit messages:
+Follow the conventional commit guidelines outlined above. Use the commit message template to ensure consistency:
 
 ```bash
-# Good commit messages
-git commit -m "feat: add JWT authentication middleware for Lua scripts"
-git commit -m "fix: handle empty request body in routing logic"
-git commit -m "docs: add configuration examples for multi-tenant setup"
-git commit -m "refactor: simplify tenant validation logic"
-
-# Avoid vague messages
-git commit -m "fix stuff"
-git commit -m "updates"
-git commit -m "changes"
+git config commit.template .gitmessage
 ```
 
 ### Pull Request Description Template

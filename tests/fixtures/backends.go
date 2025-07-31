@@ -205,8 +205,8 @@ func CreateRestrictiveBackend(t *testing.T) *httptest.Server {
 		if r.URL.Path == "/test" {
 			w.WriteHeader(http.StatusOK)
 			if _, err := w.Write([]byte("OK")); err != nil {
-			log.Printf("Failed to write OK response: %v", err)
-		}
+				log.Printf("Failed to write OK response: %v", err)
+			}
 			return
 		}
 

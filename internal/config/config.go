@@ -27,8 +27,8 @@ type TLSConfig struct {
 
 // CompressionConfig represents HTTP response compression configuration
 type CompressionConfig struct {
-	Enabled     bool     `yaml:"enabled"`
-	Level       int      `yaml:"level,omitempty"`       // Compression level (1-9, default: 5)
+	Enabled      bool     `yaml:"enabled"`
+	Level        int      `yaml:"level,omitempty"`         // Compression level (1-9, default: 5)
 	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
 }
 
@@ -41,7 +41,7 @@ func (c *Config) GetCompressionConfig() CompressionConfig {
 			Level:   5,    // Balanced compression level
 			ContentTypes: []string{
 				"text/html",
-				"text/css", 
+				"text/css",
 				"text/javascript",
 				"application/json",
 				"application/xml",
@@ -51,7 +51,7 @@ func (c *Config) GetCompressionConfig() CompressionConfig {
 	}
 
 	config := *c.Compression
-	
+
 	// Apply defaults for missing values
 	if config.Level == 0 {
 		config.Level = 5 // Default to balanced compression
@@ -59,25 +59,25 @@ func (c *Config) GetCompressionConfig() CompressionConfig {
 	if len(config.ContentTypes) == 0 {
 		config.ContentTypes = []string{
 			"text/html",
-			"text/css", 
+			"text/css",
 			"text/javascript",
 			"application/json",
 			"application/xml",
 			"text/plain",
 		}
 	}
-	
+
 	return config
 }
 
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
-	Tenants       []Tenant             `yaml:"tenants"`
-	AdminBasePath string               `yaml:"admin_base_path,omitempty"`
-	LuaRouting    *LuaRoutingConfig    `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
-	TLS           *TLSConfig           `yaml:"tls,omitempty"`
-	Compression   *CompressionConfig   `yaml:"compression,omitempty"`
+	Tenants       []Tenant           `yaml:"tenants"`
+	AdminBasePath string             `yaml:"admin_base_path,omitempty"`
+	LuaRouting    *LuaRoutingConfig  `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
+	TLS           *TLSConfig         `yaml:"tls,omitempty"`
+	Compression   *CompressionConfig `yaml:"compression,omitempty"`
 }
 
 // Tenant represents a routing configuration for a specific application or service,

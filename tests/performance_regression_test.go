@@ -29,15 +29,15 @@ type PerformanceBaseline struct {
 
 // PerformanceResult represents actual performance measurements
 type PerformanceResult struct {
-	TestName             string        `json:"test_name"`
-	RequestDuration      time.Duration `json:"request_duration"`
-	MemoryPerRequest     float64       `json:"memory_per_request"`
-	RequestsPerSecond    float64       `json:"requests_per_second"`
-	ConcurrentDuration   time.Duration `json:"concurrent_duration"`
-	SuccessRate          float64       `json:"success_rate"`
-	Timestamp            time.Time     `json:"timestamp"`
-	TotalRequests        int           `json:"total_requests"`
-	MemoryAllocated      uint64        `json:"memory_allocated"`
+	TestName           string        `json:"test_name"`
+	RequestDuration    time.Duration `json:"request_duration"`
+	MemoryPerRequest   float64       `json:"memory_per_request"`
+	RequestsPerSecond  float64       `json:"requests_per_second"`
+	ConcurrentDuration time.Duration `json:"concurrent_duration"`
+	SuccessRate        float64       `json:"success_rate"`
+	Timestamp          time.Time     `json:"timestamp"`
+	TotalRequests      int           `json:"total_requests"`
+	MemoryAllocated    uint64        `json:"memory_allocated"`
 }
 
 // PerformanceRegression tracks performance changes over time
@@ -138,8 +138,8 @@ func (pr *PerformanceRegression) createDefaultBaselines() {
 		"concurrent_load": {
 			TestName:              "concurrent_load",
 			MaxRequestDuration:    100 * time.Millisecond, // Per request
-			MaxMemoryPerRequest:   45000, // 45KB
-			MinRequestsPerSecond:  200,   // Higher for concurrent
+			MaxMemoryPerRequest:   45000,                  // 45KB
+			MinRequestsPerSecond:  200,                    // Higher for concurrent
 			MaxConcurrentDuration: 15 * time.Second,
 			LastUpdated:           time.Now(),
 			Version:               "1.0.0",
@@ -158,7 +158,7 @@ func (pr *PerformanceRegression) CheckRegression(result PerformanceResult) []str
 
 	// Check request duration
 	if result.RequestDuration > baseline.MaxRequestDuration {
-		regressions = append(regressions, 
+		regressions = append(regressions,
 			fmt.Sprintf("Request duration regression: %v > %v (%.2fx slower)",
 				result.RequestDuration, baseline.MaxRequestDuration,
 				float64(result.RequestDuration)/float64(baseline.MaxRequestDuration)))
@@ -207,7 +207,7 @@ func TestPerformanceRegression(t *testing.T) {
 	// Initialize performance tracker
 	pr := NewPerformanceRegression()
 	baselinesFile := "tests/performance_baselines.json"
-	
+
 	if err := pr.LoadBaselines(baselinesFile); err != nil {
 		t.Logf("Warning: Could not load baselines, using defaults: %v", err)
 	}
@@ -251,20 +251,20 @@ func TestPerformanceRegression(t *testing.T) {
 
 		// Create performance result
 		result := PerformanceResult{
-			TestName:             "gateway_routing",
-			RequestDuration:      requestDuration,
-			MemoryPerRequest:     40000, // Approximate from benchmarks
-			RequestsPerSecond:    requestsPerSecond,
-			ConcurrentDuration:   throughputDuration,
-			SuccessRate:          successRate,
-			Timestamp:            time.Now(),
-			TotalRequests:        numRequests,
-			MemoryAllocated:      4000000, // Approximate
+			TestName:           "gateway_routing",
+			RequestDuration:    requestDuration,
+			MemoryPerRequest:   40000, // Approximate from benchmarks
+			RequestsPerSecond:  requestsPerSecond,
+			ConcurrentDuration: throughputDuration,
+			SuccessRate:        successRate,
+			Timestamp:          time.Now(),
+			TotalRequests:      numRequests,
+			MemoryAllocated:    4000000, // Approximate
 		}
 
 		// Check for regressions
 		regressions := pr.CheckRegression(result)
-		
+
 		t.Logf("Gateway Routing Performance:")
 		t.Logf("  Request Duration: %v", result.RequestDuration)
 		t.Logf("  Requests/Second: %.2f", result.RequestsPerSecond)
@@ -334,15 +334,15 @@ func TestPerformanceRegression(t *testing.T) {
 		successRate := float64(successCount) / float64(numRequests)
 
 		result := PerformanceResult{
-			TestName:             "load_balancing",
-			RequestDuration:      duration / time.Duration(numRequests),
-			MemoryPerRequest:     45000,
-			RequestsPerSecond:    requestsPerSecond,
-			ConcurrentDuration:   duration,
-			SuccessRate:          successRate,
-			Timestamp:            time.Now(),
-			TotalRequests:        numRequests,
-			MemoryAllocated:      4500000,
+			TestName:           "load_balancing",
+			RequestDuration:    duration / time.Duration(numRequests),
+			MemoryPerRequest:   45000,
+			RequestsPerSecond:  requestsPerSecond,
+			ConcurrentDuration: duration,
+			SuccessRate:        successRate,
+			Timestamp:          time.Now(),
+			TotalRequests:      numRequests,
+			MemoryAllocated:    4500000,
 		}
 
 		regressions := pr.CheckRegression(result)
@@ -398,15 +398,15 @@ func TestPerformanceRegression(t *testing.T) {
 		successRate := float64(successCount) / float64(totalRequests)
 
 		result := PerformanceResult{
-			TestName:             "concurrent_load",
-			RequestDuration:      duration / time.Duration(totalRequests),
-			MemoryPerRequest:     42000,
-			RequestsPerSecond:    requestsPerSecond,
-			ConcurrentDuration:   duration,
-			SuccessRate:          successRate,
-			Timestamp:            time.Now(),
-			TotalRequests:        totalRequests,
-			MemoryAllocated:      4200000,
+			TestName:           "concurrent_load",
+			RequestDuration:    duration / time.Duration(totalRequests),
+			MemoryPerRequest:   42000,
+			RequestsPerSecond:  requestsPerSecond,
+			ConcurrentDuration: duration,
+			SuccessRate:        successRate,
+			Timestamp:          time.Now(),
+			TotalRequests:      totalRequests,
+			MemoryAllocated:    4200000,
 		}
 
 		regressions := pr.CheckRegression(result)
@@ -440,7 +440,7 @@ func TestPerformanceRegression(t *testing.T) {
 // TestPerformanceHistory tracks performance over time
 func TestPerformanceHistory(t *testing.T) {
 	historyFile := "tests/performance_history.json"
-	
+
 	// Load existing history
 	var history []PerformanceResult
 	if data, err := os.ReadFile(historyFile); err == nil {
@@ -473,18 +473,18 @@ func TestPerformanceHistory(t *testing.T) {
 	}
 
 	duration := time.Since(start)
-	
+
 	// Create history entry
 	result := PerformanceResult{
-		TestName:             "performance_history",
-		RequestDuration:      duration / time.Duration(numRequests),
-		MemoryPerRequest:     40000,
-		RequestsPerSecond:    float64(numRequests) / duration.Seconds(),
-		ConcurrentDuration:   duration,
-		SuccessRate:          float64(successCount) / float64(numRequests),
-		Timestamp:            time.Now(),
-		TotalRequests:        numRequests,
-		MemoryAllocated:      2000000,
+		TestName:           "performance_history",
+		RequestDuration:    duration / time.Duration(numRequests),
+		MemoryPerRequest:   40000,
+		RequestsPerSecond:  float64(numRequests) / duration.Seconds(),
+		ConcurrentDuration: duration,
+		SuccessRate:        float64(successCount) / float64(numRequests),
+		Timestamp:          time.Now(),
+		TotalRequests:      numRequests,
+		MemoryAllocated:    2000000,
 	}
 
 	history = append(history, result)
