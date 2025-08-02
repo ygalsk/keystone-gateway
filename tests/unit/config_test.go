@@ -34,11 +34,11 @@ lua_routing:
 		if err != nil {
 			t.Fatalf("LoadConfig failed: %v", err)
 		}
-		
+
 		if len(cfg.Tenants) != 1 {
 			t.Errorf("Expected 1 tenant, got %d", len(cfg.Tenants))
 		}
-		
+
 		if cfg.Tenants[0].Name != "api" {
 			t.Errorf("Expected tenant name 'api', got '%s'", cfg.Tenants[0].Name)
 		}
@@ -71,7 +71,7 @@ tenants:
 		if err != nil {
 			t.Fatalf("LoadConfig failed: %v", err)
 		}
-		
+
 		if len(cfg.Tenants) != 2 {
 			t.Errorf("Expected 2 tenants, got %d", len(cfg.Tenants))
 		}
@@ -145,6 +145,89 @@ tenants:
 		_, err := config.LoadConfig("/nonexistent/config.yaml")
 		if err == nil {
 			t.Error("Expected error for nonexistent file")
+		}
+	})
+
+	t.Run("invalid_yaml", func(t *testing.T) {
+		invalidYAML := `invalid: yaml: content: [`
+		tmpDir := t.TempDir()
+		configFile := filepath.Join(tmpDir, "invalid.yaml")
+		err := os.WriteFile(configFile, []byte(invalidYAML), 0644)
+		if err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		_, err = config.LoadConfig(configFile)
+		if err == nil {
+			t.Error("Expected error for invalid YAML")
+		}
+	})
+}
+
+// TestConfigDirect tests config package functions directly for better coverage
+func TestConfigDirect(t *testing.T) {
+	t.Run("validate_tenant_valid", func(t *testing.T) {
+		tenant := config.Tenant{
+			Name:       "api",
+			PathPrefix: "/api/",
+			Services: []config.Service{
+				{Name: "backend", URL: "http://localhost:8080"},
+			},
+		}
+
+		err := config.ValidateTenant(tenant)
+		if err != nil {
+			t.Errorf("Valid tenant failed validation: %v", err)
+		}
+	})
+
+	t.Run("validate_tenant_invalid", func(t *testing.T) {
+		tenant := config.Tenant{
+			Name: "invalid",
+			Services: []config.Service{
+				{Name: "backend", URL: "http://localhost:8080"},
+			},
+		}
+
+		err := config.ValidateTenant(tenant)
+		if err == nil {
+			t.Error("Expected validation error for tenant without routing config")
+		}
+	})
+
+	t.Run("get_compression_config_default", func(t *testing.T) {
+		cfg := &config.Config{}
+		compression := cfg.GetCompressionConfig()
+
+		if !compression.Enabled {
+			t.Error("Expected compression enabled by default")
+		}
+
+		if compression.Level != 5 {
+			t.Errorf("Expected compression level 5, got %d", compression.Level)
+		}
+
+		if len(compression.ContentTypes) == 0 {
+			t.Error("Expected default content types")
+		}
+	})
+
+	t.Run("get_compression_config_custom", func(t *testing.T) {
+		cfg := &config.Config{
+			Compression: &config.CompressionConfig{
+				Enabled: false,
+				Level:   3,
+			},
+		}
+
+		compression := cfg.GetCompressionConfig()
+
+		if compression.Enabled {
+			t.Error("Expected compression disabled")
+		}
+
+		if compression.Level != 3 {
+			t.Errorf("Expected compression level 3, got %d", compression.Level)
 		}
 	})
 }

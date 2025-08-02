@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -17,12 +16,12 @@ import (
 
 // TestEnv provides everything needed to test Keystone Gateway functionality
 type TestEnv struct {
-	Gateway    *routing.Gateway
-	Config     *config.Config
-	Router     *chi.Mux
-	LuaEngine  *lua.Engine
-	Backends   []*httptest.Server
-	cleanup    []func()
+	Gateway   *routing.Gateway
+	Config    *config.Config
+	Router    *chi.Mux
+	LuaEngine *lua.Engine
+	Backends  []*httptest.Server
+	cleanup   []func()
 }
 
 // Cleanup cleans up all test resources
@@ -42,9 +41,9 @@ func (env *TestEnv) Cleanup() {
 
 // Backend represents different backend behaviors for testing
 type Backend struct {
-	Name     string
-	Handler  http.HandlerFunc
-	Server   *httptest.Server
+	Name    string
+	Handler http.HandlerFunc
+	Server  *httptest.Server
 }
 
 // CreateBasicBackend creates a backend that echoes request info
@@ -54,7 +53,7 @@ func CreateBasicBackend(name string) *Backend {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "%s: %s %s", name, r.Method, r.URL.Path)
 	})
-	
+
 	return &Backend{
 		Name:    name,
 		Handler: handler,
@@ -76,7 +75,7 @@ func CreateTestErrorBackend(name string) *Backend {
 			http.Error(w, "Bad Request", http.StatusBadRequest)
 		}
 	})
-	
+
 	return &Backend{
 		Name:    name,
 		Handler: handler,
@@ -97,7 +96,7 @@ func CreateHealthBackend(name string) *Backend {
 			fmt.Fprintf(w, "%s: %s %s", name, r.Method, r.URL.Path)
 		}
 	})
-	
+
 	return &Backend{
 		Name:    name,
 		Handler: handler,
@@ -112,7 +111,7 @@ func CreateConfig(tenants ...config.Tenant) *config.Config {
 		AdminBasePath: "/admin",
 		LuaRouting: &config.LuaRoutingConfig{
 			Enabled:    true,
-			ScriptsDir: "./test-scripts",
+			ScriptsDir: "./scripts",
 		},
 	}
 }
@@ -127,7 +126,7 @@ func CreateTenant(name, pathPrefix string, domains []string, backends ...*Backen
 			Health: "/health",
 		})
 	}
-	
+
 	return config.Tenant{
 		Name:       name,
 		PathPrefix: pathPrefix,
@@ -141,13 +140,13 @@ func SetupBasicGateway(t *testing.T, tenants ...config.Tenant) *TestEnv {
 	cfg := CreateConfig(tenants...)
 	router := chi.NewRouter()
 	gateway := routing.NewGatewayWithRouter(cfg, router)
-	
+
 	env := &TestEnv{
 		Gateway: gateway,
 		Config:  cfg,
 		Router:  router,
 	}
-	
+
 	return env
 }
 
@@ -156,11 +155,11 @@ func SetupGatewayWithLua(t *testing.T, tenants ...config.Tenant) *TestEnv {
 	cfg := CreateConfig(tenants...)
 	router := chi.NewRouter()
 	gateway := routing.NewGatewayWithRouter(cfg, router)
-	
+
 	// Create temporary scripts directory
 	scriptsDir := t.TempDir()
 	luaEngine := lua.NewEngine(scriptsDir, router)
-	
+
 	env := &TestEnv{
 		Gateway:   gateway,
 		Config:    cfg,
@@ -170,7 +169,7 @@ func SetupGatewayWithLua(t *testing.T, tenants ...config.Tenant) *TestEnv {
 			func() { gateway.StopHealthChecks() },
 		},
 	}
-	
+
 	return env
 }
 
@@ -178,7 +177,7 @@ func SetupGatewayWithLua(t *testing.T, tenants ...config.Tenant) *TestEnv {
 func TestRequest(t *testing.T, env *TestEnv, method, path string, expectedStatus int) *http.Response {
 	req := httptest.NewRequest(method, path, nil)
 	w := httptest.NewRecorder()
-	
+
 	// Use gateway routing to handle the request
 	router, stripPrefix := env.Gateway.MatchRoute("", path)
 	if router == nil {
@@ -187,7 +186,7 @@ func TestRequest(t *testing.T, env *TestEnv, method, path string, expectedStatus
 		}
 		t.Fatalf("No router found for path: %s", path)
 	}
-	
+
 	backend := router.NextBackend()
 	if backend == nil {
 		if expectedStatus == http.StatusBadGateway {
@@ -195,54 +194,17 @@ func TestRequest(t *testing.T, env *TestEnv, method, path string, expectedStatus
 		}
 		t.Fatalf("No backend available for path: %s", path)
 	}
-	
+
 	proxy := env.Gateway.CreateProxy(backend, stripPrefix)
 	proxy.ServeHTTP(w, req)
-	
+
 	if w.Code != expectedStatus {
 		t.Errorf("Expected status %d, got %d for %s %s", expectedStatus, w.Code, method, path)
 	}
-	
+
 	return &http.Response{
 		StatusCode: w.Code,
 		Header:     w.Header(),
 		Body:       nil, // Can be enhanced if needed
-	}
-}
-
-// WriteLuaScript writes a Lua script to the test scripts directory
-func WriteLuaScript(t *testing.T, env *TestEnv, scriptName, content string) {
-	if env.LuaEngine == nil {
-		t.Fatal("LuaEngine not available - use SetupGatewayWithLua")
-	}
-	
-	// Use the scripts directory from config or temp dir
-	scriptsDir := "./test-scripts"
-	if env.Config.LuaRouting != nil && env.Config.LuaRouting.ScriptsDir != "" {
-		scriptsDir = env.Config.LuaRouting.ScriptsDir
-	}
-	
-	// Create scripts directory if it doesn't exist
-	err := os.MkdirAll(scriptsDir, 0755)
-	if err != nil {
-		t.Fatalf("Failed to create scripts directory: %v", err)
-	}
-	
-	scriptPath := fmt.Sprintf("%s/%s.lua", scriptsDir, scriptName)
-	err = os.WriteFile(scriptPath, []byte(content), 0644)
-	if err != nil {
-		t.Fatalf("Failed to write Lua script: %v", err)
-	}
-}
-
-// ExecuteLuaScript executes a Lua script for a tenant
-func ExecuteLuaScript(t *testing.T, env *TestEnv, scriptName, tenantName string) {
-	if env.LuaEngine == nil {
-		t.Fatal("LuaEngine not available - use SetupGatewayWithLua")
-	}
-	
-	err := env.LuaEngine.ExecuteRouteScript(scriptName, tenantName)
-	if err != nil {
-		t.Fatalf("Failed to execute Lua script %s for tenant %s: %v", scriptName, tenantName, err)
 	}
 }
