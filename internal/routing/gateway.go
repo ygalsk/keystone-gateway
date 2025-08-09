@@ -641,7 +641,7 @@ func (gw *Gateway) performHealthCheck(backend *GatewayBackend) {
 		gw.markBackendHealth(backend, false)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Consider 2xx status codes as healthy
 	healthy := resp.StatusCode >= 200 && resp.StatusCode < 300

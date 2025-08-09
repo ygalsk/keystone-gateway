@@ -94,7 +94,7 @@ func TestE2ECore(t *testing.T) {
 		}
 
 		// Test: All backends are healthy
-		for i := range 3 {
+		for i := 0; i < 3; i++ {
 			backend := router.NextBackend()
 			if backend == nil {
 				t.Fatalf("Expected backend %d to be available", i)

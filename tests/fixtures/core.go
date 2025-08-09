@@ -52,7 +52,7 @@ func CreateBasicBackend(name string) *Backend {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "%s: %s %s", name, r.Method, r.URL.Path)
+		_, _ = fmt.Fprintf(w, "%s: %s %s", name, r.Method, r.URL.Path)
 	})
 
 	return &Backend{
@@ -94,7 +94,7 @@ func CreateHealthBackend(name string) *Backend {
 		} else {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "%s: %s %s", name, r.Method, r.URL.Path)
+			_, _ = fmt.Fprintf(w, "%s: %s %s", name, r.Method, r.URL.Path)
 		}
 	})
 
