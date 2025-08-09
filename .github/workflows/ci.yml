@@ -18,8 +18,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.21, 1.22]
-    
+        go-version: [1.22, 1.23]
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -49,10 +49,10 @@ jobs:
       run: make test
 
     - name: Run integration tests
-      run: make test-all
+      run: make test-integration
 
-    - name: Run race condition tests
-      run: make test-race
+    - name: Run unit tests with race detection
+      run: go test -race ./...
 
     - name: Generate test coverage
       run: |
@@ -68,7 +68,7 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: test
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -112,7 +112,7 @@ jobs:
         exclude:
           - goos: windows
             goarch: arm64
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -122,30 +122,18 @@ jobs:
       with:
         go-version: 1.22
 
-    - name: Build chi-stone
+    - name: Build keystone-gateway
       env:
         GOOS: ${{ matrix.goos }}
         GOARCH: ${{ matrix.goarch }}
       run: |
         mkdir -p dist
-        BINARY_NAME="chi-stone-${{ matrix.goos }}-${{ matrix.goarch }}"
+        BINARY_NAME="keystone-gateway-${{ matrix.goos }}-${{ matrix.goarch }}"
         if [ "${{ matrix.goos }}" = "windows" ]; then
           BINARY_NAME="${BINARY_NAME}.exe"
         fi
-        go build -ldflags "-w -s -X main.version=${{ github.ref_name }}" \
-          -o dist/${BINARY_NAME} ./cmd/chi-stone
-
-    - name: Build lua-stone
-      env:
-        GOOS: ${{ matrix.goos }}
-        GOARCH: ${{ matrix.goarch }}
-      run: |
-        BINARY_NAME="lua-stone-${{ matrix.goos }}-${{ matrix.goarch }}"
-        if [ "${{ matrix.goos }}" = "windows" ]; then
-          BINARY_NAME="${BINARY_NAME}.exe"
-        fi
-        go build -ldflags "-w -s -X main.version=${{ github.ref_name }}" \
-          -o dist/${BINARY_NAME} ./cmd/lua-stone
+        go build -ldflags "-w -s -X main.version=${{ github.ref_name }} -X main.buildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ) -X main.gitCommit=${{ github.sha }}" \
+          -o dist/${BINARY_NAME} ./cmd
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v3
@@ -160,7 +148,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -189,24 +177,13 @@ jobs:
           type=raw,value=staging,enable={{is_default_branch}}
           type=raw,value=production,enable=${{ github.ref == 'refs/heads/main' }}
 
-    - name: Build and push chi-stone image
+    - name: Build and push keystone-gateway image
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./deployments/docker/chi-stone.Dockerfile
+        file: ./Dockerfile
         push: true
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/chi-stone:${{ github.ref_name }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-
-    - name: Build and push lua-stone image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        file: ./deployments/docker/lua-stone.Dockerfile
-        push: true
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/lua-stone:${{ github.ref_name }}
+        tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
@@ -217,20 +194,15 @@ jobs:
     needs: [build, docker]
     if: github.ref == 'refs/heads/staging'
     environment: staging
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-
     - name: Deploy to staging
       run: |
         echo "Deploying to staging environment using Makefile..."
-        make deploy-staging
+        make staging
 
   deploy-production:
     name: Deploy to Production
@@ -238,21 +210,16 @@ jobs:
     needs: [build, docker]
     if: github.ref == 'refs/heads/main'
     environment: production
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-
     - name: Deploy to production
       run: |
         echo "Deploying to production environment using Makefile..."
-        # Skip confirmation prompts in CI by using environment variable
-        echo "yes" | make deploy-production
+        # Use environment variable to skip confirmation in CI
+        SKIP_CONFIRM=yes make production
 
   release:
     name: Create Release
@@ -261,7 +228,7 @@ jobs:
     if: github.event_name == 'release'
     permissions:
       contents: write
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4

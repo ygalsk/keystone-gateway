@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -29,6 +29,11 @@ const (
 	Version               = "1.2.1"
 )
 
+func init() {
+	// Simple structured JSON logging
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+}
+
 // HealthStatus represents the current health status of the gateway and all tenants.
 type HealthStatus struct {
 	Status  string            `json:"status"`
@@ -40,7 +45,7 @@ type HealthStatus struct {
 // Application holds the main application components
 type Application struct {
 	gateway   *routing.Gateway
-	luaEngine *lua.Engine    // New: embedded Lua engine for route definition
+	luaEngine *lua.Engine    // Embedded Lua engine for route definition
 	config    *config.Config // Configuration for the application
 }
 
@@ -56,7 +61,9 @@ func NewApplicationWithLuaRouting(cfg *config.Config, router *chi.Mux) *Applicat
 			scriptsDir = "./scripts"
 		}
 		luaEngine = lua.NewEngine(scriptsDir, router)
-		log.Printf("Embedded Lua routing enabled with scripts directory: %s", scriptsDir)
+		slog.Info("lua_routing_enabled",
+			"scripts_directory", scriptsDir,
+			"component", "lua_engine")
 	}
 
 	return &Application{
@@ -149,7 +156,7 @@ func (app *Application) setupBaseMiddleware(r *chi.Mux) {
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
 
 	// Add host-based routing middleware if we have host-based tenants
-	if app.luaEngine != nil {
+	if app.hasHostBasedTenants() {
 		r.Use(app.hostBasedRoutingMiddleware())
 	}
 }
@@ -176,7 +183,27 @@ func (app *Application) setupTenantRouting(r *chi.Mux) {
 		return
 	}
 
-	// Fallback to catch-all handlers
+	// Setup basic proxy routing for tenants without Lua
+	app.setupBasicProxyRouting(r)
+}
+
+// setupBasicProxyRouting sets up basic proxy routing without Lua
+func (app *Application) setupBasicProxyRouting(r *chi.Mux) {
+	cfg := app.gateway.GetConfig()
+
+	// Setup path-based tenant routes
+	for _, tenant := range cfg.Tenants {
+		if tenant.PathPrefix != "" {
+			slog.Info("tenant_routing_setup",
+				"tenant", tenant.Name,
+				"path_prefix", tenant.PathPrefix,
+				"routing_type", "path_based",
+				"component", "routing")
+			r.Handle(tenant.PathPrefix+"*", http.HandlerFunc(app.ProxyHandler))
+		}
+	}
+
+	// Add catch-all handlers for fallback
 	r.HandleFunc("/", app.ProxyHandler)
 	r.HandleFunc("/*", app.ProxyHandler)
 }
@@ -187,15 +214,24 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 
 	// Execute global Lua scripts first (applies to all tenants)
 	if err := app.luaEngine.ExecuteGlobalScripts(); err != nil {
-		log.Printf("Failed to execute global scripts: %v", err)
+		slog.Error("global_scripts_failed",
+			"error", err,
+			"component", "lua_engine")
 	}
 
 	// Execute Lua route scripts for all tenants
 	for _, tenant := range cfg.Tenants {
 		if tenant.LuaRoutes != "" {
-			log.Printf("Executing Lua route script '%s' for tenant: %s", tenant.LuaRoutes, tenant.Name)
+			slog.Info("lua_route_script_executing",
+				"script", tenant.LuaRoutes,
+				"tenant", tenant.Name,
+				"component", "lua_engine")
 			if err := app.luaEngine.ExecuteRouteScript(tenant.LuaRoutes, tenant.Name); err != nil {
-				log.Printf("Failed to execute Lua route script '%s' for tenant %s: %v", tenant.LuaRoutes, tenant.Name, err)
+				slog.Error("lua_route_script_failed",
+					"script", tenant.LuaRoutes,
+					"tenant", tenant.Name,
+					"error", err,
+					"component", "lua_engine")
 				continue
 			}
 		}
@@ -206,18 +242,37 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 		if tenant.LuaRoutes != "" {
 			if len(tenant.Domains) > 0 {
 				// Host-based routing: handled by middleware, just log
-				log.Printf("Tenant %s configured for host-based routing with domains: %v", tenant.Name, tenant.Domains)
+				slog.Info("tenant_host_routing_configured",
+					"tenant", tenant.Name,
+					"domains", tenant.Domains,
+					"routing_type", "host_based",
+					"component", "routing")
 			} else if tenant.PathPrefix != "" {
 				// Path-based routing: mount at specific path prefix
-				log.Printf("Mounting tenant %s routes at path prefix: %s", tenant.Name, tenant.PathPrefix)
+				slog.Info("tenant_path_routing_mounting",
+					"tenant", tenant.Name,
+					"path_prefix", tenant.PathPrefix,
+					"routing_type", "path_based",
+					"component", "routing")
 				if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, tenant.PathPrefix); err != nil {
-					log.Printf("Failed to mount routes for tenant %s: %v", tenant.Name, err)
+					slog.Error("tenant_route_mount_failed",
+						"tenant", tenant.Name,
+						"path_prefix", tenant.PathPrefix,
+						"error", err,
+						"component", "routing")
 				}
 			} else {
 				// Fallback: mount at root with warning about potential collisions
-				log.Printf("Warning: Tenant %s has no path prefix or domains - mounting at root may cause route collisions", tenant.Name)
+				slog.Warn("tenant_root_mount_warning",
+					"tenant", tenant.Name,
+					"message", "no path prefix or domains - mounting at root may cause route collisions",
+					"component", "routing")
 				if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, "/"); err != nil {
-					log.Printf("Failed to mount routes for tenant %s: %v", tenant.Name, err)
+					slog.Error("tenant_route_mount_failed",
+						"tenant", tenant.Name,
+						"path_prefix", "/",
+						"error", err,
+						"component", "routing")
 				}
 			}
 		}
@@ -228,25 +283,46 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 	r.HandleFunc("/*", app.ProxyHandler)
 }
 
+// hasHostBasedTenants checks if any tenants use host-based routing
+func (app *Application) hasHostBasedTenants() bool {
+	cfg := app.gateway.GetConfig()
+	for _, tenant := range cfg.Tenants {
+		if len(tenant.Domains) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // hostBasedRoutingMiddleware creates middleware for host-based tenant routing
 func (app *Application) hostBasedRoutingMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if this is a host-based tenant request
 			cfg := app.gateway.GetConfig()
-			registry := app.luaEngine.RouteRegistry()
 
+			// Check if this is a host-based tenant request
 			for _, tenant := range cfg.Tenants {
 				if len(tenant.Domains) > 0 {
 					for _, domain := range tenant.Domains {
 						if r.Host == domain || r.Host == domain+":"+app.port() {
-							// Found matching host-based tenant
-							submux := registry.GetTenantRoutes(tenant.Name)
-							if submux != nil {
-								log.Printf("Host-based routing: %s -> tenant %s", r.Host, tenant.Name)
-								submux.ServeHTTP(w, r)
-								return
+							slog.Info("host_routing_match",
+								"host", r.Host,
+								"tenant", tenant.Name,
+								"domain", domain,
+								"component", "routing")
+
+							// If we have Lua routing, use the registry
+							if app.luaEngine != nil {
+								registry := app.luaEngine.RouteRegistry()
+								if submux := registry.GetTenantRoutes(tenant.Name); submux != nil {
+									submux.ServeHTTP(w, r)
+									return
+								}
 							}
+
+							// Fallback to basic proxy handling
+							app.ProxyHandler(w, r)
+							return
 						}
 					}
 				}
@@ -258,9 +334,9 @@ func (app *Application) hostBasedRoutingMiddleware() func(http.Handler) http.Han
 	}
 }
 
-// port extracts the port from the listen address (defaults to 8080)
+// port extracts the port from the configuration
 func (app *Application) port() string {
-	return "8080" // Default port - could be enhanced to parse from listen address
+	return app.config.GetPort()
 }
 
 func main() {
@@ -270,22 +346,27 @@ func main() {
 
 	cfg, err := config.LoadConfig(*cfgPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("config_load_failed", "error", err, "path", *cfgPath, "component", "config")
+		os.Exit(1)
 	}
 
-	if cfg.LuaRouting == nil || !cfg.LuaRouting.Enabled {
-		log.Fatal("Lua routing must be enabled")
+	// Allow gateway to run without Lua routing for pure proxying
+	if cfg.LuaRouting != nil && cfg.LuaRouting.Enabled {
+		slog.Info("mode_lua_enabled", "component", "config")
+	} else {
+		slog.Info("mode_pure_proxy", "component", "config")
 	}
 
-	// Create application with Lua routing
+	// Create application (with or without Lua routing)
 	router := chi.NewRouter()
 	app := NewApplicationWithLuaRouting(cfg, router)
 	router = app.SetupRouter()
 
 	// Create HTTP server
 	server := &http.Server{
-		Addr:    *addr,
-		Handler: router,
+		Addr:              *addr,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	// Setup graceful shutdown
@@ -293,24 +374,33 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("Keystone Gateway v%s (Chi Router) listening on %s", Version, *addr)
+		slog.Info("server_starting",
+			"version", Version,
+			"address", *addr,
+			"router", "chi",
+			"component", "server")
 
 		// Start server with TLS support if configured
 		if cfg.TLS != nil && cfg.TLS.Enabled {
-			log.Printf("Starting server with TLS enabled")
+			slog.Info("tls_enabled",
+				"cert_file", cfg.TLS.CertFile,
+				"key_file", cfg.TLS.KeyFile,
+				"component", "server")
 			if err := server.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
-				log.Fatal(err)
+				slog.Error("server_failed", "error", err, "component", "server")
+				os.Exit(1)
 			}
 		} else {
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatal(err)
+				slog.Error("server_failed", "error", err, "component", "server")
+				os.Exit(1)
 			}
 		}
 	}()
 
 	// Wait for shutdown signal
 	<-stop
-	log.Println("Shutting down server...")
+	slog.Info("shutdown_initiated", "component", "server")
 
 	// Stop health checks first
 	app.gateway.StopHealthChecks()
@@ -320,8 +410,8 @@ func main() {
 	defer cancel()
 
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+		slog.Error("server_shutdown_forced", "error", err, "component", "server")
 	} else {
-		log.Println("Server gracefully stopped")
+		slog.Info("server_shutdown_graceful", "component", "server")
 	}
 }

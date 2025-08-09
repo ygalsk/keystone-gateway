@@ -3,7 +3,7 @@
 ## Basic Structure
 
 ```yaml
-# Optional admin endpoints (default: /admin)  
+# Optional admin endpoints (default: /admin)
 admin_base_path: "/admin"
 
 # Required: Lua routing
@@ -38,7 +38,7 @@ compression:
 ## Routing Priority
 
 1. **Hybrid**: `domains` + `path_prefix`
-2. **Host-based**: `domains` only  
+2. **Host-based**: `domains` only
 3. **Path-based**: `path_prefix` only
 
 ## Validation

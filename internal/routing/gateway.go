@@ -4,7 +4,8 @@ package routing
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -24,15 +25,18 @@ type GatewayBackend struct {
 	Alive      atomic.Bool
 	HealthPath string // Health check endpoint path
 
-	// ✅ ADD: Cache proxies per strip prefix to avoid recreation
-	proxyCache sync.Map // map[string]*httputil.ReverseProxy
+	// Circuit breaker state (unexported)
+	cbState           atomic.Uint32 // 0=closed,1=open,2=half-open
+	cbFailures        atomic.Uint32 // consecutive failures
+	cbLastFailureUnix atomic.Int64  // unix nano timestamp
+	cbHalfOpenRemains atomic.Int32  // remaining probes in half-open
 }
 
 // TenantRouter manages load balancing and backend selection for a specific tenant.
 type TenantRouter struct {
 	Name     string
 	Backends []*GatewayBackend
-	RRIndex  uint64
+	RRIndex  int64 // Changed to int64 to avoid overflow issues
 }
 
 // Gateway is the main reverse proxy instance that handles routing,
@@ -54,6 +58,30 @@ type Gateway struct {
 	healthCtx    context.Context
 	healthCancel context.CancelFunc
 	healthWG     sync.WaitGroup
+}
+
+// Constants used for proxy header names and messages to avoid magic strings
+const (
+	xForwardedForHeader   = "X-Forwarded-For"
+	xForwardedHostHeader  = "X-Forwarded-Host"
+	xForwardedProtoHeader = "X-Forwarded-Proto"
+	defaultBadGatewayMsg  = "Bad gateway"
+
+	// Circuit breaker constants
+	cbStateClosed        = uint32(0)
+	cbStateOpen          = uint32(1)
+	cbStateHalfOpen      = uint32(2)
+	cbFailureThreshold   = uint32(5)        // N consecutive failures to open
+	cbCooldownDuration   = 30 * time.Second // Open -> HalfOpen after cooldown
+	cbHalfOpenMaxProbes  = int32(1)         // Allowed test requests in half-open
+	serverErrorStatusMin = 500              // Treat >=500 as failure
+)
+
+// Human-readable names for breaker states (for logs)
+var cbStateNames = map[uint32]string{
+	cbStateClosed:   "CLOSED",
+	cbStateOpen:     "OPEN",
+	cbStateHalfOpen: "HALF-OPEN",
 }
 
 // NewGatewayWithRouter creates a Gateway with an existing Chi router for dynamic routing
@@ -105,13 +133,21 @@ func (gw *Gateway) initializeRouters() {
 		for _, svc := range tenant.Services {
 			u, err := url.Parse(svc.URL)
 			if err != nil {
-				log.Printf("Warning: invalid URL for service %s: %v", svc.Name, err)
+				slog.Warn("invalid_service_url",
+					"service", svc.Name,
+					"url", svc.URL,
+					"error", err,
+					"component", "gateway")
 				continue
 			}
 
 			// Validate that the URL has the required components for a backend
 			if u.Scheme == "" || u.Host == "" {
-				log.Printf("Warning: invalid backend URL for service %s: missing scheme or host", svc.Name)
+				slog.Warn("invalid_backend_url",
+					"service", svc.Name,
+					"url", svc.URL,
+					"reason", "missing scheme or host",
+					"component", "gateway")
 				continue
 			}
 
@@ -120,13 +156,18 @@ func (gw *Gateway) initializeRouters() {
 				HealthPath: svc.Health,
 			}
 			backend.Alive.Store(false) // Start as unhealthy, will be updated by health checks
+			backend.cbState.Store(cbStateClosed)
+			backend.cbHalfOpenRemains.Store(cbHalfOpenMaxProbes)
 			tr.Backends = append(tr.Backends, backend)
 		}
 
 		// Route based on configuration
 		gw.registerTenantRoutes(tenant, tr)
 
-		log.Printf("Initialized tenant %s with %d backends", tenant.Name, len(tr.Backends))
+		slog.Info("tenant_initialized",
+			"tenant", tenant.Name,
+			"backend_count", len(tr.Backends),
+			"component", "gateway")
 	}
 }
 
@@ -184,17 +225,63 @@ func (tr *TenantRouter) NextBackend() *GatewayBackend {
 		return nil
 	}
 
-	// Round-robin with health checks
-	for i := 0; i < len(tr.Backends); i++ {
-		idx := int(atomic.AddUint64(&tr.RRIndex, 1) % uint64(len(tr.Backends)))
+	// Round-robin with health checks and circuit breaker allowance
+	backendCount := len(tr.Backends)
+	for i := 0; i < backendCount; i++ {
+		// Safe round-robin index calculation using int64 atomic operations
+		rrValue := atomic.AddInt64(&tr.RRIndex, 1)
+		// Safe modulo operation - no conversion needed
+		idx := int(rrValue % int64(backendCount))
+		if idx < 0 {
+			idx = -idx // Handle negative modulo results
+		}
 		backend := tr.Backends[idx]
 
-		if backend.Alive.Load() {
+		if !backend.Alive.Load() {
+			continue
+		}
+
+		// Circuit breaker gate
+		state := backend.cbState.Load()
+		allowed := false
+		switch state {
+		case cbStateClosed:
+			allowed = true
+		case cbStateOpen:
+			// Cooldown check -> half-open
+			last := time.Unix(0, backend.cbLastFailureUnix.Load())
+			if time.Since(last) >= cbCooldownDuration {
+				backend.cbState.Store(cbStateHalfOpen)
+				backend.cbHalfOpenRemains.Store(cbHalfOpenMaxProbes)
+				slog.Info("circuit_breaker_state_change", "backend", backend.URL.String(), "from_state", cbStateNames[state], "to_state", cbStateNames[cbStateHalfOpen], "component", "circuit_breaker")
+				allowed = true
+			}
+		case cbStateHalfOpen:
+			// Allow limited probes
+			if backend.cbHalfOpenRemains.Add(-1) >= 0 {
+				allowed = true
+			}
+		}
+
+		if allowed {
 			return backend
 		}
 	}
 
-	// Fallback to first backend even if unhealthy
+	// Fallbacks to preserve availability while preferring safer choices
+	// 1) If any backend is marked Alive, return the first Alive (ignoring breaker gate)
+	for _, b := range tr.Backends {
+		if b.Alive.Load() {
+			return b
+		}
+	}
+	// 2) If any backend is not OPEN, prefer it to avoid known-bad backends
+	for _, b := range tr.Backends {
+		if b.cbState.Load() != cbStateOpen {
+			return b
+		}
+	}
+	// 3) Last resort: original behavior returns the first backend
 	return tr.Backends[0]
 }
 
@@ -235,7 +322,7 @@ func (gw *Gateway) GetRouteRegistry() *LuaRouteRegistry {
 	return gw.routeRegistry
 }
 
-// extractHost extracts the hostname from a host header (removing port if present).
+// ExtractHost extracts the hostname from a host header (removing port if present).
 func ExtractHost(hostHeader string) string {
 	// Handle IPv6 addresses wrapped in brackets: [::1]:8080 -> [::1]
 	if strings.HasPrefix(hostHeader, "[") {
@@ -267,60 +354,163 @@ func (gw *Gateway) findBestPathMatch(path string, routers map[string]*TenantRout
 }
 
 // CreateProxy creates or retrieves a cached reverse proxy for the given backend
-// ✅ FIXED: Now caches proxy objects to eliminate per-request allocation
 func (gw *Gateway) CreateProxy(backend *GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
-	// Use stripPrefix as cache key since proxy behavior depends on it
-	cacheKey := stripPrefix
+	// Always build a fresh proxy to avoid any unintended state reuse across requests/tests
+	return gw.buildReverseProxy(backend, stripPrefix)
+}
 
-	// Try to get existing proxy from cache
-	if cached, ok := backend.proxyCache.Load(cacheKey); ok {
-		return cached.(*httputil.ReverseProxy)
-	}
-
-	// Create new proxy if not cached
+// buildReverseProxy constructs a new reverse proxy with proper configuration
+func (gw *Gateway) buildReverseProxy(backend *GatewayBackend, stripPrefix string) *httputil.ReverseProxy {
 	proxy := httputil.NewSingleHostReverseProxy(backend.URL)
-
-	// Use the shared transport with connection pooling
 	proxy.Transport = gw.transport
+	proxy.Director = gw.createDirectorFunction(backend, stripPrefix)
 
-	// Create director function (this closure is only created once per proxy)
-	proxy.Director = func(req *http.Request) {
-		req.URL.Scheme = backend.URL.Scheme
-		req.URL.Host = backend.URL.Host
-
-		// Handle path stripping and backend path prepending
-		if stripPrefix != "" {
-			newPath := strings.TrimPrefix(req.URL.Path, stripPrefix)
-			if newPath == "" {
-				newPath = "/"
-			} else if !strings.HasPrefix(newPath, "/") {
-				newPath = "/" + newPath
-			}
-			req.URL.Path = newPath
+	// Robust error handler to keep gateway resilient
+	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
+		// Mark as failure for circuit breaker
+		backend.cbLastFailureUnix.Store(time.Now().UnixNano())
+		backend.cbFailures.Add(1)
+		old := backend.cbState.Load()
+		newState := old
+		if old == cbStateHalfOpen {
+			newState = cbStateOpen
+		} else if backend.cbFailures.Load() >= cbFailureThreshold {
+			newState = cbStateOpen
 		}
-
-		// Prepend backend URL path if it exists
-		if backend.URL.Path != "" && backend.URL.Path != "/" {
-			backendPath := strings.TrimSuffix(backend.URL.Path, "/")
-			if req.URL.Path == "/" {
-				req.URL.Path = backendPath + "/"
-			} else {
-				req.URL.Path = backendPath + req.URL.Path
-			}
+		if newState != old {
+			backend.cbState.Store(newState)
+			slog.Info("circuit_breaker_state_change", "backend", backend.URL.String(), "from_state", cbStateNames[old], "to_state", cbStateNames[newState], "component", "circuit_breaker")
 		}
-
-		// Merge query parameters
-		if backend.URL.RawQuery == "" || req.URL.RawQuery == "" {
-			req.URL.RawQuery = backend.URL.RawQuery + req.URL.RawQuery
-		} else {
-			req.URL.RawQuery = backend.URL.RawQuery + "&" + req.URL.RawQuery
-		}
+		slog.Error("proxy_error",
+			"backend", backend.URL.String(),
+			"error", err,
+			"component", "proxy")
+		http.Error(rw, defaultBadGatewayMsg, http.StatusBadGateway)
 	}
 
-	// Cache the proxy for future use
-	backend.proxyCache.Store(cacheKey, proxy)
+	// Observe responses to update breaker state
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		if resp.StatusCode >= serverErrorStatusMin {
+			backend.cbLastFailureUnix.Store(time.Now().UnixNano())
+			backend.cbFailures.Add(1)
+			old := backend.cbState.Load()
+			newState := old
+			if old == cbStateHalfOpen {
+				newState = cbStateOpen
+			} else if backend.cbFailures.Load() >= cbFailureThreshold {
+				newState = cbStateOpen
+			}
+			if newState != old {
+				backend.cbState.Store(newState)
+				slog.Info("circuit_breaker_state_change", "backend", backend.URL.String(), "from_state", cbStateNames[old], "to_state", cbStateNames[newState], "component", "circuit_breaker")
+			}
+		} else {
+			// success -> close/reset breaker
+			old := backend.cbState.Load()
+			backend.cbFailures.Store(0)
+			backend.cbHalfOpenRemains.Store(cbHalfOpenMaxProbes)
+			if old != cbStateClosed {
+				backend.cbState.Store(cbStateClosed)
+				slog.Info("circuit_breaker_state_change", "backend", backend.URL.String(), "from_state", cbStateNames[old], "to_state", cbStateNames[cbStateClosed], "component", "circuit_breaker")
+			}
+		}
+		return nil
+	}
 
 	return proxy
+}
+
+// createDirectorFunction creates the director function for request modification
+func (gw *Gateway) createDirectorFunction(backend *GatewayBackend, stripPrefix string) func(*http.Request) {
+	return func(req *http.Request) {
+		// Capture original client-facing values for forwarding headers
+		originalHost := req.Host
+		if originalHost == "" {
+			// Fallback to URL host if Host header was empty
+			originalHost = req.URL.Host
+		}
+		originalProto := "http"
+		if req.TLS != nil || strings.EqualFold(req.Header.Get(xForwardedProtoHeader), "https") {
+			originalProto = "https"
+		}
+
+		// Compute original client IP robustly (IPv4/IPv6)
+		var originalFor string
+		if req.RemoteAddr != "" {
+			if h, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+				originalFor = h
+			} else {
+				// If no port present or parsing failed, use as-is
+				originalFor = req.RemoteAddr
+			}
+		}
+
+		// Existing target/url/path logic
+		gw.setTargetURL(req, backend)
+		gw.handlePathStripping(req, stripPrefix)
+		gw.prependBackendPath(req, backend)
+		gw.mergeQueryParams(req, backend)
+
+		// X-Forwarded-* headers
+		if originalFor != "" {
+			if prior := req.Header.Get(xForwardedForHeader); prior != "" {
+				req.Header.Set(xForwardedForHeader, prior+", "+originalFor)
+			} else {
+				req.Header.Set(xForwardedForHeader, originalFor)
+			}
+		}
+		if originalHost != "" {
+			req.Header.Set(xForwardedHostHeader, originalHost)
+		}
+		req.Header.Set(xForwardedProtoHeader, originalProto)
+
+		// Upstream Host should match target backend host
+		req.Host = backend.URL.Host
+	}
+}
+
+// setTargetURL sets the target scheme and host
+func (gw *Gateway) setTargetURL(req *http.Request, backend *GatewayBackend) {
+	req.URL.Scheme = backend.URL.Scheme
+	req.URL.Host = backend.URL.Host
+}
+
+// handlePathStripping handles path prefix stripping
+func (gw *Gateway) handlePathStripping(req *http.Request, stripPrefix string) {
+	if stripPrefix == "" {
+		return
+	}
+
+	newPath := strings.TrimPrefix(req.URL.Path, stripPrefix)
+	if newPath == "" {
+		newPath = "/"
+	} else if !strings.HasPrefix(newPath, "/") {
+		newPath = "/" + newPath
+	}
+	req.URL.Path = newPath
+}
+
+// prependBackendPath prepends the backend URL path if it exists
+func (gw *Gateway) prependBackendPath(req *http.Request, backend *GatewayBackend) {
+	if backend.URL.Path == "" || backend.URL.Path == "/" {
+		return
+	}
+
+	backendPath := strings.TrimSuffix(backend.URL.Path, "/")
+	if req.URL.Path == "/" {
+		req.URL.Path = backendPath + "/"
+	} else {
+		req.URL.Path = backendPath + req.URL.Path
+	}
+}
+
+// mergeQueryParams merges query parameters from backend and request
+func (gw *Gateway) mergeQueryParams(req *http.Request, backend *GatewayBackend) {
+	if backend.URL.RawQuery == "" || req.URL.RawQuery == "" {
+		req.URL.RawQuery = backend.URL.RawQuery + req.URL.RawQuery
+	} else {
+		req.URL.RawQuery = backend.URL.RawQuery + "&" + req.URL.RawQuery
+	}
 }
 
 // Optional method to get transport stats for monitoring
@@ -336,56 +526,8 @@ func (gw *Gateway) GetTransportStats() map[string]interface{} {
 
 // ✅ ADD: Method to get proxy cache stats for monitoring
 func (gw *Gateway) GetProxyCacheStats() map[string]int {
-	stats := make(map[string]int)
-	totalCached := 0
-
-	// Count cached proxies across all tenants and backends
-	for _, tr := range gw.pathRouters {
-		for _, backend := range tr.Backends {
-			count := 0
-			backend.proxyCache.Range(func(key, value interface{}) bool {
-				count++
-				return true
-			})
-			if count > 0 {
-				stats[backend.URL.String()] = count
-				totalCached += count
-			}
-		}
-	}
-
-	for _, tr := range gw.hostRouters {
-		for _, backend := range tr.Backends {
-			count := 0
-			backend.proxyCache.Range(func(key, value interface{}) bool {
-				count++
-				return true
-			})
-			if count > 0 {
-				stats[backend.URL.String()] = count
-				totalCached += count
-			}
-		}
-	}
-
-	for _, hostMap := range gw.hybridRouters {
-		for _, tr := range hostMap {
-			for _, backend := range tr.Backends {
-				count := 0
-				backend.proxyCache.Range(func(key, value interface{}) bool {
-					count++
-					return true
-				})
-				if count > 0 {
-					stats[backend.URL.String()] = count
-					totalCached += count
-				}
-			}
-		}
-	}
-
-	stats["total_cached_proxies"] = totalCached
-	return stats
+	// Proxy caching disabled; return zero stats for compatibility
+	return map[string]int{"total_cached_proxies": 0}
 }
 
 // StartHealthChecks starts background health check monitoring for all backends
@@ -405,7 +547,10 @@ func (gw *Gateway) StartHealthChecks() {
 		// Start health checker for each backend in this tenant
 		for _, backend := range tr.Backends {
 			if backend.HealthPath == "" {
-				log.Printf("Warning: no health path configured for backend %s, skipping health checks", backend.URL.String())
+				slog.Warn("health_check_skipped",
+					"backend", backend.URL.String(),
+					"reason", "no health path configured",
+					"component", "health_checker")
 				// If no health path, assume backend is healthy
 				backend.Alive.Store(true)
 				continue
@@ -415,7 +560,11 @@ func (gw *Gateway) StartHealthChecks() {
 			go gw.healthCheckWorker(backend, interval)
 		}
 
-		log.Printf("Started health checks for tenant %s with %d backends (interval: %v)", tenant.Name, len(tr.Backends), interval)
+		slog.Info("health_checks_started",
+			"tenant", tenant.Name,
+			"backend_count", len(tr.Backends),
+			"interval", interval,
+			"component", "health_checker")
 	}
 }
 
@@ -432,7 +581,9 @@ func (gw *Gateway) healthCheckWorker(backend *GatewayBackend, interval time.Dura
 	for {
 		select {
 		case <-gw.healthCtx.Done():
-			log.Printf("Health check worker for %s stopping", backend.URL.String())
+			slog.Info("health_worker_stopping",
+				"backend", backend.URL.String(),
+				"component", "health_checker")
 			return
 		case <-ticker.C:
 			gw.performHealthCheck(backend)
@@ -442,11 +593,17 @@ func (gw *Gateway) healthCheckWorker(backend *GatewayBackend, interval time.Dura
 
 // performHealthCheck performs a single health check against a backend
 func (gw *Gateway) performHealthCheck(backend *GatewayBackend) {
-	// Build health check URL
+	// Build health check URL (normalize path)
+	path := backend.HealthPath
+	if path == "" {
+		path = "/"
+	} else if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
 	healthURL := &url.URL{
 		Scheme: backend.URL.Scheme,
 		Host:   backend.URL.Host,
-		Path:   backend.HealthPath,
+		Path:   path,
 	}
 
 	// Create health check request with timeout
@@ -455,7 +612,10 @@ func (gw *Gateway) performHealthCheck(backend *GatewayBackend) {
 
 	req, err := http.NewRequestWithContext(ctx, "GET", healthURL.String(), nil)
 	if err != nil {
-		log.Printf("Health check error for %s: failed to create request: %v", backend.URL.String(), err)
+		slog.Error("health_check_request_failed",
+			"backend", backend.URL.String(),
+			"error", err,
+			"component", "health_checker")
 		gw.markBackendHealth(backend, false)
 		return
 	}
@@ -474,7 +634,10 @@ func (gw *Gateway) performHealthCheck(backend *GatewayBackend) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Health check failed for %s: %v", backend.URL.String(), err)
+		slog.Error("health_check_failed",
+			"backend", backend.URL.String(),
+			"error", err,
+			"component", "health_checker")
 		gw.markBackendHealth(backend, false)
 		return
 	}
@@ -485,9 +648,15 @@ func (gw *Gateway) performHealthCheck(backend *GatewayBackend) {
 	gw.markBackendHealth(backend, healthy)
 
 	if healthy {
-		log.Printf("Health check passed for %s (status: %d)", backend.URL.String(), resp.StatusCode)
+		slog.Info("health_check_passed",
+			"backend", backend.URL.String(),
+			"status_code", resp.StatusCode,
+			"component", "health_checker")
 	} else {
-		log.Printf("Health check failed for %s (status: %d)", backend.URL.String(), resp.StatusCode)
+		slog.Warn("health_check_failed",
+			"backend", backend.URL.String(),
+			"status_code", resp.StatusCode,
+			"component", "health_checker")
 	}
 }
 
@@ -496,20 +665,39 @@ func (gw *Gateway) markBackendHealth(backend *GatewayBackend, healthy bool) {
 	wasAlive := backend.Alive.Load()
 	backend.Alive.Store(healthy)
 
+	// On healthy, close/reset breaker as well
+	if healthy {
+		old := backend.cbState.Load()
+		backend.cbFailures.Store(0)
+		backend.cbHalfOpenRemains.Store(cbHalfOpenMaxProbes)
+		if old != cbStateClosed {
+			backend.cbState.Store(cbStateClosed)
+			slog.Info("circuit_breaker_reset",
+				"backend", backend.URL.String(),
+				"from_state", cbStateNames[old],
+				"to_state", cbStateNames[cbStateClosed],
+				"component", "circuit_breaker")
+		}
+	}
+
 	// Log status changes
 	if wasAlive != healthy {
 		if healthy {
-			log.Printf("Backend %s is now HEALTHY", backend.URL.String())
+			slog.Info("backend_healthy",
+				"backend", backend.URL.String(),
+				"component", "health_checker")
 		} else {
-			log.Printf("Backend %s is now UNHEALTHY", backend.URL.String())
+			slog.Error("backend_unhealthy",
+				"backend", backend.URL.String(),
+				"component", "health_checker")
 		}
 	}
 }
 
 // StopHealthChecks gracefully stops all health check workers
 func (gw *Gateway) StopHealthChecks() {
-	log.Println("Stopping health check workers...")
+	slog.Info("health_workers_stopping", "component", "health_checker")
 	gw.healthCancel()
 	gw.healthWG.Wait()
-	log.Println("All health check workers stopped")
+	slog.Info("health_workers_stopped", "component", "health_checker")
 }

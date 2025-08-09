@@ -5,7 +5,7 @@ High-performance reverse proxy with embedded Lua scripting. Multi-tenant routing
 ## Why Keystone Gateway?
 
 - **Embedded Lua**: Define routes in Lua scripts, no recompilation needed
-- **Multi-tenant**: Route by domain, path, or both  
+- **Multi-tenant**: Route by domain, path, or both
 - **Performance**: Thread-safe Lua pools, HTTP/2, connection pooling
 - **Simple**: One binary, YAML config, Lua scripts. That's it.
 
@@ -46,7 +46,7 @@ Start: `./keystone-gateway -config config.yaml`
 ## How It Works
 
 1. **Configure tenants** - Define who gets routed where
-2. **Write Lua scripts** - Define routes and middleware  
+2. **Write Lua scripts** - Define routes and middleware
 3. **Start gateway** - Routes traffic based on domain/path
 4. **Monitor** - Check `/admin/health` for status
 
@@ -59,13 +59,13 @@ tenants:
     domains: ["api.example.com"]
     lua_routes: "api"
 
-# Route by path  
+# Route by path
   - name: "app"
     path_prefix: "/app/"
     lua_routes: "app"
 
 # Route by both (hybrid)
-  - name: "v2-api"  
+  - name: "v2-api"
     domains: ["api.example.com"]
     path_prefix: "/v2/"
     lua_routes: "v2"
@@ -106,7 +106,7 @@ Multiple services = automatic round-robin:
 services:
   - name: "api-1"
     url: "http://api-1:3001"
-  - name: "api-2"  
+  - name: "api-2"
     url: "http://api-2:3001"
   - name: "api-3"
     url: "http://api-3:3001"
@@ -118,7 +118,7 @@ Health checks happen automatically.
 
 - **Health monitoring**: `/admin/health`, `/admin/tenants/{name}/health`
 - **Compression**: Configurable gzip for JSON/HTML/text
-- **TLS**: Configure cert/key files  
+- **TLS**: Configure cert/key files
 - **Graceful shutdown**: SIGTERM handling
 - **Performance**: HTTP/2, connection pooling, Lua state pools
 
@@ -126,7 +126,7 @@ Health checks happen automatically.
 
 ```bash
 make dev         # Start development
-make test        # Run all tests  
+make test        # Run all tests
 make staging     # Deploy to staging
 make production  # Deploy to production
 make clean       # Cleanup
@@ -141,7 +141,7 @@ internal/      # Core Go packages
   lua/         # Lua engine integration
   routing/     # HTTP routing & load balancing
 configs/       # Configuration examples
-scripts/lua/   # Lua routing scripts  
+scripts/lua/   # Lua routing scripts
 tests/         # Unit, integration, e2e tests
 ```
 
@@ -159,7 +159,7 @@ See `scripts/lua/examples/`:
 ## Documentation
 
 - **[Quick Start](docs/quick-start.md)** - 2-minute setup
-- **[Configuration](docs/config.md)** - YAML reference  
+- **[Configuration](docs/config.md)** - YAML reference
 - **[Lua Scripting](docs/lua.md)** - Route definitions
 - **[Examples](docs/examples.md)** - Real-world patterns
 - **[Development](docs/development.md)** - Contributing guide

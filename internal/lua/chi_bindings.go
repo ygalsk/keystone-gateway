@@ -47,12 +47,18 @@ func (m *mockResponseWriter) Header() http.Header {
 	return m.headers
 }
 
-func (m *mockResponseWriter) Write([]byte) (int, error) {
-	return 0, nil
+func (m *mockResponseWriter) Write(data []byte) (int, error) {
+	// Store write action for middleware parsing
+	m.getActions() // Trigger any header-based actions first
+	return len(data), nil
 }
 
 func (m *mockResponseWriter) WriteHeader(statusCode int) {
-	// Capture status code changes if needed
+	// Store status code action for middleware parsing
+	if m.headers == nil {
+		m.headers = make(http.Header)
+	}
+	m.headers.Set("X-Mock-Status-Code", fmt.Sprintf("%d", statusCode))
 }
 
 func (m *mockResponseWriter) getActions() []MiddlewareAction {
@@ -106,154 +112,185 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 
 // luaChiRoute handles route registration from Lua: chi_route(method, pattern, handler)
 func (e *Engine) luaChiRoute(L *lua.LState, scriptTag, tenantName string) int {
-	method := L.ToString(1)
-	pattern := L.ToString(2)
-	handlerFunc := L.ToFunction(3)
-
+	method, pattern, handlerFunc := e.extractRouteArgs(L)
 	if method == "" || pattern == "" || handlerFunc == nil {
 		L.ArgError(1, "chi_route requires method, pattern, and handler function")
 		return 0
 	}
 
-	// Check if we're inside a group context
-	var groupPattern string
-	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
-		if groupStr := groupCtx.String(); groupStr != "" {
-			groupPattern = groupStr
-			// Prepend group pattern to route pattern
-			pattern = groupStr + pattern
-		}
-	}
+	groupPattern := e.getGroupPattern(L)
+	fullPattern := e.buildRoutePattern(pattern, groupPattern)
+	functionName := e.generateHandlerName(method, fullPattern, L)
 
-	// Extract the Lua function source code for later execution
-	functionName := fmt.Sprintf("handler_%s_%s_%d", method, pattern, L.GetTop())
 	L.SetGlobal(functionName, handlerFunc)
 
-	// Get the script content for this handler
 	scriptContent, exists := e.GetScript(scriptTag)
 	if !exists {
 		L.RaiseError("Script not found: %s", scriptTag)
 		return 0
 	}
 
-	// Create a thread-safe handler using the state pool
 	luaHandler := NewLuaHandler(scriptContent, functionName, tenantName, scriptTag, e.statePool, e)
 
-	// Register the route with the simplified registry
-	err := e.routeRegistry.RegisterRoute(routing.RouteDefinition{
-		TenantName:   tenantName,
-		Method:       method,
-		Pattern:      pattern,
-		GroupPattern: groupPattern,
-		Handler:      luaHandler.ServeHTTP,
-	})
-	if err != nil {
+	if err := e.registerRouteWithRegistry(tenantName, method, fullPattern, groupPattern, luaHandler); err != nil {
 		L.RaiseError("Failed to register route: %v", err)
 	}
 
 	return 0
 }
 
+// extractRouteArgs extracts route arguments from Lua state
+func (e *Engine) extractRouteArgs(L *lua.LState) (string, string, *lua.LFunction) {
+	method := L.ToString(1)
+	pattern := L.ToString(2)
+	handlerFunc := L.ToFunction(3)
+	return method, pattern, handlerFunc
+}
+
+// getGroupPattern retrieves current group pattern from Lua context
+func (e *Engine) getGroupPattern(L *lua.LState) string {
+	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
+		return groupCtx.String()
+	}
+	return ""
+}
+
+// buildRoutePattern combines group pattern with route pattern
+func (e *Engine) buildRoutePattern(pattern, groupPattern string) string {
+	if groupPattern != "" {
+		return groupPattern + pattern
+	}
+	return pattern
+}
+
+// generateHandlerName creates a unique handler function name
+func (e *Engine) generateHandlerName(method, pattern string, L *lua.LState) string {
+	return fmt.Sprintf("handler_%s_%s_%d", method, pattern, L.GetTop())
+}
+
+// registerRouteWithRegistry registers a route with the route registry
+func (e *Engine) registerRouteWithRegistry(tenantName, method, pattern, groupPattern string, luaHandler *LuaHandler) error {
+	return e.routeRegistry.RegisterRoute(routing.RouteDefinition{
+		TenantName:   tenantName,
+		Method:       method,
+		Pattern:      pattern,
+		GroupPattern: groupPattern,
+		Handler:      luaHandler.ServeHTTP,
+	})
+}
+
 // luaChiMiddleware handles middleware registration: chi_middleware(pattern, middleware_func)
 func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) int {
-	pattern := L.ToString(1)
-	middlewareFunc := L.ToFunction(2)
-
+	pattern, middlewareFunc := e.extractMiddlewareArgs(L)
 	if pattern == "" || middlewareFunc == nil {
 		L.ArgError(1, "chi_middleware requires pattern and middleware function")
 		return 0
 	}
 
-	// Get the current group context if we're inside a group
-	var groupPattern string
-	if groupCtx := L.GetGlobal("__current_group_pattern"); groupCtx != lua.LNil {
-		groupPattern = groupCtx.String()
-	}
+	groupPattern := e.getGroupPattern(L)
 
-	// Check if we already have cached logic for this middleware
+	// Try to use cached middleware first
 	if cachedLogic, exists := e.getCachedMiddleware(tenantName, pattern, groupPattern); exists {
-		// Use cached logic for performance
-		middleware := func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				e.executeMiddlewareLogic(cachedLogic, w, r, next)
-			})
-		}
-
-		// Register with the route registry, including group context
-		err := e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
-			TenantName:   tenantName,
-			Pattern:      pattern,
-			GroupPattern: groupPattern,
-			Middleware:   middleware,
-		})
-		if err != nil {
-			L.RaiseError("Failed to register cached middleware: %v", err)
-		}
-		return 0
+		return e.registerCachedMiddleware(L, cachedLogic, tenantName, pattern, groupPattern)
 	}
 
-	// Parse and cache the middleware logic for first-time registration
+	// Parse, cache, and register new middleware
+	return e.parseAndRegisterMiddleware(L, middlewareFunc, pattern, tenantName, groupPattern)
+}
+
+// extractMiddlewareArgs extracts middleware arguments from Lua state
+func (e *Engine) extractMiddlewareArgs(L *lua.LState) (string, *lua.LFunction) {
+	pattern := L.ToString(1)
+	middlewareFunc := L.ToFunction(2)
+	return pattern, middlewareFunc
+}
+
+// registerCachedMiddleware registers middleware using cached logic
+func (e *Engine) registerCachedMiddleware(L *lua.LState, cachedLogic *MiddlewareLogic, tenantName, pattern, groupPattern string) int {
+	middleware := e.createMiddlewareHandler(cachedLogic)
+
+	if err := e.registerMiddlewareWithRegistry(tenantName, pattern, groupPattern, middleware); err != nil {
+		L.RaiseError("Failed to register cached middleware: %v", err)
+	}
+	return 0
+}
+
+// parseAndRegisterMiddleware parses new middleware logic and registers it
+func (e *Engine) parseAndRegisterMiddleware(L *lua.LState, middlewareFunc *lua.LFunction, pattern, tenantName, groupPattern string) int {
 	logic, err := e.parseLuaMiddlewareLogic(L, middlewareFunc, pattern)
 	if err != nil {
 		L.RaiseError("Failed to parse middleware logic: %v", err)
 		return 0
 	}
 
-	// Cache the parsed logic
 	logic.TenantName = tenantName
 	e.setCachedMiddleware(tenantName, pattern, groupPattern, logic)
 
-	// Create Go middleware that executes the cached logic directly
-	middleware := func(next http.Handler) http.Handler {
+	middleware := e.createMiddlewareHandler(logic)
+	if err := e.registerMiddlewareWithRegistry(tenantName, pattern, groupPattern, middleware); err != nil {
+		L.RaiseError("Failed to register middleware: %v", err)
+	}
+	return 0
+}
+
+// createMiddlewareHandler creates a middleware handler from logic
+func (e *Engine) createMiddlewareHandler(logic *MiddlewareLogic) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			e.executeMiddlewareLogic(logic, w, r, next)
 		})
 	}
+}
 
-	// Register with the route registry, including group context
-	err = e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
+// registerMiddlewareWithRegistry registers middleware with the route registry
+func (e *Engine) registerMiddlewareWithRegistry(tenantName, pattern, groupPattern string, middleware func(http.Handler) http.Handler) error {
+	return e.routeRegistry.RegisterMiddleware(routing.MiddlewareDefinition{
 		TenantName:   tenantName,
 		Pattern:      pattern,
 		GroupPattern: groupPattern,
 		Middleware:   middleware,
 	})
-	if err != nil {
-		L.RaiseError("Failed to register middleware: %v", err)
-	}
-
-	return 0
 }
 
 // luaChiGroup handles route group registration: chi_group(pattern, setup_func)
 func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
-	pattern := L.ToString(1)
-	setupFunc := L.ToFunction(2)
-
+	pattern, setupFunc := e.extractGroupArgs(L)
 	if pattern == "" || setupFunc == nil {
 		L.ArgError(1, "chi_group requires pattern and setup function")
 		return 0
 	}
 
-	// Execute the setup function to collect group routes and middleware
-	// Save current group context
 	oldGroupContext := L.GetGlobal("__current_group_pattern")
+	fullPattern := e.buildGroupPattern(pattern, oldGroupContext)
 
-	// Build nested group pattern by combining with parent group
-	var fullPattern string
+	e.executeGroupSetup(L, setupFunc, fullPattern, oldGroupContext)
+	return 0
+}
+
+// extractGroupArgs extracts group arguments from Lua state
+func (e *Engine) extractGroupArgs(L *lua.LState) (string, *lua.LFunction) {
+	pattern := L.ToString(1)
+	setupFunc := L.ToFunction(2)
+	return pattern, setupFunc
+}
+
+// buildGroupPattern combines parent group pattern with current pattern
+func (e *Engine) buildGroupPattern(pattern string, oldGroupContext lua.LValue) string {
 	if oldGroupContext != lua.LNil {
 		parentPattern := oldGroupContext.String()
 		if parentPattern != "" {
-			fullPattern = parentPattern + pattern
-		} else {
-			fullPattern = pattern
+			return parentPattern + pattern
 		}
-	} else {
-		fullPattern = pattern
 	}
+	return pattern
+}
 
+// executeGroupSetup executes the group setup function with proper context management
+func (e *Engine) executeGroupSetup(L *lua.LState, setupFunc *lua.LFunction, fullPattern string, oldGroupContext lua.LValue) {
+	// Set new group context
 	L.SetGlobal("__current_group_pattern", lua.LString(fullPattern))
 
-	// Execute the setup function
+	// Execute setup function
 	err := L.CallByParam(lua.P{
 		Fn:      setupFunc,
 		NRet:    0,
@@ -266,8 +303,6 @@ func (e *Engine) luaChiGroup(L *lua.LState, tenantName string) int {
 	if err != nil {
 		L.RaiseError("Failed to execute group setup function: %v", err)
 	}
-
-	return 0
 }
 
 // Cache methods for middleware logic

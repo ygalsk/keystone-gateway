@@ -20,7 +20,7 @@ Create `config.yaml`:
 tenants:
   - name: "api"
     domains: ["localhost"]
-    lua_routes: "routes.lua" 
+    lua_routes: "routes.lua"
     services:
       - name: "backend"
         url: "http://localhost:3001"

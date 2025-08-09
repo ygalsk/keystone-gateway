@@ -12,7 +12,7 @@ GET /admin/health
 {"status": "healthy", "timestamp": "..."}
 ```
 
-### List Tenants  
+### List Tenants
 ```bash
 GET /admin/tenants
 ```
@@ -21,7 +21,7 @@ GET /admin/tenants
   "tenants": [
     {
       "name": "api",
-      "status": "healthy", 
+      "status": "healthy",
       "services": 2,
       "routing": "host-based"
     }
@@ -40,7 +40,7 @@ GET /admin/tenants/{name}/health
   "services": [
     {
       "name": "backend-1",
-      "url": "http://backend:3001", 
+      "url": "http://backend:3001",
       "status": "healthy",
       "last_check": "..."
     }

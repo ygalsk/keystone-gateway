@@ -2,12 +2,15 @@ package unit
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
-	"github.com/go-chi/chi/v5"
 	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/routing"
 	"keystone-gateway/tests/fixtures"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // TestGatewayCore tests essential gateway functionality for 80%+ coverage
@@ -233,4 +236,124 @@ func TestGatewayDirect(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestCircuitBreakerOpensAndSkipsFailingBackend(t *testing.T) {
+	// Failing backend: returns 500 on /500
+	failBackend := fixtures.CreateTestErrorBackend("failer")
+	defer failBackend.Server.Close()
+	okBackend := fixtures.CreateBasicBackend("ok")
+	defer okBackend.Server.Close()
+
+	tenant := fixtures.CreateTenant("cb-app", "/cb/", nil, failBackend, okBackend)
+	env := fixtures.SetupBasicGateway(t, tenant)
+	defer env.Cleanup()
+
+	router, strip := env.Gateway.MatchRoute("", "/cb/500")
+	if router == nil {
+		t.Fatal("Expected router")
+	}
+
+	// Drive enough requests so that the failing backend opens its breaker (threshold=5)
+	// Round-robin will alternate backends; send more than 2*threshold to be safe
+	for i := 0; i < 12; i++ {
+		backend := router.NextBackend()
+		if backend == nil {
+			t.Fatal("Expected a backend during warmup")
+		}
+		proxy := env.Gateway.CreateProxy(backend, strip)
+		req := httptest.NewRequest("GET", "/cb/500", nil)
+		w := httptest.NewRecorder()
+		proxy.ServeHTTP(w, req)
+	}
+
+	// After saturation, NextBackend should skip the failing backend and return the healthy one
+	for i := 0; i < 3; i++ {
+		backend := router.NextBackend()
+		if backend == nil {
+			t.Fatal("Expected backend after breaker opens")
+		}
+		if backend.URL.Host == mustHost(failBackend.Server.URL) {
+			t.Fatalf("Breaker did not skip failing backend; got %s", backend.URL.String())
+		}
+	}
+}
+
+func TestProxySetsForwardedHeadersAndHost(t *testing.T) {
+	var capturedHost, xfHost, xfProto, xfFor string
+	handlerCalled := false
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip health check requests - they don't have forwarded headers
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		handlerCalled = true
+		capturedHost = r.Host
+		xfHost = r.Header.Get("X-Forwarded-Host")
+		xfProto = r.Header.Get("X-Forwarded-Proto")
+		xfFor = r.Header.Get("X-Forwarded-For")
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	tenant := config.Tenant{
+		Name:       "hdr-app",
+		PathPrefix: "/hdr/",
+		Services: []config.Service{{
+			Name:   "b",
+			URL:    backend.URL,
+			Health: "/health",
+		}},
+	}
+
+	r := chi.NewRouter()
+	gw := routing.NewGatewayWithRouter(&config.Config{Tenants: []config.Tenant{tenant}}, r)
+	defer gw.StopHealthChecks()
+
+	trouter, strip := gw.MatchRoute("example.com:1234", "/hdr/p")
+	if trouter == nil {
+		t.Fatal("Expected router")
+	}
+	b := trouter.NextBackend()
+	if b == nil {
+		t.Fatal("Expected backend")
+	}
+	proxy := gw.CreateProxy(b, strip)
+
+	req := httptest.NewRequest("GET", "/hdr/p", nil)
+	req.Host = "example.com:1234"
+	req.RemoteAddr = "192.168.1.100:12345" // Set RemoteAddr for X-Forwarded-For header
+
+	w := httptest.NewRecorder()
+	proxy.ServeHTTP(w, req)
+
+	// Add a small delay to ensure all goroutines have completed
+	time.Sleep(10 * time.Millisecond)
+
+	if !handlerCalled {
+		t.Error("Backend handler was not called - proxy may not be working correctly")
+	}
+
+	if capturedHost != mustHost(backend.URL) {
+		t.Errorf("upstream Host = %s, want %s", capturedHost, mustHost(backend.URL))
+	}
+	if xfHost != "example.com:1234" {
+		t.Errorf("X-Forwarded-Host = %s, want example.com:1234", xfHost)
+	}
+	if xfProto == "" {
+		t.Error("X-Forwarded-Proto not set")
+	}
+	if xfFor == "" {
+		t.Error("X-Forwarded-For not set")
+	}
+} // mustHost extracts host:port from a server URL
+func mustHost(u string) string {
+	req, err := http.NewRequest("GET", u, nil)
+	if err != nil {
+		return ""
+	}
+	return req.URL.Host
 }

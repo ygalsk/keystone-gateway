@@ -157,28 +157,42 @@ func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error {
 
 // MountTenantRoutes mounts all routes for a tenant under a specific path
 func (r *LuaRouteRegistry) MountTenantRoutes(tenantName, mountPath string) error {
-	r.mu.RLock()
-	submux, exists := r.routeGroups[tenantName]
-	r.mu.RUnlock()
-
-	if exists {
-		r.router.Mount(mountPath, submux)
-	}
+	// Ensure a submux exists for this tenant, even if no routes yet
+	submux := r.getTenantSubmux(tenantName)
+	r.router.Mount(mountPath, submux)
 	return nil
 }
 
 // ClearTenantRoutes removes all routes for a specific tenant
 func (r *LuaRouteRegistry) ClearTenantRoutes(tenantName string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Remove tenant submux and middleware
 	delete(r.routeGroups, tenantName)
+	delete(r.middleware, tenantName)
+
+	// Remove any registeredRoutes entries for this tenant (routes and groups)
+	prefix := tenantName + ":"
+	for k := range r.registeredRoutes {
+		if strings.HasPrefix(k, prefix) {
+			delete(r.registeredRoutes, k)
+		}
+	}
 }
 
 // GetTenantRoutes returns the submux for a tenant (for inspection/debugging)
 func (r *LuaRouteRegistry) GetTenantRoutes(tenantName string) *chi.Mux {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.routeGroups[tenantName]
 }
 
 // ListTenants returns all tenants that have registered routes
 func (r *LuaRouteRegistry) ListTenants() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	tenants := make([]string, 0, len(r.routeGroups))
 	for tenant := range r.routeGroups {
 		tenants = append(tenants, tenant)

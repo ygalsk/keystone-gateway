@@ -30,8 +30,8 @@ tenants:
     services:
       - name: "user-service"
         url: "http://users:3000"
-        
-  - name: "orders" 
+
+  - name: "orders"
     path_prefix: "/orders/"
     lua_routes: "orders"
     services:
@@ -49,7 +49,7 @@ tenants:
     services:
       - name: "api-1"
         url: "http://api-1:3001"
-      - name: "api-2"  
+      - name: "api-2"
         url: "http://api-2:3001"
       - name: "api-3"
         url: "http://api-3:3001"
@@ -90,9 +90,9 @@ tenants:
       - name: "prod-api"
         url: "https://prod-api.internal:443"
 
-# Staging  
+# Staging
   - name: "staging"
-    domains: ["staging-api.company.com"] 
+    domains: ["staging-api.company.com"]
     lua_routes: "staging"
     services:
       - name: "staging-api"
@@ -136,7 +136,7 @@ curl http://localhost:8080/your-route
 ## Production Checklist
 
 1. Use `configs/environments/production-high-load.yaml`
-2. Set health check intervals (15-30s)  
+2. Set health check intervals (15-30s)
 3. Configure TLS termination (reverse proxy)
 4. Monitor `/admin/health` endpoint
 5. Use multiple backend services for HA

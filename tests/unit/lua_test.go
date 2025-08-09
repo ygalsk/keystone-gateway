@@ -2,15 +2,17 @@ package unit
 
 import (
 	"fmt"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
-	lua "github.com/yuin/gopher-lua"
 	luaengine "keystone-gateway/internal/lua"
 	"keystone-gateway/internal/routing"
 	"keystone-gateway/tests/fixtures"
+
+	"github.com/go-chi/chi/v5"
+	lua "github.com/yuin/gopher-lua"
 )
 
 // TestLuaCore tests essential Lua functionality for 80%+ coverage
@@ -353,7 +355,7 @@ func TestLuaDirect(t *testing.T) {
 
 		// Test ListTenants with empty registry
 		tenants := registry.ListTenants()
-		if len(tenants) < 0 {
+		if len(tenants) == 0 {
 			t.Error("Expected tenants list to be available")
 		}
 	})
@@ -366,4 +368,32 @@ func TestLuaDirect(t *testing.T) {
 			t.Error("Expected route registry API to be created")
 		}
 	})
+}
+
+func TestLuaScriptLoadedOncePerState(t *testing.T) {
+	pool := luaengine.NewLuaStatePool(1, func() *lua.LState { return lua.NewState() })
+	defer pool.Close()
+
+	script := `counter = (counter or 0) + 1
+function handler(resp, req)
+  resp:write(tostring(counter))
+end`
+
+	h := luaengine.NewLuaHandler(script, "handler", "tenantA", "scriptA", pool, nil)
+
+	// First request: counter should be 1
+	req1 := httptest.NewRequest("GET", "/x", nil)
+	w1 := httptest.NewRecorder()
+	h.ServeHTTP(w1, req1)
+	if got := w1.Body.String(); got != "1" {
+		t.Fatalf("expected body '1' on first request, got %q", got)
+	}
+
+	// Second request on the same state: counter should remain 1 (script not re-executed)
+	req2 := httptest.NewRequest("GET", "/x", nil)
+	w2 := httptest.NewRecorder()
+	h.ServeHTTP(w2, req2)
+	if got := w2.Body.String(); got != "1" {
+		t.Fatalf("expected body '1' on second request, got %q (script likely re-executed)", got)
+	}
 }

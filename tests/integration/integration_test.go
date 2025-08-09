@@ -12,7 +12,7 @@ func TestIntegrationCore(t *testing.T) {
 	t.Run("complete_proxy_flow", func(t *testing.T) {
 		backend := fixtures.CreateBasicBackend("integration-backend")
 		defer backend.Server.Close()
-		
+
 		tenant := fixtures.CreateTenant("integration", "/api/", nil, backend)
 		env := fixtures.SetupBasicGateway(t, tenant)
 		defer env.Cleanup()
@@ -32,25 +32,25 @@ func TestIntegrationCore(t *testing.T) {
 
 		tenant1 := fixtures.CreateTenant("tenant1", "/t1/", nil, tenant1Backend)
 		tenant2 := fixtures.CreateTenant("tenant2", "/t2/", nil, tenant2Backend)
-		
+
 		env := fixtures.SetupBasicGateway(t, tenant1, tenant2)
 		defer env.Cleanup()
 
 		// Test: Tenants are isolated
 		router1, prefix1 := env.Gateway.MatchRoute("", "/t1/data")
 		router2, prefix2 := env.Gateway.MatchRoute("", "/t2/data")
-		
+
 		if router1 == nil || router2 == nil {
 			t.Fatal("Expected both tenants to have routers")
 		}
-		
+
 		if prefix1 != "/t1/" || prefix2 != "/t2/" {
 			t.Error("Expected different strip prefixes")
 		}
 
 		backend1 := router1.NextBackend()
 		backend2 := router2.NextBackend()
-		
+
 		if backend1.URL.String() == backend2.URL.String() {
 			t.Error("Expected different backends for different tenants")
 		}
@@ -125,13 +125,13 @@ func TestIntegrationCore(t *testing.T) {
 
 		pathTenant := fixtures.CreateTenant("path-app", "/app/", nil, pathBackend)
 		domainTenant := fixtures.CreateTenant("domain-app", "", []string{"app.domain.com"}, domainBackend)
-		
+
 		env := fixtures.SetupBasicGateway(t, pathTenant, domainTenant)
 		defer env.Cleanup()
 
 		// Test: Path-based routing
 		fixtures.TestRequest(t, env, "GET", "/app/test", http.StatusOK)
-		
+
 		// Test: Domain-based routing
 		router, _ := env.Gateway.MatchRoute("app.domain.com", "/anything")
 		if router == nil {
@@ -140,12 +140,12 @@ func TestIntegrationCore(t *testing.T) {
 	})
 }
 
-// TestLuaIntegration tests essential Lua integration workflows  
+// TestLuaIntegration tests essential Lua integration workflows
 func TestLuaIntegration(t *testing.T) {
 	t.Run("lua_with_proxy_fallback", func(t *testing.T) {
 		backend := fixtures.CreateBasicBackend("lua-proxy-backend")
 		defer backend.Server.Close()
-		
+
 		tenant := fixtures.CreateTenant("lua-proxy", "/lua/", nil, backend)
 		env := fixtures.SetupGatewayWithLua(t, tenant)
 		defer env.Cleanup()
@@ -155,7 +155,7 @@ func TestLuaIntegration(t *testing.T) {
 		if registry == nil {
 			t.Error("Expected route registry for Lua integration")
 		}
-		
+
 		// Test: Can mount tenant routes
 		err := registry.MountTenantRoutes("lua-proxy", "/lua/")
 		if err != nil {
@@ -166,7 +166,7 @@ func TestLuaIntegration(t *testing.T) {
 	t.Run("global_and_tenant_scripts", func(t *testing.T) {
 		backend := fixtures.CreateBasicBackend("mixed-backend")
 		defer backend.Server.Close()
-		
+
 		tenant := fixtures.CreateTenant("mixed-app", "/mixed/", nil, backend)
 		env := fixtures.SetupGatewayWithLua(t, tenant)
 		defer env.Cleanup()
@@ -177,12 +177,12 @@ func TestLuaIntegration(t *testing.T) {
 			t.Errorf("Global script failed: %v", err)
 		}
 
-		// Test: Can handle tenant routes  
+		// Test: Can handle tenant routes
 		registry := env.LuaEngine.RouteRegistry()
 		if registry == nil {
 			t.Error("Expected route registry")
 		}
-		
+
 		err = registry.MountTenantRoutes("mixed-app", "/mixed/")
 		if err != nil {
 			t.Errorf("Tenant route mounting failed: %v", err)
@@ -192,7 +192,7 @@ func TestLuaIntegration(t *testing.T) {
 	t.Run("lua_error_recovery", func(t *testing.T) {
 		backend := fixtures.CreateBasicBackend("recovery-backend")
 		defer backend.Server.Close()
-		
+
 		tenant := fixtures.CreateTenant("recovery-app", "/recovery/", nil, backend)
 		env := fixtures.SetupGatewayWithLua(t, tenant)
 		defer env.Cleanup()

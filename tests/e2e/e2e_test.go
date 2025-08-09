@@ -35,7 +35,7 @@ func TestE2ECore(t *testing.T) {
 		userTenant := fixtures.CreateTenant("users", "/api/users/", nil, userBackend)
 		orderTenant := fixtures.CreateTenant("orders", "/api/orders/", nil, orderBackend)
 		paymentTenant := fixtures.CreateTenant("payments", "/api/payments/", nil, paymentBackend)
-		
+
 		env := fixtures.SetupBasicGateway(t, userTenant, orderTenant, paymentTenant)
 		defer env.Cleanup()
 
@@ -56,7 +56,7 @@ func TestE2ECore(t *testing.T) {
 		apiTenant := fixtures.CreateTenant("api", "", []string{"api.example.com"}, apiBackend)
 		webTenant := fixtures.CreateTenant("web", "", []string{"www.example.com"}, webBackend)
 		adminTenant := fixtures.CreateTenant("admin", "", []string{"admin.example.com"}, adminBackend)
-		
+
 		env := fixtures.SetupBasicGateway(t, apiTenant, webTenant, adminTenant)
 		defer env.Cleanup()
 
@@ -64,7 +64,7 @@ func TestE2ECore(t *testing.T) {
 		router1, _ := env.Gateway.MatchRoute("api.example.com", "/data")
 		router2, _ := env.Gateway.MatchRoute("www.example.com", "/pages")
 		router3, _ := env.Gateway.MatchRoute("admin.example.com", "/dashboard")
-		
+
 		if router1 == nil || router2 == nil || router3 == nil {
 			t.Error("Expected all domain-based tenants to have routers")
 		}
@@ -114,17 +114,17 @@ func TestE2ECore(t *testing.T) {
 
 		healthyTenant := fixtures.CreateTenant("healthy", "/api/", nil, healthyBackend)
 		errorTenant := fixtures.CreateTenant("errors", "/errors/", nil, errorBackend)
-		
+
 		env := fixtures.SetupBasicGateway(t, healthyTenant, errorTenant)
 		defer env.Cleanup()
 
 		// Test: Normal service works
 		fixtures.TestRequest(t, env, "GET", "/api/data", http.StatusOK)
-		
+
 		// Test: Error service returns appropriate errors
 		fixtures.TestRequest(t, env, "GET", "/errors/500", http.StatusInternalServerError)
 		fixtures.TestRequest(t, env, "GET", "/errors/404", http.StatusNotFound)
-		
+
 		// Test: Unknown routes return 404
 		fixtures.TestRequest(t, env, "GET", "/unknown/path", http.StatusNotFound)
 	})
@@ -135,7 +135,7 @@ func TestLuaE2E(t *testing.T) {
 	t.Run("lua_powered_api_gateway", func(t *testing.T) {
 		backend := fixtures.CreateBasicBackend("lua-api-backend")
 		defer backend.Server.Close()
-		
+
 		tenant := fixtures.CreateTenant("lua-api", "/api/", nil, backend)
 		env := fixtures.SetupGatewayWithLua(t, tenant)
 		defer env.Cleanup()
@@ -145,7 +145,7 @@ func TestLuaE2E(t *testing.T) {
 		if registry == nil {
 			t.Error("Expected route registry for Lua-powered gateway")
 		}
-		
+
 		err := registry.MountTenantRoutes("lua-api", "/api/")
 		if err != nil {
 			t.Errorf("API route mounting failed: %v", err)
@@ -160,7 +160,7 @@ func TestLuaE2E(t *testing.T) {
 
 		tenant1 := fixtures.CreateTenant("app1", "/app1/", nil, backend1)
 		tenant2 := fixtures.CreateTenant("app2", "/app2/", nil, backend2)
-		
+
 		env := fixtures.SetupGatewayWithLua(t, tenant1, tenant2)
 		defer env.Cleanup()
 
@@ -175,12 +175,12 @@ func TestLuaE2E(t *testing.T) {
 		if registry == nil {
 			t.Error("Expected route registry")
 		}
-		
+
 		err = registry.MountTenantRoutes("app1", "/app1/")
 		if err != nil {
 			t.Errorf("App1 route mounting failed: %v", err)
 		}
-		
+
 		err = registry.MountTenantRoutes("app2", "/app2/")
 		if err != nil {
 			t.Errorf("App2 route mounting failed: %v", err)
@@ -190,7 +190,7 @@ func TestLuaE2E(t *testing.T) {
 	t.Run("mixed_lua_and_proxy", func(t *testing.T) {
 		backend := fixtures.CreateBasicBackend("mixed-backend")
 		defer backend.Server.Close()
-		
+
 		tenant := fixtures.CreateTenant("mixed", "/mixed/", nil, backend)
 		env := fixtures.SetupGatewayWithLua(t, tenant)
 		defer env.Cleanup()
@@ -200,12 +200,12 @@ func TestLuaE2E(t *testing.T) {
 		if registry == nil {
 			t.Error("Expected route registry for mixed setup")
 		}
-		
+
 		err := registry.MountTenantRoutes("mixed", "/mixed/")
 		if err != nil {
 			t.Errorf("Mixed route mounting failed: %v", err)
 		}
-		
+
 		// Test: Can execute global scripts for mixed setup
 		err = env.LuaEngine.ExecuteGlobalScripts()
 		if err != nil {

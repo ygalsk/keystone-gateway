@@ -5,6 +5,7 @@ package config
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 
@@ -30,6 +31,11 @@ type CompressionConfig struct {
 	Enabled      bool     `yaml:"enabled"`
 	Level        int      `yaml:"level,omitempty"`         // Compression level (1-9, default: 5)
 	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
+}
+
+// ServerConfig represents server configuration
+type ServerConfig struct {
+	Port string `yaml:"port,omitempty"` // Server port (default: 8080)
 }
 
 // GetCompressionConfig returns compression configuration with defaults
@@ -70,11 +76,20 @@ func (c *Config) GetCompressionConfig() CompressionConfig {
 	return config
 }
 
+// GetPort returns the configured port or default port (8080)
+func (c *Config) GetPort() string {
+	if c.Server != nil && c.Server.Port != "" {
+		return c.Server.Port
+	}
+	return "8080"
+}
+
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
 	Tenants       []Tenant           `yaml:"tenants"`
 	AdminBasePath string             `yaml:"admin_base_path,omitempty"`
+	Server        *ServerConfig      `yaml:"server,omitempty"`
 	LuaRouting    *LuaRoutingConfig  `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
 	TLS           *TLSConfig         `yaml:"tls,omitempty"`
 	Compression   *CompressionConfig `yaml:"compression,omitempty"`
@@ -141,6 +156,20 @@ func ValidateTenant(t Tenant) error {
 	if t.PathPrefix != "" {
 		if !strings.HasPrefix(t.PathPrefix, "/") || !strings.HasSuffix(t.PathPrefix, "/") {
 			return fmt.Errorf("path_prefix must start and end with '/'")
+		}
+	}
+
+	// Require at least one service and validate service URLs
+	if len(t.Services) == 0 {
+		return fmt.Errorf("tenant must have at least one service")
+	}
+	for _, s := range t.Services {
+		u, err := url.Parse(s.URL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("service %q has invalid url: %q", s.Name, s.URL)
+		}
+		if s.Health != "" && !strings.HasPrefix(s.Health, "/") {
+			return fmt.Errorf("service %q health path must start with '/': %q", s.Name, s.Health)
 		}
 	}
 

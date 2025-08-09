@@ -1,19 +1,18 @@
 # Default configuration values for Keystone Gateway
 # These values are used when not explicitly specified in environment configs
 
-# Default admin API configuration  
+# Default admin API configuration
 admin_base_path: "/admin"
 
 # Default Lua routing configuration
-lua_routing:
-  enabled: true
-  scripts_dir: "./scripts"
+#  #enabled: true
+  #scripts_dir: "./scripts"
 
 # Default TLS configuration (disabled by default)
 tls:
   enabled: false
   # cert_file: "/path/to/cert.pem"
-  # key_file: "/path/to/key.pem" 
+  # key_file: "/path/to/key.pem"
 
 # Default compression configuration
 compression:

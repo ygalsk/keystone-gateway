@@ -18,7 +18,7 @@ tenants:
         health: "/status/200"
 
   # Load balancing testing
-  - name: "lb-staging" 
+  - name: "lb-staging"
     path_prefix: "/lb/"
     health_interval: 30
     services:

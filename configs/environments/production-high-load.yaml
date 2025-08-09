@@ -31,7 +31,7 @@ tenants:
       - name: "backend-service-1"
         url: "http://your-backend-1:8080"
         health: "/health"
-      - name: "backend-service-2" 
+      - name: "backend-service-2"
         url: "http://your-backend-2:8080"
         health: "/health"
 

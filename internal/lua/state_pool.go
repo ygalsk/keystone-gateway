@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -144,6 +145,12 @@ type LuaHandler struct {
 	}
 }
 
+// Constants to avoid magic numbers/strings
+const (
+	defaultHandlerTimeout  = 5 * time.Second
+	scriptLoadedFlagPrefix = "loaded_"
+)
+
 // NewLuaHandler creates a new thread-safe Lua handler with script pre-compilation
 func NewLuaHandler(scriptContent, functionName, tenantName, scriptTag string, pool *LuaStatePool, engine interface {
 	SetupChiBindings(*lua.LState, string, string)
@@ -174,7 +181,7 @@ func (h *LuaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	L := h.pool.Get()
 	defer h.pool.Put(L)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultHandlerTimeout)
 	defer cancel()
 
 	h.executeScriptWithTimeout(ctx, L, script, w, r)
@@ -209,9 +216,14 @@ func (h *LuaHandler) executeLuaScript(L *lua.LState, script *CompiledScript, w h
 		h.engine.SetupChiBindings(L, h.scriptTag, h.tenantName)
 	}
 
-	// Execute script only once per state (not per request) to avoid re-compilation segfaults
-	if err := L.DoString(script.Content); err != nil {
-		return fmt.Errorf("script execution error: %w", err)
+	// Load script only once per state using the registry
+	reg := L.Get(lua.RegistryIndex).(*lua.LTable)
+	loadedKey := scriptLoadedFlagPrefix + h.scriptKey
+	if reg.RawGetString(loadedKey) == lua.LNil {
+		if err := L.DoString(script.Content); err != nil {
+			return fmt.Errorf("script execution error: %w", err)
+		}
+		reg.RawSetString(loadedKey, lua.LTrue)
 	}
 
 	// Get the handler function
@@ -241,13 +253,26 @@ func (h *LuaHandler) callLuaHandler(L *lua.LState, handlerFunc *lua.LFunction, w
 func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
 	reqTable := L.NewTable()
 
-	// Basic request info
+	setBasicRequestInfo(reqTable, r)
+	setRequestHeaders(L, reqTable, r)
+	setRequestParams(L, reqTable, r)
+	setRequestQuery(L, reqTable, r) // Add query parameter support
+	bodyContent := setRequestBody(reqTable, r)
+	setRequestMethods(L, reqTable, r, bodyContent)
+
+	return reqTable
+}
+
+// setBasicRequestInfo sets basic request information in the Lua table
+func setBasicRequestInfo(reqTable *lua.LTable, r *http.Request) {
 	reqTable.RawSetString("method", lua.LString(r.Method))
 	reqTable.RawSetString("url", lua.LString(r.URL.String()))
 	reqTable.RawSetString("path", lua.LString(r.URL.Path))
 	reqTable.RawSetString("host", lua.LString(r.Host))
+}
 
-	// Headers
+// setRequestHeaders sets request headers in the Lua table
+func setRequestHeaders(L *lua.LState, reqTable *lua.LTable, r *http.Request) {
 	headersTable := L.NewTable()
 	for key, values := range r.Header {
 		if len(values) > 0 {
@@ -255,8 +280,10 @@ func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
 		}
 	}
 	reqTable.RawSetString("headers", headersTable)
+}
 
-	// URL parameters (populated by Chi)
+// setRequestParams sets URL parameters from Chi router context
+func setRequestParams(L *lua.LState, reqTable *lua.LTable, r *http.Request) {
 	paramsTable := L.NewTable()
 	if r.Context() != nil {
 		if rctx := chi.RouteContext(r.Context()); rctx != nil {
@@ -268,18 +295,44 @@ func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
 		}
 	}
 	reqTable.RawSetString("params", paramsTable)
+}
 
-	// Body content storage
+// setRequestQuery sets URL query parameters
+func setRequestQuery(L *lua.LState, reqTable *lua.LTable, r *http.Request) {
+	queryTable := L.NewTable()
+	for key, values := range r.URL.Query() {
+		if len(values) > 0 {
+			queryTable.RawSetString(key, lua.LString(values[0]))
+		}
+	}
+	reqTable.RawSetString("query", queryTable)
+}
+
+// setRequestBody reads and stores request body content
+func setRequestBody(reqTable *lua.LTable, r *http.Request) string {
 	var bodyContent string
 	if r.Body != nil {
-		body, err := io.ReadAll(r.Body)
-		if err == nil {
+		if body, err := io.ReadAll(r.Body); err == nil {
 			bodyContent = string(body)
 		}
 	}
+	return bodyContent
+}
 
-	// Helper methods with colon syntax support
-	headerFunc := L.NewFunction(func(L *lua.LState) int {
+// setRequestMethods adds helper methods to the request table
+func setRequestMethods(L *lua.LState, reqTable *lua.LTable, r *http.Request, bodyContent string) {
+	headerFunc := createHeaderFunction(L, reqTable, r)
+	bodyFunc := createBodyFunction(L, bodyContent)
+	jsonFunc := createJSONFunction(L, r, bodyContent)
+
+	reqTable.RawSetString("header", headerFunc)
+	reqTable.RawSetString("body", bodyFunc)
+	reqTable.RawSetString("json", jsonFunc)
+}
+
+// createHeaderFunction creates the header method function
+func createHeaderFunction(L *lua.LState, reqTable *lua.LTable, r *http.Request) *lua.LFunction {
+	return L.NewFunction(func(L *lua.LState) int {
 		startIdx := 1
 		if L.GetTop() > 1 && L.Get(1) == reqTable {
 			startIdx = 2
@@ -289,17 +342,28 @@ func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
 		L.Push(lua.LString(headerValue))
 		return 1
 	})
+}
 
-	// Add body() method for colon syntax support
-	bodyFunc := L.NewFunction(func(L *lua.LState) int {
+// createBodyFunction creates the body method function
+func createBodyFunction(L *lua.LState, bodyContent string) *lua.LFunction {
+	return L.NewFunction(func(L *lua.LState) int {
 		L.Push(lua.LString(bodyContent))
 		return 1
 	})
+}
 
-	reqTable.RawSetString("header", headerFunc)
-	reqTable.RawSetString("body", bodyFunc)
-
-	return reqTable
+// createJSONFunction creates the json method function
+func createJSONFunction(L *lua.LState, r *http.Request, bodyContent string) *lua.LFunction {
+	return L.NewFunction(func(L *lua.LState) int {
+		contentType := r.Header.Get("Content-Type")
+		if strings.Contains(contentType, "application/json") && bodyContent != "" {
+			// For now, return the raw JSON string - could be enhanced to parse to Lua table
+			L.Push(lua.LString(bodyContent))
+		} else {
+			L.Push(lua.LNil)
+		}
+		return 1
+	})
 }
 
 // createLuaResponse creates a Lua table representing an HTTP response with colon method support
@@ -315,7 +379,7 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 		}
 		content := L.ToString(startIdx)
 		if _, err := w.w.Write([]byte(content)); err != nil {
-			log.Printf("Failed to write response content: %v", err)
+			slog.Error("lua_response_write_failed", "error", err, "component", "lua_response")
 		}
 		return 0
 	})
@@ -349,7 +413,7 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 		jsonContent := L.ToString(startIdx)
 		w.w.Header().Set("Content-Type", "application/json")
 		if _, err := w.w.Write([]byte(jsonContent)); err != nil {
-			log.Printf("Failed to write JSON response: %v", err)
+			slog.Error("lua_json_response_failed", "error", err, "component", "lua_response")
 		}
 		return 0
 	})

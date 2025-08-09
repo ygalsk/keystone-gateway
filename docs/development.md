@@ -1,84 +1,158 @@
-# Development
+# Development Guide
 
-## Setup
+Simple development workflow for Keystone Gateway.
+
+## Quick Start
 
 ```bash
-git clone https://github.com/your-org/keystone-gateway.git
+git clone <repo>
 cd keystone-gateway
 make dev
 ```
 
-Requirements: Go 1.22+, Docker, Make
-
-## Commands
+## Development Workflow
 
 ```bash
-make dev        # Start development 
-make test       # Run all tests
-make lint       # Code quality
-make clean      # Cleanup
+# 1. Make changes
+vim internal/routing/gateway.go
 
-# Testing specific parts
-go test ./tests/unit/...
-go test ./tests/integration/...
-go test ./tests/e2e/...
+# 2. Test changes
+make test
+
+# 3. Commit (hooks run automatically)
+git add .
+git commit -m "fix: backend health check timeout"
+
+# 4. Push
+git push origin feature-branch
 ```
 
-## Project Structure
+## Pre-commit Hooks
 
+Automatically run on every commit:
+- `go fmt` - Format code
+- `golangci-lint` - Lint and fix issues
+- `go test` - Run all tests
+- Basic file checks (YAML, whitespace, etc.)
+
+### Install Pre-commit
+```bash
+pip install pre-commit
+pre-commit install
 ```
-cmd/           # Main application
-internal/      # Private Go packages
-  config/      # Configuration management
-  lua/         # Lua engine integration  
-  routing/     # HTTP routing & load balancing
-configs/       # YAML configurations
-scripts/lua/   # Lua routing scripts
-tests/         # Test suites
-```
 
-## Making Changes
+## CI/CD Pipeline
 
-1. Create feature branch
-2. Make changes
-3. Run `make test`
-4. Submit PR
+GitHub Actions runs on every push:
 
-## Adding Routes
+**Pull Request:**
+- Tests (Go 1.22, 1.23)
+- Linting (golangci-lint)
+- Security scan (gosec, trivy)
+- Multi-arch builds
 
-1. Edit Lua script in `scripts/lua/`
-2. Update config to reference script
-3. Restart gateway: `make dev`
+**Main Branch:**
+- All PR checks
+- Docker image build
+- Auto-deployment to staging
 
-## Adding Config Options
+**Release:**
+- Create binaries (linux, macOS, windows)
+- Docker images
+- GitHub release
 
-1. Update structs in `internal/config/`
-2. Add validation
-3. Update example configs
-4. Add tests
-
-## Debugging
+## Testing
 
 ```bash
-# Verbose logging
-DEBUG=true ./keystone-gateway -config config.yaml
+# Run all tests
+make test
 
-# Lua script debugging  
-log("Debug: " .. request.path)
+# Run specific test types
+make test-unit
+make test-integration
+
+# Run with race detection
+go test -race ./...
 ```
 
-## Testing Your Changes
+## Building
 
 ```bash
-# Start gateway
-make dev
+# Local build
+go build -o keystone-gateway ./cmd
 
-# Test endpoints
-curl http://localhost:8080/admin/health
-curl http://localhost:8080/your-route
+# Docker build
+make build
 
-# Stop
-make clean
+# Multi-platform
+make docker
 ```
 
-That's it. Keep it simple.
+## Code Style
+
+- Use `slog` for logging (structured JSON)
+- Follow Go standard conventions
+- Keep functions small and focused
+- Add component field to all logs
+
+## Commit Messages
+
+```bash
+git commit -m "fix: circuit breaker timeout issue"
+git commit -m "feat: add health check interval config"
+git commit -m "docs: update logging examples"
+```
+
+Prefixes: `fix:`, `feat:`, `docs:`, `test:`, `refactor:`
+
+## Release Process
+
+```bash
+# Create release
+git tag v1.3.0
+git push origin v1.3.0
+
+# CI automatically:
+# - Builds binaries
+# - Creates Docker images
+# - Publishes GitHub release
+```
+
+## Security
+
+```bash
+# Run security scan
+gosec ./...
+
+# Common issues:
+# - File inclusion (G304) - Expected for config/script loading
+# - Integer overflow (G115) - Check math operations
+# - HTTP timeouts (G112) - Add ReadHeaderTimeout
+```
+
+## Troubleshooting
+
+**Pre-commit fails:**
+```bash
+pre-commit run --all-files
+```
+
+**Tests fail:**
+```bash
+go test -v ./tests/unit
+```
+
+**Linting errors:**
+```bash
+golangci-lint run --fix
+```
+
+**Security issues:**
+```bash
+gosec ./...
+```
+
+**CI fails:**
+Check GitHub Actions tab for details.
+
+Keep it simple. Write code. Ship it.

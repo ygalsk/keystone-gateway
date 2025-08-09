@@ -91,7 +91,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/) with proj
 - **proxy**: Reverse proxy functionality
 - **lua**: Lua script integration
 - **admin**: Admin API endpoints
-- **tests**: Test infrastructure 
+- **tests**: Test infrastructure
 - **ci**: CI/CD pipeline
 - **docker**: Containerization
 - **security**: Security improvements
@@ -170,7 +170,7 @@ make feature-test                       # Test current feature
    ```bash
    # Create a simple test config
    cp configs/examples/simple.yaml test-config.yaml
-   
+
    # Start the gateway
    ./keystone-gateway -config test-config.yaml
    ```
@@ -249,12 +249,12 @@ func main() {
         w.Header().Set("Content-Type", "application/json")
         fmt.Fprintf(w, `{"status": "healthy", "timestamp": "%s"}`, time.Now().Format(time.RFC3339))
     })
-    
+
     http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json")
         fmt.Fprintf(w, `{"message": "Mock backend", "path": "%s", "method": "%s"}`, r.URL.Path, r.Method)
     })
-    
+
     log.Println("Mock backend starting on :3001")
     log.Fatal(http.ListenAndServe(":3001", nil))
 }
@@ -289,7 +289,7 @@ Follow standard Go conventions:
    if err != nil {
        return fmt.Errorf("failed to process: %w", err)
    }
-   
+
    // Avoid: Ignoring errors
    result, _ := someFunction()
    ```
@@ -298,7 +298,7 @@ Follow standard Go conventions:
    ```go
    // Package config provides configuration management for Keystone Gateway.
    package config
-   
+
    // LoadConfig reads and validates a configuration file.
    // It returns an error if the file is invalid or cannot be read.
    func LoadConfig(path string) (*Config, error) {
@@ -327,13 +327,13 @@ end
 
 chi_route("GET", "/api/users", function(request, response)
     local auth_token = request.headers["Authorization"]
-    
+
     if not validate_auth_token(auth_token) then
         response:status(401)
         response:write('{"error": "Invalid token"}')
         return
     end
-    
+
     -- Route logic...
 end)
 ```
@@ -382,7 +382,7 @@ func TestConfigValidation(t *testing.T) {
         },
         // More test cases...
     }
-    
+
     for _, tt := range tests {
         t.Run(tt.name, func(t *testing.T) {
             err := tt.config.Validate()
@@ -408,10 +408,10 @@ Test Lua scripts by creating test scenarios:
 function test_auth_validation()
     local valid_token = "valid-token-12345"
     local invalid_token = "invalid"
-    
+
     assert(validate_auth_token(valid_token) == true, "Valid token should pass")
     assert(validate_auth_token(invalid_token) == false, "Invalid token should fail")
-    
+
     log("Auth validation tests passed")
 end
 

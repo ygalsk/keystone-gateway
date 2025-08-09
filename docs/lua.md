@@ -40,7 +40,7 @@ request.headers        -- table: request.headers["Content-Type"]
 request.remote_addr    -- client IP
 ```
 
-## Response Object  
+## Response Object
 
 ```lua
 response:status(201)                    -- set status code

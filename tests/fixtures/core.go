@@ -8,10 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/lua"
 	"keystone-gateway/internal/routing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // TestEnv provides everything needed to test Keystone Gateway functionality
@@ -89,7 +90,7 @@ func CreateHealthBackend(name string) *Backend {
 		if r.URL.Path == "/health" {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"healthy"}`))
+			_, _ = w.Write([]byte(`{"status":"healthy"}`))
 		} else {
 			w.Header().Set("Content-Type", "text/plain")
 			w.WriteHeader(http.StatusOK)

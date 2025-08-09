@@ -3,10 +3,11 @@ package unit
 import (
 	"testing"
 
-	"github.com/go-chi/chi/v5"
 	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/lua"
 	"keystone-gateway/internal/routing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 // Application represents the main application from cmd/main.go
@@ -56,10 +57,14 @@ func TestMainApplication(t *testing.T) {
 
 		router := chi.NewRouter()
 		app := NewApplicationWithLuaRouting(cfg, router)
-		defer app.gateway.StopHealthChecks()
 
 		if app == nil {
 			t.Error("Expected application to be created")
+			return
+		}
+
+		if app.gateway != nil {
+			defer app.gateway.StopHealthChecks()
 		}
 
 		if app.gateway == nil {
