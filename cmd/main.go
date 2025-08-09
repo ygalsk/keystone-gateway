@@ -277,10 +277,6 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 			}
 		}
 	}
-
-	// Add catch-all handlers for fallback
-	r.HandleFunc("/", app.ProxyHandler)
-	r.HandleFunc("/*", app.ProxyHandler)
 }
 
 // hasHostBasedTenants checks if any tenants use host-based routing
