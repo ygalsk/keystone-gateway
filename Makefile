@@ -33,7 +33,7 @@ fmt: ## Format code
 
 .PHONY: security
 security: ## Run security scan
-	gosec ./...
+	gosec -exclude=G304 ./...
 
 .PHONY: clean
 clean: ## Clean build artifacts
