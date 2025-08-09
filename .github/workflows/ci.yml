@@ -173,13 +173,21 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: [build, docker]
-    if: github.event_name == 'release'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     permissions:
       contents: write
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    - name: Generate version tag
+      id: version
+      run: |
+        # Generate version from date and commit
+        VERSION="v$(date +%Y.%m.%d)-$(git rev-parse --short HEAD)"
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Generated version: ${VERSION}"
 
     - name: Download all artifacts
       uses: actions/download-artifact@v4
@@ -197,8 +205,12 @@ jobs:
           fi
         done
 
-    - name: Upload release assets
+    - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: Release ${{ steps.version.outputs.version }}
         files: release/*.tar.gz
         generate_release_notes: true
+        draft: false
+        prerelease: false
