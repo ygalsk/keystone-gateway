@@ -15,17 +15,8 @@ import (
 )
 
 // luaResponseWriter wraps http.ResponseWriter for Lua integration
-// with header buffering to preserve middleware headers
 type luaResponseWriter struct {
-	w               http.ResponseWriter
-	bufferedHeaders map[string]string
-}
-
-// flushHeaders writes all buffered headers to the underlying ResponseWriter
-func (lw *luaResponseWriter) flushHeaders() {
-	for key, value := range lw.bufferedHeaders {
-		lw.w.Header().Set(key, value)
-	}
+	w http.ResponseWriter
 }
 
 // LuaStatePool manages a pool of Lua states for thread-safe request handling
@@ -247,7 +238,7 @@ func (h *LuaHandler) executeLuaScript(L *lua.LState, script *CompiledScript, w h
 
 // callLuaHandler creates the Lua request/response objects and calls the handler function
 func (h *LuaHandler) callLuaHandler(L *lua.LState, handlerFunc *lua.LFunction, w http.ResponseWriter, r *http.Request) error {
-	respWriter := &luaResponseWriter{w: w, bufferedHeaders: make(map[string]string)}
+	respWriter := &luaResponseWriter{w: w}
 	respTable := createLuaResponse(L, respWriter)
 	reqTable := createLuaRequest(L, r)
 
@@ -387,8 +378,6 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 			startIdx = 2
 		}
 		content := L.ToString(startIdx)
-		// Flush buffered headers before writing content
-		w.flushHeaders()
 		if _, err := w.w.Write([]byte(content)); err != nil {
 			slog.Error("lua_response_write_failed", "error", err, "component", "lua_response")
 		}
@@ -402,10 +391,8 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 		}
 		key := L.ToString(startIdx)
 		value := L.ToString(startIdx + 1)
-		// Set headers directly on the underlying ResponseWriter (for middleware)
-		// and also buffer them (for route handlers that might override)
+		// Set headers directly on the underlying ResponseWriter
 		w.w.Header().Set(key, value)
-		w.bufferedHeaders[key] = value
 		return 0
 	})
 
@@ -425,8 +412,6 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 			startIdx = 2
 		}
 		jsonContent := L.ToString(startIdx)
-		// Flush buffered headers before writing content
-		w.flushHeaders()
 		w.w.Header().Set("Content-Type", "application/json")
 		if _, err := w.w.Write([]byte(jsonContent)); err != nil {
 			slog.Error("lua_json_response_failed", "error", err, "component", "lua_response")

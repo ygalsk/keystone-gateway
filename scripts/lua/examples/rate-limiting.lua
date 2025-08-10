@@ -6,7 +6,7 @@ local rate_limits = {}
 local window_size = 60 -- 60 seconds
 local max_requests = 100 -- 100 requests per minute
 
--- Rate limiting middleware
+-- STEP 1: Define middleware FIRST (Chi router requirement)
 chi_middleware("/api/*", function(request, response, next)
     local client_ip = request:remote_addr()
     local current_time = os.time()
@@ -41,7 +41,7 @@ chi_middleware("/api/*", function(request, response, next)
     next()
 end)
 
--- Test endpoint
+-- STEP 2: Define routes AFTER middleware
 chi_route("GET", "/api/test", function(request, response)
     response:header("Content-Type", "application/json")
     response:write('{"message": "Request successful", "timestamp": "' .. os.date("!%Y-%m-%dT%H:%M:%SZ") .. '"}')

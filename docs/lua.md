@@ -1,5 +1,57 @@
 # Lua Scripting
 
+## ⚠️ Critical: Script Structure Order
+
+**Chi router requires middleware to be defined BEFORE routes, or the application will panic:**
+
+```lua
+-- ✅ CORRECT: Middleware first, then routes
+chi_middleware("/*", function(request, response, next)
+    response:header("X-Gateway", "Keystone")
+    next()
+end)
+
+chi_route("GET", "/health", function(request, response)
+    response:write("OK")
+end)
+```
+
+```lua
+-- ❌ WRONG: Routes before middleware will cause panic
+chi_route("GET", "/health", function(request, response)
+    response:write("OK")
+end)
+
+chi_middleware("/*", function(request, response, next)
+    next()  -- This will crash the application!
+end)
+```
+
+## Script Template
+
+```lua
+-- Keystone Gateway Lua Script Template
+
+-- STEP 1: Define ALL middleware first
+chi_middleware("/*", function(request, response, next)
+    response:header("X-Powered-By", "Keystone-Gateway")
+    next()  -- Always call next() to continue
+end)
+
+-- STEP 2: Define routes after middleware
+chi_route("GET", "/health", function(request, response)
+    response:header("Content-Type", "application/json")
+    response:write('{"status": "healthy"}')
+end)
+
+-- STEP 3: Route groups also after middleware
+chi_group("/api/v1", function()
+    chi_route("GET", "/users", function(request, response)
+        response:write("Users endpoint")
+    end)
+end)
+```
+
 ## Core Functions
 
 ### Routes
@@ -57,16 +109,23 @@ log("Debug message")         -- log to gateway
 
 ## Examples
 
-### Authentication
+### Complete Authentication Script
 ```lua
+-- Authentication middleware (defined first)
 chi_middleware("/api/*", function(request, response, next)
     local token = request.headers["Authorization"]
     if not token then
         response:status(401)
         response:write('{"error": "No token"}')
-        return
+        return  -- Don't call next() - stops the request
     end
-    next()
+    next()  -- Token exists, continue to routes
+end)
+
+-- Protected routes (defined after middleware)
+chi_route("GET", "/api/users", function(request, response)
+    response:header("Content-Type", "application/json")
+    response:write('{"users": ["alice", "bob"]}')
 end)
 ```
 
@@ -83,10 +142,13 @@ end)
 
 ## Best Practices
 
-1. Keep scripts simple
-2. Use middleware for cross-cutting concerns
-3. Let the gateway handle backend routing
-4. Add logging for debugging: `log("message")`
-5. Handle errors gracefully
+1. **⚠️ ALWAYS define middleware before routes** - Chi router requirement
+2. Keep scripts simple and focused
+3. Use middleware for cross-cutting concerns (auth, headers, logging)
+4. Let the gateway handle backend routing and load balancing
+5. Add logging for debugging: `log("message")`
+6. Handle errors gracefully with proper status codes
+7. Always call `next()` in middleware to continue the request chain
+8. Use clear comments to separate middleware and route sections
 
 See `scripts/lua/examples/` for working examples.

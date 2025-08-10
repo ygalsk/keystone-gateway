@@ -1,47 +1,53 @@
 -- Authentication Routes Example for Keystone Gateway
 -- This script demonstrates how to implement authentication middleware and routes
 
--- Authentication middleware - checks for API key
+-- STEP 1: Define ALL middleware FIRST (Chi router requirement)
+
+-- Global headers middleware
+chi_middleware("/*", function(request, response, next)
+    response:header("X-Powered-By", "Keystone-Gateway")
+    response:header("Content-Type", "application/json")
+    next()
+end)
+
+-- Authentication middleware - checks for API key on protected routes
 chi_middleware("/api/*", function(request, response, next)
     local api_key = request:header("X-API-Key")
 
     if not api_key or api_key == "" then
-        response:header("Content-Type", "application/json")
         response:status(401)
         response:write('{"error": "Missing API key", "message": "X-API-Key header is required"}')
-        return
+        return  -- Don't call next() - stops the request
     end
 
     -- In a real implementation, you would validate the API key against a database
     if api_key ~= "valid-api-key-123" then
-        response:header("Content-Type", "application/json")
         response:status(403)
         response:write('{"error": "Invalid API key", "message": "The provided API key is not valid"}')
-        return
+        return  -- Don't call next() - stops the request
     end
 
-    -- Add user context to request (this would come from key validation)
-    request:set_context("user_id", "user123")
-    request:set_context("api_key", api_key)
-
+    -- API key is valid, continue to protected routes
     next()
 end)
 
--- Protected route that requires authentication
-chi_route("GET", "/api/profile", function(request, response)
-    local user_id = request:get_context("user_id")
+-- STEP 2: Define ALL routes AFTER middleware
 
-    response:header("Content-Type", "application/json")
-    response:write('{"user_id": "' .. user_id .. '", "profile": {"name": "Test User", "email": "test@example.com"}}')
-end)
-
--- Public login route
+-- Public login route (not under /api/* so not protected)
 chi_route("POST", "/auth/login", function(request, response)
     -- In a real implementation, you would validate credentials
     local body = request:body()
-
-    response:header("Content-Type", "application/json")
     response:write('{"token": "valid-api-key-123", "expires_in": 3600, "message": "Login successful"}')
+end)
+
+-- Protected route that requires authentication (under /api/* so protected)
+chi_route("GET", "/api/profile", function(request, response)
+    response:write('{"user_id": "user123", "profile": {"name": "Test User", "email": "test@example.com"}}')
+end)
+
+-- Another protected route
+chi_route("GET", "/api/dashboard", function(request, response)
+    response:write('{"dashboard": "Welcome to your dashboard", "user": "Test User"}')
 end)
 
 print("✅ Authentication routes loaded successfully")
