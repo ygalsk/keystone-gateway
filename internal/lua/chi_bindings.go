@@ -353,7 +353,7 @@ func (e *Engine) parseLuaMiddlewareLogic(L *lua.LState, middlewareFunc *lua.LFun
 		Fn:      middlewareFunc,
 		NRet:    0,
 		Protect: true,
-	}, respTable, reqTable, nextFunc)
+	}, reqTable, respTable, nextFunc)
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse middleware logic: %v", err)
