@@ -99,11 +99,13 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 
 // RegisterMiddleware registers middleware for a pattern from a Lua script
 func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	// Get tenant submux and apply middleware immediately
+	submux := r.getTenantSubmux(def.TenantName)
+	submux.Use(def.Middleware)
 
-	// Store the middleware definition for later application
+	r.mu.Lock()
 	r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
+	r.mu.Unlock()
 
 	return nil
 }
