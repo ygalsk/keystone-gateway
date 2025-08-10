@@ -119,58 +119,6 @@ func (e *Engine) registerRouteWithRegistry(tenantName, method, pattern, groupPat
 	})
 }
 
-//// executeLuaMiddleware executes Lua middleware function directly
-//func (e *Engine) executeLuaMiddleware(scriptContent, functionName, tenantName string, w http.ResponseWriter, r *http.Request, next http.Handler) {
-//	L := e.statePool.Get()
-//	defer e.statePool.Put(L)
-//
-//	if err := L.DoString(scriptContent); err != nil {
-//		http.Error(w, fmt.Sprintf("Middleware script error: %v", err), http.StatusInternalServerError)
-//		return
-//	}
-//
-//	middlewareFunc := L.GetGlobal(functionName)
-//	if middlewareFunc == lua.LNil {
-//		http.Error(w, "Middleware function not found", http.StatusInternalServerError)
-//		return
-//	}
-//
-//	func_ptr, ok := middlewareFunc.(*lua.LFunction)
-//	if !ok {
-//		http.Error(w, "Invalid middleware function", http.StatusInternalServerError)
-//		return
-//	}
-//
-//	// Create Lua request/response tables
-//	respWriter := &luaResponseWriter{w: w}
-//	respTable := createLuaResponse(L, respWriter)
-//	reqTable := createLuaRequest(L, r)
-//
-//	// Create next function
-//	nextCalled := false
-//	nextFunc := L.NewFunction(func(L *lua.LState) int {
-//		nextCalled = true
-//		return 0
-//	})
-//
-//	// Execute middleware function
-//	err := L.CallByParam(lua.P{
-//		Fn:      func_ptr,
-//		NRet:    0,
-//		Protect: true,
-//	}, reqTable, respTable, nextFunc)
-//
-//	if err != nil {
-//		http.Error(w, fmt.Sprintf("Middleware execution error: %v", err), http.StatusInternalServerError)
-//		return
-//	}
-//
-//	// Call next handler if middleware called next()
-//	if nextCalled && next != nil {
-//		next.ServeHTTP(w, r)
-//	}
-//}
-
 // luaChiMiddleware handles middleware registration: chi_middleware(pattern, middleware_func)
 func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) int {
 	pattern, middlewareFunc := e.extractMiddlewareArgs(L)
@@ -196,13 +144,21 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 			L := e.statePool.Get()
 			defer e.statePool.Put(L)
 
-			// Execute the script to load the function into the state
-			if err := L.DoString(scriptContent); err != nil {
-				http.Error(w, fmt.Sprintf("Middleware script error: %v", err), http.StatusInternalServerError)
-				return
+			// Set up Chi bindings for this execution context
+			e.SetupChiBindings(L, scriptTag, tenantName)
+
+			// Load script only once per state using the registry (same pattern as route handlers)
+			reg := L.Get(lua.RegistryIndex).(*lua.LTable)
+			loadedKey := "script_loaded:" + scriptTag
+			if reg.RawGetString(loadedKey) == lua.LNil {
+				if err := L.DoString(scriptContent); err != nil {
+					http.Error(w, fmt.Sprintf("Middleware script error: %v", err), http.StatusInternalServerError)
+					return
+				}
+				reg.RawSetString(loadedKey, lua.LTrue)
 			}
 
-			// Get the middleware function
+			// Get the middleware function from global scope
 			middlewareFunc := L.GetGlobal(functionName)
 			if middlewareFunc == lua.LNil {
 				http.Error(w, "Middleware function not found", http.StatusInternalServerError)
