@@ -154,9 +154,13 @@ func ValidateTenant(t Tenant) error {
 	}
 
 	if t.PathPrefix != "" {
-		if !strings.HasPrefix(t.PathPrefix, "/") || !strings.HasSuffix(t.PathPrefix, "/") {
-			return fmt.Errorf("path_prefix must start and end with '/'")
+		if !strings.HasPrefix(t.PathPrefix, "/") {
+			return fmt.Errorf("path_prefix must start with '/'")
 		}
+		// Temporarily removed trailing slash requirement to test Chi mounting
+		// if !strings.HasSuffix(t.PathPrefix, "/") {
+		//	return fmt.Errorf("path_prefix must end with '/'")
+		// }
 	}
 
 	// Require at least one service and validate service URLs

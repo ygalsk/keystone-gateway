@@ -131,6 +131,35 @@ func (app *Application) ProxyHandler(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
+// LuaFallbackHandler handles requests that don't match Lua routes - only proxy if tenant has no Lua routes
+func (app *Application) LuaFallbackHandler(w http.ResponseWriter, r *http.Request) {
+	router, stripPrefix := app.gateway.MatchRoute(r.Host, r.URL.Path)
+	if router == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Check if this tenant has Lua routes - if so, let 404 stand (Lua route didn't match)
+	cfg := app.gateway.GetConfig()
+	for _, tenant := range cfg.Tenants {
+		if tenant.Name == router.Name && tenant.LuaRoutes != "" {
+			// Tenant has Lua routes, so this is a genuine 404
+			http.NotFound(w, r)
+			return
+		}
+	}
+
+	// No Lua routes for this tenant, fallback to proxy
+	backend := router.NextBackend()
+	if backend == nil {
+		http.Error(w, "No backend available", http.StatusBadGateway)
+		return
+	}
+
+	proxy := app.gateway.CreateProxy(backend, stripPrefix)
+	proxy.ServeHTTP(w, r)
+}
+
 // SetupRouter configures and returns the main router
 func (app *Application) SetupRouter() *chi.Mux {
 	r := chi.NewRouter()
@@ -219,9 +248,10 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 			"component", "lua_engine")
 	}
 
-	// Execute Lua route scripts for all tenants
+	// Setup each tenant's routes using Chi's native mounting
 	for _, tenant := range cfg.Tenants {
 		if tenant.LuaRoutes != "" {
+			// Execute Lua route script to populate tenant submux
 			slog.Info("lua_route_script_executing",
 				"script", tenant.LuaRoutes,
 				"tenant", tenant.Name,
@@ -234,49 +264,32 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 					"component", "lua_engine")
 				continue
 			}
-		}
-	}
 
-	// Mount path-based tenant routes only (host-based handled by middleware)
-	for _, tenant := range cfg.Tenants {
-		if tenant.LuaRoutes != "" {
+			// Mount tenant routes using Chi's native approach
 			if len(tenant.Domains) > 0 {
-				// Host-based routing: handled by middleware, just log
+				// Host-based routing handled by middleware
 				slog.Info("tenant_host_routing_configured",
 					"tenant", tenant.Name,
 					"domains", tenant.Domains,
 					"routing_type", "host_based",
 					"component", "routing")
 			} else if tenant.PathPrefix != "" {
-				// Path-based routing: mount at specific path prefix
-				slog.Info("tenant_path_routing_mounting",
-					"tenant", tenant.Name,
-					"path_prefix", tenant.PathPrefix,
-					"routing_type", "path_based",
-					"component", "routing")
-				if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, tenant.PathPrefix); err != nil {
-					slog.Error("tenant_route_mount_failed",
+				// Mount tenant submux at path prefix
+				tenantRoutes := app.luaEngine.RouteRegistry().GetTenantRoutes(tenant.Name)
+				if tenantRoutes != nil {
+					r.Mount(tenant.PathPrefix, tenantRoutes)
+					slog.Info("tenant_routes_mounted",
 						"tenant", tenant.Name,
 						"path_prefix", tenant.PathPrefix,
-						"error", err,
-						"component", "routing")
-				}
-			} else {
-				// Fallback: mount at root with warning about potential collisions
-				slog.Warn("tenant_root_mount_warning",
-					"tenant", tenant.Name,
-					"message", "no path prefix or domains - mounting at root may cause route collisions",
-					"component", "routing")
-				if err := app.luaEngine.RouteRegistry().MountTenantRoutes(tenant.Name, "/"); err != nil {
-					slog.Error("tenant_route_mount_failed",
-						"tenant", tenant.Name,
-						"path_prefix", "/",
-						"error", err,
+						"routing_type", "path_based",
 						"component", "routing")
 				}
 			}
 		}
 	}
+
+	// Add proper fallback for unmatched routes
+	r.NotFound(http.HandlerFunc(app.LuaFallbackHandler))
 }
 
 // hasHostBasedTenants checks if any tenants use host-based routing

@@ -52,10 +52,7 @@ func TestLuaCore(t *testing.T) {
 			t.Fatal("Expected route registry")
 		}
 
-		err := registry.MountTenantRoutes("route-app", "/routes/")
-		if err != nil {
-			t.Errorf("Route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 	})
 
 	t.Run("middleware_registration", func(t *testing.T) {
@@ -166,11 +163,7 @@ func TestLuaCore(t *testing.T) {
 			t.Fatal("Expected route registry")
 		}
 
-		// Test: Can mount tenant routes
-		err := registry.MountTenantRoutes("registry-app", "/registry/")
-		if err != nil {
-			t.Errorf("Route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 	})
 }
 
@@ -347,16 +340,12 @@ func TestLuaDirect(t *testing.T) {
 			t.Error("Expected route registry to be created")
 		}
 
-		// Test mounting routes for tenant
-		err := registry.MountTenantRoutes("test-tenant", "/app")
-		if err != nil {
-			t.Errorf("Failed to mount tenant routes: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 
 		// Test ListTenants with empty registry
 		tenants := registry.ListTenants()
-		if len(tenants) == 0 {
-			t.Error("Expected tenants list to be available")
+		if len(tenants) != 0 {
+			t.Error("Expected empty tenants list for new registry")
 		}
 	})
 
@@ -375,7 +364,7 @@ func TestLuaScriptLoadedOncePerState(t *testing.T) {
 	defer pool.Close()
 
 	script := `counter = (counter or 0) + 1
-function handler(resp, req)
+function handler(req, resp)
   resp:write(tostring(counter))
 end`
 

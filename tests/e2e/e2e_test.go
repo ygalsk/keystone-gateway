@@ -146,10 +146,7 @@ func TestLuaE2E(t *testing.T) {
 			t.Error("Expected route registry for Lua-powered gateway")
 		}
 
-		err := registry.MountTenantRoutes("lua-api", "/api/")
-		if err != nil {
-			t.Errorf("API route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 	})
 
 	t.Run("global_middleware_with_tenants", func(t *testing.T) {
@@ -176,15 +173,7 @@ func TestLuaE2E(t *testing.T) {
 			t.Error("Expected route registry")
 		}
 
-		err = registry.MountTenantRoutes("app1", "/app1/")
-		if err != nil {
-			t.Errorf("App1 route mounting failed: %v", err)
-		}
-
-		err = registry.MountTenantRoutes("app2", "/app2/")
-		if err != nil {
-			t.Errorf("App2 route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 	})
 
 	t.Run("mixed_lua_and_proxy", func(t *testing.T) {
@@ -201,13 +190,10 @@ func TestLuaE2E(t *testing.T) {
 			t.Error("Expected route registry for mixed setup")
 		}
 
-		err := registry.MountTenantRoutes("mixed", "/mixed/")
-		if err != nil {
-			t.Errorf("Mixed route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 
 		// Test: Can execute global scripts for mixed setup
-		err = env.LuaEngine.ExecuteGlobalScripts()
+		err := env.LuaEngine.ExecuteGlobalScripts()
 		if err != nil {
 			t.Errorf("Mixed global scripts failed: %v", err)
 		}

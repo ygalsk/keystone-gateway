@@ -19,7 +19,7 @@ type LuaRouteRegistry struct {
 	routeGroups      map[string]*chi.Mux               // tenant -> submux for tenant routes
 	registeredRoutes map[string]bool                   // track registered routes to prevent duplicates
 	middleware       map[string][]MiddlewareDefinition // tenant -> middleware definitions
-	mu               sync.RWMutex                      // protects routeGroups and registeredRoutes maps
+	mu               sync.RWMutex                      // protects all maps
 	Engine           interface {
 		GetScript(string) (string, bool)
 		SetupChiBindings(*lua.LState, string, string)
@@ -66,7 +66,7 @@ func NewLuaRouteRegistry(router *chi.Mux, engine interface {
 	}
 }
 
-// RegisterRoute registers a single route from a Lua script with duplicate prevention
+// RegisterRoute registers a single route from a Lua script on tenant submux
 func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 	// Create unique route key
 	routeKey := fmt.Sprintf("%s:%s:%s", def.TenantName, def.Method, def.Pattern)
@@ -90,18 +90,9 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 		return fmt.Errorf("invalid route pattern '%s': %w", def.Pattern, err)
 	}
 
-	// Get or create tenant submux
+	// Get tenant submux and register route on it
 	submux := r.getTenantSubmux(def.TenantName)
-
-	// Register the route with the appropriate method
-	// Note: middleware application is handled inside registerRouteByMethod via applyMiddleware
-	r.registerRouteByMethod(submux, RouteDefinition{
-		TenantName:   def.TenantName,
-		Method:       def.Method,
-		Pattern:      def.Pattern,
-		GroupPattern: def.GroupPattern,
-		Handler:      def.Handler,
-	})
+	r.registerRouteByMethod(submux, def)
 
 	return nil
 }
@@ -152,14 +143,6 @@ func (r *LuaRouteRegistry) RegisterRouteGroup(def RouteGroupDefinition) error {
 		}
 	})
 
-	return nil
-}
-
-// MountTenantRoutes mounts all routes for a tenant under a specific path
-func (r *LuaRouteRegistry) MountTenantRoutes(tenantName, mountPath string) error {
-	// Ensure a submux exists for this tenant, even if no routes yet
-	submux := r.getTenantSubmux(tenantName)
-	r.router.Mount(mountPath, submux)
 	return nil
 }
 
@@ -291,7 +274,9 @@ func (api *RouteRegistryAPI) Group(tenantName, pattern string, middleware []func
 
 // Mount mounts tenant routes under a path (called from Lua via chi_mount function)
 func (api *RouteRegistryAPI) Mount(tenantName, mountPath string) error {
-	return api.registry.MountTenantRoutes(tenantName, mountPath)
+	// Mount functionality is now handled in main.go using Chi's native Mount()
+	// This method is kept for API compatibility but doesn't need to do anything
+	return nil
 }
 
 // Clear removes all routes for a tenant

@@ -246,7 +246,7 @@ func (h *LuaHandler) callLuaHandler(L *lua.LState, handlerFunc *lua.LFunction, w
 		Fn:      handlerFunc,
 		NRet:    0,
 		Protect: true,
-	}, respTable, reqTable)
+	}, reqTable, respTable)
 }
 
 // createLuaRequest creates a Lua table representing an HTTP request

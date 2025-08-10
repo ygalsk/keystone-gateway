@@ -156,11 +156,7 @@ func TestLuaIntegration(t *testing.T) {
 			t.Error("Expected route registry for Lua integration")
 		}
 
-		// Test: Can mount tenant routes
-		err := registry.MountTenantRoutes("lua-proxy", "/lua/")
-		if err != nil {
-			t.Errorf("Route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 	})
 
 	t.Run("global_and_tenant_scripts", func(t *testing.T) {
@@ -183,10 +179,7 @@ func TestLuaIntegration(t *testing.T) {
 			t.Error("Expected route registry")
 		}
 
-		err = registry.MountTenantRoutes("mixed-app", "/mixed/")
-		if err != nil {
-			t.Errorf("Tenant route mounting failed: %v", err)
-		}
+		// Mounting handled automatically by Chi in main.go
 	})
 
 	t.Run("lua_error_recovery", func(t *testing.T) {
