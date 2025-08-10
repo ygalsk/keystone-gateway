@@ -172,7 +172,7 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 			}
 
 			// Create Lua request/response tables
-			respWriter := &luaResponseWriter{w: w}
+			respWriter := &luaResponseWriter{w: w, bufferedHeaders: make(map[string]string)}
 			respTable := createLuaResponse(L, respWriter)
 			reqTable := createLuaRequest(L, r)
 
