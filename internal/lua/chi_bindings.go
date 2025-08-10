@@ -119,57 +119,57 @@ func (e *Engine) registerRouteWithRegistry(tenantName, method, pattern, groupPat
 	})
 }
 
-// executeLuaMiddleware executes Lua middleware function directly
-func (e *Engine) executeLuaMiddleware(scriptContent, functionName, tenantName string, w http.ResponseWriter, r *http.Request, next http.Handler) {
-	L := e.statePool.Get()
-	defer e.statePool.Put(L)
-
-	if err := L.DoString(scriptContent); err != nil {
-		http.Error(w, fmt.Sprintf("Middleware script error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	middlewareFunc := L.GetGlobal(functionName)
-	if middlewareFunc == lua.LNil {
-		http.Error(w, "Middleware function not found", http.StatusInternalServerError)
-		return
-	}
-
-	func_ptr, ok := middlewareFunc.(*lua.LFunction)
-	if !ok {
-		http.Error(w, "Invalid middleware function", http.StatusInternalServerError)
-		return
-	}
-
-	// Create Lua request/response tables
-	respWriter := &luaResponseWriter{w: w}
-	respTable := createLuaResponse(L, respWriter)
-	reqTable := createLuaRequest(L, r)
-
-	// Create next function
-	nextCalled := false
-	nextFunc := L.NewFunction(func(L *lua.LState) int {
-		nextCalled = true
-		return 0
-	})
-
-	// Execute middleware function
-	err := L.CallByParam(lua.P{
-		Fn:      func_ptr,
-		NRet:    0,
-		Protect: true,
-	}, reqTable, respTable, nextFunc)
-
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Middleware execution error: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	// Call next handler if middleware called next()
-	if nextCalled && next != nil {
-		next.ServeHTTP(w, r)
-	}
-}
+//// executeLuaMiddleware executes Lua middleware function directly
+//func (e *Engine) executeLuaMiddleware(scriptContent, functionName, tenantName string, w http.ResponseWriter, r *http.Request, next http.Handler) {
+//	L := e.statePool.Get()
+//	defer e.statePool.Put(L)
+//
+//	if err := L.DoString(scriptContent); err != nil {
+//		http.Error(w, fmt.Sprintf("Middleware script error: %v", err), http.StatusInternalServerError)
+//		return
+//	}
+//
+//	middlewareFunc := L.GetGlobal(functionName)
+//	if middlewareFunc == lua.LNil {
+//		http.Error(w, "Middleware function not found", http.StatusInternalServerError)
+//		return
+//	}
+//
+//	func_ptr, ok := middlewareFunc.(*lua.LFunction)
+//	if !ok {
+//		http.Error(w, "Invalid middleware function", http.StatusInternalServerError)
+//		return
+//	}
+//
+//	// Create Lua request/response tables
+//	respWriter := &luaResponseWriter{w: w}
+//	respTable := createLuaResponse(L, respWriter)
+//	reqTable := createLuaRequest(L, r)
+//
+//	// Create next function
+//	nextCalled := false
+//	nextFunc := L.NewFunction(func(L *lua.LState) int {
+//		nextCalled = true
+//		return 0
+//	})
+//
+//	// Execute middleware function
+//	err := L.CallByParam(lua.P{
+//		Fn:      func_ptr,
+//		NRet:    0,
+//		Protect: true,
+//	}, reqTable, respTable, nextFunc)
+//
+//	if err != nil {
+//		http.Error(w, fmt.Sprintf("Middleware execution error: %v", err), http.StatusInternalServerError)
+//		return
+//	}
+//
+//	// Call next handler if middleware called next()
+//	if nextCalled && next != nil {
+//		next.ServeHTTP(w, r)
+//	}
+//}
 
 // luaChiMiddleware handles middleware registration: chi_middleware(pattern, middleware_func)
 func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) int {
@@ -189,10 +189,60 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 		return 0
 	}
 
-	// Create simple direct-execution middleware
+	// Create middleware that executes the cached Lua function directly
 	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			e.executeLuaMiddleware(scriptContent, functionName, tenantName, w, r, next)
+			// Get state from pool
+			L := e.statePool.Get()
+			defer e.statePool.Put(L)
+
+			// Execute the script to load the function into the state
+			if err := L.DoString(scriptContent); err != nil {
+				http.Error(w, fmt.Sprintf("Middleware script error: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			// Get the middleware function
+			middlewareFunc := L.GetGlobal(functionName)
+			if middlewareFunc == lua.LNil {
+				http.Error(w, "Middleware function not found", http.StatusInternalServerError)
+				return
+			}
+
+			func_ptr, ok := middlewareFunc.(*lua.LFunction)
+			if !ok {
+				http.Error(w, "Invalid middleware function", http.StatusInternalServerError)
+				return
+			}
+
+			// Create Lua request/response tables
+			respWriter := &luaResponseWriter{w: w}
+			respTable := createLuaResponse(L, respWriter)
+			reqTable := createLuaRequest(L, r)
+
+			// Create next function
+			nextCalled := false
+			nextFunc := L.NewFunction(func(L *lua.LState) int {
+				nextCalled = true
+				return 0
+			})
+
+			// Execute middleware function
+			err := L.CallByParam(lua.P{
+				Fn:      func_ptr,
+				NRet:    0,
+				Protect: true,
+			}, reqTable, respTable, nextFunc)
+
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Middleware execution error: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			// Call next handler if middleware called next()
+			if nextCalled && next != nil {
+				next.ServeHTTP(w, r)
+			}
 		})
 	}
 
