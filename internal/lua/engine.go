@@ -56,7 +56,6 @@ type Engine struct {
 	router          *chi.Mux                      // Chi router for dynamic route registration
 	routeRegistry   *routing.LuaRouteRegistry     // Route registry for Lua integration
 	statePool       *LuaStatePool                 // Pool of Lua states for thread safety
-	middlewareCache *MiddlewareCache              // Cache for middleware logic
 }
 
 // GetScript returns the script content for a given scriptTag, loading it if necessary
@@ -156,9 +155,6 @@ func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 		compiledScripts: make(map[string]*CompiledLuaScript),
 		compiledGlobals: make(map[string]*CompiledLuaScript),
 		router:          router,
-		middlewareCache: &MiddlewareCache{
-			cache: make(map[string]*MiddlewareLogic),
-		},
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router, engine)
 
@@ -270,6 +266,12 @@ func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
 	if err != nil {
 		return fmt.Errorf("lua script execution failed: %w", err)
 	}
+
+	// Apply stored middleware after routes are registered (Chi requirement)
+	if err := e.routeRegistry.ApplyMiddleware(tenantName); err != nil {
+		return fmt.Errorf("middleware application failed: %w", err)
+	}
+
 	return nil
 }
 

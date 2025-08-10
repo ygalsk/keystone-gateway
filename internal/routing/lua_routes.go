@@ -99,10 +99,7 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 
 // RegisterMiddleware registers middleware for a pattern from a Lua script
 func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
-	// Get tenant submux and apply middleware immediately
-	submux := r.getTenantSubmux(def.TenantName)
-	submux.Use(def.Middleware)
-
+	// Store middleware for later application (Chi requires middleware before routes)
 	r.mu.Lock()
 	r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
 	r.mu.Unlock()
@@ -183,6 +180,23 @@ func (r *LuaRouteRegistry) ListTenants() []string {
 		tenants = append(tenants, tenant)
 	}
 	return tenants
+}
+
+// ApplyMiddleware applies all stored middleware for a tenant (call after routes are registered)
+func (r *LuaRouteRegistry) ApplyMiddleware(tenantName string) error {
+	r.mu.RLock()
+	middlewares := r.middleware[tenantName]
+	r.mu.RUnlock()
+
+	if len(middlewares) == 0 {
+		return nil
+	}
+
+	submux := r.getTenantSubmux(tenantName)
+	for _, def := range middlewares {
+		submux.Use(def.Middleware)
+	}
+	return nil
 }
 
 // getTenantSubmux gets or creates a submux for a tenant
