@@ -402,7 +402,9 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 		}
 		key := L.ToString(startIdx)
 		value := L.ToString(startIdx + 1)
-		// Buffer headers to preserve them across different Lua execution contexts
+		// Set headers directly on the underlying ResponseWriter (for middleware)
+		// and also buffer them (for route handlers that might override)
+		w.w.Header().Set(key, value)
 		w.bufferedHeaders[key] = value
 		return 0
 	})
