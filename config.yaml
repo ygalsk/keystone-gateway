@@ -1,0 +1,39 @@
+# Keystone Gateway Configuration
+# Minimal but production-ready reverse proxy configuration
+
+server:
+  addr: ":8080"
+  read_header_timeout: 5s
+  idle_timeout: 120s
+
+upstreams:
+  # Load balancing strategy: least_connections, round_robin, weighted_round_robin
+  load_balancing:
+    strategy: "least_connections"
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    path: "/health"
+    interval: 30s
+    timeout: 5s
+    failure_threshold: 2
+    success_threshold: 1
+    expected_status_codes: [200, 204]
+  
+  # Upstream targets
+  targets:
+    - name: "backend-1"
+      url: "http://localhost:8081"
+      weight: 1
+      enabled: true
+    
+    - name: "backend-2"
+      url: "http://localhost:8082"
+      weight: 1
+      enabled: true
+    
+    - name: "backend-3"
+      url: "http://localhost:8083"
+      weight: 2  # Higher weight = more traffic
+      enabled: true

@@ -1,0 +1,44 @@
+# Keystone Gateway Configuration Example
+# This file shows both HTTP and HTTPS configurations
+
+server:
+  addr: ":8443"
+  read_header_timeout: "5s"
+  idle_timeout: "120s"
+  tls:
+    enabled: true
+    cert_file: "./certs/server.crt"
+    key_file: "./certs/server.key"
+
+# Upstream configuration
+upstreams:
+  # Upstream targets
+  targets:
+    - name: "api-server-1"
+      url: "http://localhost:3001"
+      weight: 100
+      enabled: true
+    
+    - name: "api-server-2"
+      url: "http://localhost:3002"
+      weight: 100
+      enabled: true
+    
+    - name: "backup-server"
+      url: "http://localhost:3003"
+      weight: 50
+      enabled: false  # Disabled by default
+  
+  # Load balancing strategy
+  load_balancing:
+    strategy: "least_connections"  # Options: "least_connections", "round_robin", "weighted_round_robin"
+  
+  # Health check configuration
+  health_check:
+    enabled: true
+    path: "/health"
+    interval: "30s"
+    timeout: "5s"
+    failure_threshold: 2
+    success_threshold: 1
+    expected_status_codes: [200, 204]
