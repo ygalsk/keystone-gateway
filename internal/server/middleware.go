@@ -44,7 +44,9 @@ func ProxyMiddleware(lb *proxy.LoadBalancer, hc *proxy.HealthChecker, logger *sl
 				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				return
 			}
-			upstream.Proxy.ServeHTTP(w, r) // No error return
+			upstream.IncrementConnections()
+			defer upstream.DecrementConnections() // Add this line
+			upstream.Proxy.ServeHTTP(w, r)
 		})
 	}
 }
