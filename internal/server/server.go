@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"keystone-gateway/internal/proxy"
 	"log/slog"
 	"net/http"
@@ -20,6 +21,7 @@ type Server struct {
 	server        *http.Server
 	loadBalancer  *proxy.LoadBalancer
 	healthChecker *proxy.HealthChecker
+	startTime     time.Time
 }
 
 func New(cfg *config.Config, logger *slog.Logger) *Server {
@@ -72,6 +74,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		server:        srv,
 		loadBalancer:  lb,
 		healthChecker: hc,
+		startTime:     time.Now(),
 	}
 
 	// Gateway health endpoint - handled directly by gateway
@@ -82,13 +85,14 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		r.Get("/health", server.handleAdminHealth)
 		r.Get("/stats", server.handleAdminStats)
 		r.Get("/status", server.handleAdminStatus)
+		r.Get("/metrics", server.handleAdminMetrics)
 	})
 
 	// Create a proxy-enabled subrouter for all other requests
 	// This ensures only non-admin routes get proxied to backends
 	proxyRouter := chi.NewRouter()
 	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
-	
+
 	// Mount the proxy router to handle all other paths
 	// This will catch any request that doesn't match admin routes
 	r.Mount("/", proxyRouter)
@@ -129,7 +133,7 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now(),
 		"server": map[string]interface{}{
 			"version": "v1.0.0",
-			"uptime":  time.Since(time.Now()), // TODO: track actual start time
+			"uptime":  time.Since(s.startTime),
 		},
 		"load_balancer": lbStats,
 	}
@@ -205,10 +209,72 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleAdminMetrics handles the Prometheus metrics endpoint
+func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+
+	// Get load balancer stats
+	lbStats := s.loadBalancer.GetStats()
+
+	// Server uptime
+	uptime := time.Since(s.startTime)
+	
+	// Convert to Prometheus format
+	fmt.Fprintf(w, "# HELP keystone_gateway_info Information about the keystone gateway\n")
+	fmt.Fprintf(w, "# TYPE keystone_gateway_info gauge\n")
+	fmt.Fprintf(w, "keystone_gateway_info{version=\"v1.0.0\",strategy=\"%s\"} 1\n", lbStats.Strategy)
+	
+	fmt.Fprintf(w, "# HELP keystone_gateway_uptime_seconds Server uptime in seconds\n")
+	fmt.Fprintf(w, "# TYPE keystone_gateway_uptime_seconds counter\n")
+	fmt.Fprintf(w, "keystone_gateway_uptime_seconds %.2f\n", uptime.Seconds())
+	
+	fmt.Fprintf(w, "# HELP keystone_upstreams_total Total number of upstreams\n")
+	fmt.Fprintf(w, "# TYPE keystone_upstreams_total gauge\n")
+	fmt.Fprintf(w, "keystone_upstreams_total %d\n", lbStats.TotalUpstreams)
+
+	fmt.Fprintf(w, "# HELP keystone_healthy_upstreams Total healthy upstreams\n")
+	fmt.Fprintf(w, "# TYPE keystone_healthy_upstreams gauge\n")
+	fmt.Fprintf(w, "keystone_healthy_upstreams %d\n", lbStats.HealthyUpstreams)
+
+	// Per-upstream metrics
+	fmt.Fprintf(w, "# HELP keystone_upstream_requests_total Total requests sent to upstream\n")
+	fmt.Fprintf(w, "# TYPE keystone_upstream_requests_total counter\n")
+	
+	fmt.Fprintf(w, "# HELP keystone_upstream_response_time_microseconds Average response time in microseconds\n")
+	fmt.Fprintf(w, "# TYPE keystone_upstream_response_time_microseconds gauge\n")
+	
+	fmt.Fprintf(w, "# HELP keystone_upstream_healthy Health status of upstream (1=healthy, 0=unhealthy)\n")
+	fmt.Fprintf(w, "# TYPE keystone_upstream_healthy gauge\n")
+	
+	fmt.Fprintf(w, "# HELP keystone_upstream_active_connections Current active connections to upstream\n")
+	fmt.Fprintf(w, "# TYPE keystone_upstream_active_connections gauge\n")
+	
+	fmt.Fprintf(w, "# HELP keystone_upstream_consecutive_failures Number of consecutive failures\n")
+	fmt.Fprintf(w, "# TYPE keystone_upstream_consecutive_failures gauge\n")
+
+	for _, upstream := range lbStats.UpstreamStats {
+		labels := fmt.Sprintf("upstream=\"%s\",url=\"%s\"", upstream.Name, upstream.URL)
+		
+		fmt.Fprintf(w, "keystone_upstream_requests_total{%s} %d\n", labels, upstream.TotalRequests)
+		fmt.Fprintf(w, "keystone_upstream_response_time_microseconds{%s} %d\n", labels, upstream.AvgResponseTime.Microseconds())
+		fmt.Fprintf(w, "keystone_upstream_healthy{%s} %d\n", labels, boolToInt(upstream.Healthy))
+		fmt.Fprintf(w, "keystone_upstream_active_connections{%s} %d\n", labels, upstream.ActiveConnections)
+		fmt.Fprintf(w, "keystone_upstream_consecutive_failures{%s} %d\n", labels, upstream.ConsecutiveFailures)
+	}
+}
+
+// boolToInt converts boolean to integer for Prometheus metrics
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 func (s *Server) Start() error {
 	// Check if TLS is enabled
 	if s.config.Server.TLS != nil && s.config.Server.TLS.Enabled {
-		s.logger.Info("starting HTTPS server", 
+		s.logger.Info("starting HTTPS server",
 			"addr", s.server.Addr,
 			"cert", s.config.Server.TLS.CertFile,
 		)
