@@ -13,7 +13,9 @@ import (
 	"keystone-gateway/internal/proxy"
 )
 
-func BuildMiddlewareStack(logger *slog.Logger, cfg *config.Config, lb *proxy.LoadBalancer, hc *proxy.HealthChecker) []func(http.Handler) http.Handler {
+// BuildBaseMiddleware creates the base middleware stack without proxy middleware
+// This is used for the main router to handle admin endpoints directly
+func BuildBaseMiddleware(logger *slog.Logger, cfg *config.Config) []func(http.Handler) http.Handler {
 	var middlewareStack []func(http.Handler) http.Handler
 	middlewareStack = append(middlewareStack, middleware.RequestID)
 	middlewareStack = append(middlewareStack, middleware.RealIP)
@@ -31,6 +33,13 @@ func BuildMiddlewareStack(logger *slog.Logger, cfg *config.Config, lb *proxy.Loa
 	}))
 	middlewareStack = append(middlewareStack, middleware.Compress(5, "application/json", "text/html"))
 	middlewareStack = append(middlewareStack, httprate.LimitByIP(1000, time.Minute))
+	return middlewareStack
+}
+
+// BuildMiddlewareStack creates the full middleware stack including proxy middleware
+// This function is kept for backward compatibility if needed elsewhere
+func BuildMiddlewareStack(logger *slog.Logger, cfg *config.Config, lb *proxy.LoadBalancer, hc *proxy.HealthChecker) []func(http.Handler) http.Handler {
+	middlewareStack := BuildBaseMiddleware(logger, cfg)
 	middlewareStack = append(middlewareStack, ProxyMiddleware(lb, hc, logger))
 	return middlewareStack
 }

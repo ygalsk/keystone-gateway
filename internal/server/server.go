@@ -50,9 +50,10 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Start the health checker
 	hc.Start()
 
-	// Build a router with middleware (including proxy middleware)
+	// Build a router with base middleware (excluding proxy middleware)
 	r := chi.NewRouter()
-	for _, m := range BuildMiddlewareStack(logger, cfg, lb, hc) {
+	baseMiddleware := BuildBaseMiddleware(logger, cfg)
+	for _, m := range baseMiddleware {
 		r.Use(m)
 	}
 
@@ -73,115 +74,135 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		healthChecker: hc,
 	}
 
-	// Health endpoint for the gateway itself
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
+	// Gateway health endpoint - handled directly by gateway
+	r.Get("/health", server.handleHealth)
 
-		// Get basic stats for the health check
-		lbStats := server.loadBalancer.GetStats()
-
-		response := map[string]interface{}{
-			"status":            "healthy",
-			"version":           "v1.0.0",
-			"timestamp":         time.Now(),
-			"total_upstreams":   lbStats.TotalUpstreams,
-			"healthy_upstreams": lbStats.HealthyUpstreams,
-		}
-
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			server.logger.Error("failed to encode health response", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
+	// Admin endpoints - handled directly by gateway, no proxying
+	r.Route("/admin", func(r chi.Router) {
+		r.Get("/health", server.handleAdminHealth)
+		r.Get("/stats", server.handleAdminStats)
+		r.Get("/status", server.handleAdminStatus)
 	})
 
-	// Admin endpoints with comprehensive stats
-	r.Get("/admin/stats", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		// Get load balancer stats
-		lbStats := server.loadBalancer.GetStats()
-
-		// Create comprehensive admin response
-		adminStats := map[string]interface{}{
-			"timestamp": time.Now(),
-			"server": map[string]interface{}{
-				"version": "v1.0.0",
-				"uptime":  time.Since(time.Now()), // TODO: track actual start time
-			},
-			"load_balancer": lbStats,
-		}
-
-		if err := json.NewEncoder(w).Encode(adminStats); err != nil {
-			server.logger.Error("failed to encode admin stats", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	})
-
-	r.Get("/admin/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		// Get all upstream health stats
-		healthStats := server.healthChecker.GetAllUpstreamHealth()
-
-		// Calculate overall health summary
-		totalUpstreams := len(healthStats)
-		healthyCount := 0
-		for _, stats := range healthStats {
-			if stats.Status.String() == "healthy" {
-				healthyCount++
-			}
-		}
-
-		healthResponse := map[string]interface{}{
-			"timestamp": time.Now(),
-			"summary": map[string]interface{}{
-				"total_upstreams":   totalUpstreams,
-				"healthy_upstreams": healthyCount,
-				"overall_status": func() string {
-					if healthyCount == 0 {
-						return "critical"
-					} else if healthyCount < totalUpstreams {
-						return "degraded"
-					}
-					return "healthy"
-				}(),
-			},
-			"upstreams": healthStats,
-		}
-
-		if err := json.NewEncoder(w).Encode(healthResponse); err != nil {
-			server.logger.Error("failed to encode health stats", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	})
-
-	// Combined admin status endpoint
-	r.Get("/admin/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-
-		// Get comprehensive status
-		lbStats := server.loadBalancer.GetStats()
-		healthStats := server.healthChecker.GetAllUpstreamHealth()
-
-		statusResponse := map[string]interface{}{
-			"timestamp": time.Now(),
-			"version":   "v1.0.0",
-			"status":    "operational",
-			"summary": map[string]interface{}{
-				"total_upstreams":   lbStats.TotalUpstreams,
-				"healthy_upstreams": lbStats.HealthyUpstreams,
-				"load_strategy":     lbStats.Strategy,
-			},
-			"detailed_health": healthStats,
-		}
-
-		if err := json.NewEncoder(w).Encode(statusResponse); err != nil {
-			server.logger.Error("failed to encode status response", "error", err)
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-	})
+	// Create a proxy-enabled subrouter for all other requests
+	// This ensures only non-admin routes get proxied to backends
+	proxyRouter := chi.NewRouter()
+	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
+	
+	// Mount the proxy router to handle all other paths
+	// This will catch any request that doesn't match admin routes
+	r.Mount("/", proxyRouter)
 
 	return server
+}
+
+// handleHealth handles the gateway's own health endpoint
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get basic stats for the health check
+	lbStats := s.loadBalancer.GetStats()
+
+	response := map[string]interface{}{
+		"status":            "healthy",
+		"version":           "v1.0.0",
+		"timestamp":         time.Now(),
+		"total_upstreams":   lbStats.TotalUpstreams,
+		"healthy_upstreams": lbStats.HealthyUpstreams,
+	}
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		s.logger.Error("failed to encode health response", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// handleAdminStats handles the admin stats endpoint
+func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get load balancer stats
+	lbStats := s.loadBalancer.GetStats()
+
+	// Create comprehensive admin response
+	adminStats := map[string]interface{}{
+		"timestamp": time.Now(),
+		"server": map[string]interface{}{
+			"version": "v1.0.0",
+			"uptime":  time.Since(time.Now()), // TODO: track actual start time
+		},
+		"load_balancer": lbStats,
+	}
+
+	if err := json.NewEncoder(w).Encode(adminStats); err != nil {
+		s.logger.Error("failed to encode admin stats", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// handleAdminHealth handles the admin health endpoint with detailed upstream health
+func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get all upstream health stats
+	healthStats := s.healthChecker.GetAllUpstreamHealth()
+
+	// Calculate overall health summary
+	totalUpstreams := len(healthStats)
+	healthyCount := 0
+	for _, stats := range healthStats {
+		if stats.Status.String() == "healthy" {
+			healthyCount++
+		}
+	}
+
+	healthResponse := map[string]interface{}{
+		"timestamp": time.Now(),
+		"summary": map[string]interface{}{
+			"total_upstreams":   totalUpstreams,
+			"healthy_upstreams": healthyCount,
+			"overall_status": func() string {
+				if healthyCount == 0 {
+					return "critical"
+				} else if healthyCount < totalUpstreams {
+					return "degraded"
+				}
+				return "healthy"
+			}(),
+		},
+		"upstreams": healthStats,
+	}
+
+	if err := json.NewEncoder(w).Encode(healthResponse); err != nil {
+		s.logger.Error("failed to encode health stats", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+}
+
+// handleAdminStatus handles the combined admin status endpoint
+func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	// Get comprehensive status
+	lbStats := s.loadBalancer.GetStats()
+	healthStats := s.healthChecker.GetAllUpstreamHealth()
+
+	statusResponse := map[string]interface{}{
+		"timestamp": time.Now(),
+		"version":   "v1.0.0",
+		"status":    "operational",
+		"summary": map[string]interface{}{
+			"total_upstreams":   lbStats.TotalUpstreams,
+			"healthy_upstreams": lbStats.HealthyUpstreams,
+			"load_strategy":     lbStats.Strategy,
+		},
+		"detailed_health": healthStats,
+	}
+
+	if err := json.NewEncoder(w).Encode(statusResponse); err != nil {
+		s.logger.Error("failed to encode status response", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
 }
 
 func (s *Server) Start() error {
