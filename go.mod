@@ -11,6 +11,7 @@ require (
 
 require (
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 )

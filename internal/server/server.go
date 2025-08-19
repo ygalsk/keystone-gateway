@@ -88,7 +88,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		r.Get("/metrics", server.handleAdminMetrics)
 	})
 
-	// Create a proxy-enabled subrouter for all other requests
+	// Create a proxy-enabled sub-router for all other requests
 	// This ensures only non-admin routes get proxied to backends
 	proxyRouter := chi.NewRouter()
 	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
@@ -218,16 +218,16 @@ func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// Server uptime
 	uptime := time.Since(s.startTime)
-	
+
 	// Convert to Prometheus format
 	fmt.Fprintf(w, "# HELP keystone_gateway_info Information about the keystone gateway\n")
 	fmt.Fprintf(w, "# TYPE keystone_gateway_info gauge\n")
 	fmt.Fprintf(w, "keystone_gateway_info{version=\"v1.0.0\",strategy=\"%s\"} 1\n", lbStats.Strategy)
-	
+
 	fmt.Fprintf(w, "# HELP keystone_gateway_uptime_seconds Server uptime in seconds\n")
 	fmt.Fprintf(w, "# TYPE keystone_gateway_uptime_seconds counter\n")
 	fmt.Fprintf(w, "keystone_gateway_uptime_seconds %.2f\n", uptime.Seconds())
-	
+
 	fmt.Fprintf(w, "# HELP keystone_upstreams_total Total number of upstreams\n")
 	fmt.Fprintf(w, "# TYPE keystone_upstreams_total gauge\n")
 	fmt.Fprintf(w, "keystone_upstreams_total %d\n", lbStats.TotalUpstreams)
@@ -239,22 +239,22 @@ func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 	// Per-upstream metrics
 	fmt.Fprintf(w, "# HELP keystone_upstream_requests_total Total requests sent to upstream\n")
 	fmt.Fprintf(w, "# TYPE keystone_upstream_requests_total counter\n")
-	
+
 	fmt.Fprintf(w, "# HELP keystone_upstream_response_time_microseconds Average response time in microseconds\n")
 	fmt.Fprintf(w, "# TYPE keystone_upstream_response_time_microseconds gauge\n")
-	
+
 	fmt.Fprintf(w, "# HELP keystone_upstream_healthy Health status of upstream (1=healthy, 0=unhealthy)\n")
 	fmt.Fprintf(w, "# TYPE keystone_upstream_healthy gauge\n")
-	
+
 	fmt.Fprintf(w, "# HELP keystone_upstream_active_connections Current active connections to upstream\n")
 	fmt.Fprintf(w, "# TYPE keystone_upstream_active_connections gauge\n")
-	
+
 	fmt.Fprintf(w, "# HELP keystone_upstream_consecutive_failures Number of consecutive failures\n")
 	fmt.Fprintf(w, "# TYPE keystone_upstream_consecutive_failures gauge\n")
 
 	for _, upstream := range lbStats.UpstreamStats {
 		labels := fmt.Sprintf("upstream=\"%s\",url=\"%s\"", upstream.Name, upstream.URL)
-		
+
 		fmt.Fprintf(w, "keystone_upstream_requests_total{%s} %d\n", labels, upstream.TotalRequests)
 		fmt.Fprintf(w, "keystone_upstream_response_time_microseconds{%s} %d\n", labels, upstream.AvgResponseTime.Microseconds())
 		fmt.Fprintf(w, "keystone_upstream_healthy{%s} %d\n", labels, boolToInt(upstream.Healthy))
