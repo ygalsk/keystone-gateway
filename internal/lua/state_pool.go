@@ -36,6 +36,9 @@ func (p *LuaStatePool) Get() *lua.LState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// Track each Get as an execution request
+	p.totalExecutions.Add(1)
+
 	n := len(p.saved)
 	if n == 0 {
 		// Pool empty - create new state

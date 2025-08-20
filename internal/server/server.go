@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"keystone-gateway/internal/proxy"
+	"keystone-gateway/internal/lua"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	lua_lib "github.com/yuin/gopher-lua"
 
 	"keystone-gateway/internal/config"
 )
@@ -22,6 +24,9 @@ type Server struct {
 	loadBalancer  *proxy.LoadBalancer
 	healthChecker *proxy.HealthChecker
 	startTime     time.Time
+	// Lua components
+	luaEngine     *lua.Engine
+	luaChiRouter  *lua.ChiRouter
 }
 
 func New(cfg *config.Config, logger *slog.Logger) *Server {
@@ -52,12 +57,25 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Start the health checker
 	hc.Start()
 
+	// Initialize Lua components
+	// TODO(human): Configure these values based on your needs - maxStates and maxScripts
+	luaEngine := lua.NewEngine(10, 100) // 10 Lua states, 100 max scripts
+	luaMetrics := lua.NewLuaMetrics()
+	
+	// Create state pool for the Chi router
+	statePool := lua.NewLuaStatePool(10, func() *lua_lib.LState {
+		return lua.CreateSecureLuaState(lua.DefaultSecurityConfig())
+	})
+	
 	// Build a router with base middleware (excluding proxy middleware)
 	r := chi.NewRouter()
 	baseMiddleware := BuildBaseMiddleware(logger, cfg)
 	for _, m := range baseMiddleware {
 		r.Use(m)
 	}
+
+	// Initialize Lua Chi router with the main Chi router
+	luaChiRouter := lua.NewChiRouter(r, statePool, luaMetrics, logger)
 
 	// Create a server instance first to access in closures
 	srv := &http.Server{
@@ -75,6 +93,8 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		loadBalancer:  lb,
 		healthChecker: hc,
 		startTime:     time.Now(),
+		luaEngine:     luaEngine,
+		luaChiRouter:  luaChiRouter,
 	}
 
 	// Gateway health endpoint - handled directly by gateway
@@ -91,6 +111,12 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create a proxy-enabled sub-router for all other requests
 	// This ensures only non-admin routes get proxied to backends
 	proxyRouter := chi.NewRouter()
+	
+	// Add Lua routing middleware before proxy middleware
+	// This allows Lua scripts to intercept and handle requests
+	proxyRouter.Use(LuaRoutingMiddleware(luaEngine, logger))
+	
+	// Add proxy middleware as fallback
 	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
 
 	// Mount the proxy router to handle all other paths
@@ -296,6 +322,13 @@ func (s *Server) Stop() error {
 	s.logger.Info("shutting down server")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
+	// Shutdown Lua components
+	if s.luaChiRouter != nil {
+		if err := s.luaChiRouter.Shutdown(); err != nil {
+			s.logger.Error("failed to shutdown Lua Chi router", "error", err)
+		}
+	}
 
 	return s.server.Shutdown(ctx)
 }

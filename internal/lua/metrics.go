@@ -5,70 +5,123 @@ import (
 	"time"
 )
 
-// LuaMetrics tracks execution statistics atomically (consistent with upstream patterns)
+// LuaMetrics tracks unified execution and router operation statistics atomically
+// Consolidates metrics from LuaMetrics, ChiControllerMetrics, and ChiBindingsMetrics
 type LuaMetrics struct {
-	// Execution metrics
-	activeExecutions atomic.Int32 // Currently running scripts
-	totalExecutions  atomic.Int64 // Total script executions
-	successCount     atomic.Int64 // Successful executions
-	errorCount       atomic.Int64 // Failed executions
+	// Route operations (from ChiControllerMetrics)
+	RouteAdds        atomic.Int64
+	RouteRemoves     atomic.Int64
+	MiddlewareAdds   atomic.Int64
+	GroupCreates     atomic.Int64
+	RouteErrors      atomic.Int64
+	MiddlewareErrors atomic.Int64
+	GroupErrors      atomic.Int64
+
+	// Lua execution metrics (from ChiBindingsMetrics + existing)
+	LuaExecutions      atomic.Int64
+	LuaErrors          atomic.Int64
+	ScriptCompilations atomic.Int64
+	StatePoolGets      atomic.Int64
+	StatePoolPuts      atomic.Int64
 
 	// Performance metrics
-	executionTime   atomic.Int64 // Total execution time (nanoseconds)
-	avgResponseTime atomic.Int64 // Rolling average response time
+	TotalExecutionTime   atomic.Int64
+	AvgExecutionTime     atomic.Int64
+	TotalOperationTime   atomic.Int64
+	TotalOperations      atomic.Int64
+	SuccessfulOperations atomic.Int64
+	FailedOperations     atomic.Int64
+	AvgOperationTime     atomic.Int64
 
-	// Resource metrics
-	memoryUsage     atomic.Int64 // Current memory usage estimate
-	peakMemoryUsage atomic.Int64 // Peak memory usage
+	// Memory and security
+	MemoryUsage        atomic.Int64
+	PeakMemoryUsage    atomic.Int64
+	SecurityViolations atomic.Int64
 
-	// Script metrics
-	compiledScripts atomic.Int32 // Number of compiled scripts
-	cacheHits       atomic.Int64 // Bytecode cache hits
-	cacheMisses     atomic.Int64 // Bytecode cache misses
+	// Active counters
+	ActiveExecutions atomic.Int32
+	CompiledScripts  atomic.Int32
+
+	// Cache metrics
+	CacheHits   atomic.Int64
+	CacheMisses atomic.Int64
 }
 
 func NewLuaMetrics() *LuaMetrics {
 	return &LuaMetrics{}
 }
 
-// TrackExecution returns a completion function (defer pattern)
+// Lua execution methods
+func (m *LuaMetrics) RecordLuaExecution(duration time.Duration) {
+	m.LuaExecutions.Add(1)
+	durationNanos := duration.Nanoseconds()
+	m.TotalExecutionTime.Add(durationNanos)
+
+	// Update rolling average
+	totalExec := m.LuaExecutions.Load()
+	if totalExec > 0 {
+		avgNanos := m.TotalExecutionTime.Load() / totalExec
+		m.AvgExecutionTime.Store(avgNanos)
+	}
+}
+
+func (m *LuaMetrics) RecordLuaError() {
+	m.LuaErrors.Add(1)
+}
+
+func (m *LuaMetrics) RecordScriptCompilation() {
+	m.ScriptCompilations.Add(1)
+}
+
+func (m *LuaMetrics) RecordStatePoolGet() {
+	m.StatePoolGets.Add(1)
+}
+
+func (m *LuaMetrics) RecordStatePoolPut() {
+	m.StatePoolPuts.Add(1)
+}
+
+// Performance tracking
+func (m *LuaMetrics) RecordOperationTime(duration time.Duration) {
+	m.TotalOperationTime.Add(duration.Nanoseconds())
+}
+
+// TrackExecution returns a completion function (defer pattern) - maintains compatibility
 func (m *LuaMetrics) TrackExecution() func(error) {
-	m.activeExecutions.Add(1)
-	m.totalExecutions.Add(1)
+	m.ActiveExecutions.Add(1)
+	m.LuaExecutions.Add(1)
 	start := time.Now()
 
 	return func(err error) {
 		// Update execution counts
-		m.activeExecutions.Add(-1)
+		m.ActiveExecutions.Add(-1)
 
 		// Track success/error
 		if err != nil {
-			m.errorCount.Add(1)
-		} else {
-			m.successCount.Add(1)
+			m.LuaErrors.Add(1)
 		}
 
 		// Track execution time
 		duration := time.Since(start)
-		m.executionTime.Add(duration.Nanoseconds())
+		m.TotalExecutionTime.Add(duration.Nanoseconds())
 
-		// Update rolling average (simple implementation)
-		totalExec := m.totalExecutions.Load()
+		// Update rolling average
+		totalExec := m.LuaExecutions.Load()
 		if totalExec > 0 {
-			avgNanos := m.executionTime.Load() / totalExec
-			m.avgResponseTime.Store(avgNanos)
+			avgNanos := m.TotalExecutionTime.Load() / totalExec
+			m.AvgExecutionTime.Store(avgNanos)
 		}
 	}
 }
 
 // TrackMemoryUsage updates memory usage estimates
 func (m *LuaMetrics) TrackMemoryUsage(bytes int64) {
-	m.memoryUsage.Store(bytes)
+	m.MemoryUsage.Store(bytes)
 
 	// Update peak if necessary
 	for {
-		current := m.peakMemoryUsage.Load()
-		if bytes <= current || m.peakMemoryUsage.CompareAndSwap(current, bytes) {
+		current := m.PeakMemoryUsage.Load()
+		if bytes <= current || m.PeakMemoryUsage.CompareAndSwap(current, bytes) {
 			break
 		}
 	}
@@ -76,35 +129,119 @@ func (m *LuaMetrics) TrackMemoryUsage(bytes int64) {
 
 // TrackCacheHit records bytecode cache statistics
 func (m *LuaMetrics) TrackCacheHit() {
-	m.cacheHits.Add(1)
+	m.CacheHits.Add(1)
 }
 
 func (m *LuaMetrics) TrackCacheMiss() {
-	m.cacheMisses.Add(1)
+	m.CacheMisses.Add(1)
 }
 
-// GetStats returns current metrics (atomic reads)
+func (m *LuaMetrics) RecordSecurityViolation() {
+	m.SecurityViolations.Add(1)
+}
+
+// Router operation methods
+func (m *LuaMetrics) RecordRouteAdd() {
+	m.RouteAdds.Add(1)
+	m.TotalOperations.Add(1)
+}
+
+func (m *LuaMetrics) RecordRouteRemove() {
+	m.RouteRemoves.Add(1)
+	m.TotalOperations.Add(1)
+}
+
+func (m *LuaMetrics) RecordMiddlewareAdd() {
+	m.MiddlewareAdds.Add(1)
+	m.TotalOperations.Add(1)
+}
+
+func (m *LuaMetrics) RecordGroupCreate() {
+	m.GroupCreates.Add(1)
+	m.TotalOperations.Add(1)
+}
+
+func (m *LuaMetrics) RecordRouteError() {
+	m.RouteErrors.Add(1)
+}
+
+func (m *LuaMetrics) RecordMiddlewareError() {
+	m.MiddlewareErrors.Add(1)
+}
+
+func (m *LuaMetrics) RecordGroupError() {
+	m.GroupErrors.Add(1)
+}
+
+// Operation tracking with success/failure
+func (m *LuaMetrics) RecordSuccessfulOperation(duration time.Duration) {
+	m.SuccessfulOperations.Add(1)
+	m.TotalOperationTime.Add(duration.Nanoseconds())
+	m.updateAverageOperationTime()
+}
+
+func (m *LuaMetrics) RecordFailedOperation(duration time.Duration) {
+	m.FailedOperations.Add(1)
+	m.TotalOperationTime.Add(duration.Nanoseconds())
+	m.updateAverageOperationTime()
+}
+
+func (m *LuaMetrics) updateAverageOperationTime() {
+	totalOps := m.TotalOperations.Load()
+	if totalOps > 0 {
+		avgNanos := m.TotalOperationTime.Load() / totalOps
+		m.AvgOperationTime.Store(avgNanos)
+	}
+}
+
+// GetStats returns unified metrics combining all previous implementations
 func (m *LuaMetrics) GetStats() map[string]int64 {
 	return map[string]int64{
-		"active_executions":    int64(m.activeExecutions.Load()),
-		"total_executions":     m.totalExecutions.Load(),
-		"success_count":        m.successCount.Load(),
-		"error_count":          m.errorCount.Load(),
-		"avg_response_time_ms": m.avgResponseTime.Load() / 1_000_000, // Convert to ms
-		"memory_usage_bytes":   m.memoryUsage.Load(),
-		"peak_memory_bytes":    m.peakMemoryUsage.Load(),
-		"compiled_scripts":     int64(m.compiledScripts.Load()),
-		"cache_hits":           m.cacheHits.Load(),
-		"cache_misses":         m.cacheMisses.Load(),
+		// Route operations
+		"route_adds":        m.RouteAdds.Load(),
+		"route_removes":     m.RouteRemoves.Load(),
+		"middleware_adds":   m.MiddlewareAdds.Load(),
+		"group_creates":     m.GroupCreates.Load(),
+		"route_errors":      m.RouteErrors.Load(),
+		"middleware_errors": m.MiddlewareErrors.Load(),
+		"group_errors":      m.GroupErrors.Load(),
+
+		// Lua execution
+		"lua_executions":      m.LuaExecutions.Load(),
+		"lua_errors":          m.LuaErrors.Load(),
+		"script_compilations": m.ScriptCompilations.Load(),
+		"state_pool_gets":     m.StatePoolGets.Load(),
+		"state_pool_puts":     m.StatePoolPuts.Load(),
+
+		// Performance
+		"avg_execution_time_ms":   m.AvgExecutionTime.Load() / 1_000_000, // Convert to ms
+		"total_operation_time":    m.TotalOperationTime.Load(),
+		"total_operations":        m.TotalOperations.Load(),
+		"successful_operations":   m.SuccessfulOperations.Load(),
+		"failed_operations":       m.FailedOperations.Load(),
+		"avg_operation_time_ms":   m.AvgOperationTime.Load() / 1_000_000, // Convert to ms
+
+		// Memory and security
+		"memory_usage_bytes":  m.MemoryUsage.Load(),
+		"peak_memory_bytes":   m.PeakMemoryUsage.Load(),
+		"security_violations": m.SecurityViolations.Load(),
+
+		// Active counters
+		"active_executions": int64(m.ActiveExecutions.Load()),
+		"compiled_scripts":  int64(m.CompiledScripts.Load()),
+
+		// Cache
+		"cache_hits":   m.CacheHits.Load(),
+		"cache_misses": m.CacheMisses.Load(),
 	}
 }
 
 // GetErrorRate calculates current error rate
 func (m *LuaMetrics) GetErrorRate() float64 {
-	total := m.totalExecutions.Load()
+	total := m.LuaExecutions.Load()
 	if total == 0 {
 		return 0.0
 	}
-	errors := m.errorCount.Load()
+	errors := m.LuaErrors.Load()
 	return float64(errors) / float64(total)
 }
