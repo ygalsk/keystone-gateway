@@ -90,6 +90,7 @@ func (e *Engine) ExecuteRouteScript(ctx context.Context, r *http.Request) (*type
 	return result, err
 }
 
+
 // setupRequestContext exposes request data to Lua
 func (e *Engine) setupRequestContext(L *lua.LState, r *http.Request) error {
 	// Create request table for Lua
@@ -181,6 +182,7 @@ func (e *Engine) getRoutingScript(r *http.Request) string {
         }
     `
 }
+
 
 // GetStats returns engine statistics
 func (e *Engine) GetStats() map[string]interface{} {

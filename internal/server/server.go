@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"keystone-gateway/internal/proxy"
 	"keystone-gateway/internal/lua"
+	"keystone-gateway/internal/proxy"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -25,8 +27,8 @@ type Server struct {
 	healthChecker *proxy.HealthChecker
 	startTime     time.Time
 	// Lua components
-	luaEngine     *lua.Engine
-	luaChiRouter  *lua.ChiRouter
+	luaEngine    *lua.Engine
+	luaChiRouter *lua.ChiRouter
 }
 
 func New(cfg *config.Config, logger *slog.Logger) *Server {
@@ -57,16 +59,6 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Start the health checker
 	hc.Start()
 
-	// Initialize Lua components
-	// TODO(human): Configure these values based on your needs - maxStates and maxScripts
-	luaEngine := lua.NewEngine(10, 100) // 10 Lua states, 100 max scripts
-	luaMetrics := lua.NewLuaMetrics()
-	
-	// Create state pool for the Chi router
-	statePool := lua.NewLuaStatePool(10, func() *lua_lib.LState {
-		return lua.CreateSecureLuaState(lua.DefaultSecurityConfig())
-	})
-	
 	// Build a router with base middleware (excluding proxy middleware)
 	r := chi.NewRouter()
 	baseMiddleware := BuildBaseMiddleware(logger, cfg)
@@ -74,8 +66,74 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		r.Use(m)
 	}
 
-	// Initialize Lua Chi router with the main Chi router
-	luaChiRouter := lua.NewChiRouter(r, statePool, luaMetrics, logger)
+	// Initialize Lua components based on configuration
+	var luaEngine *lua.Engine
+	var luaChiRouter *lua.ChiRouter
+
+	if cfg.Lua != nil && cfg.Lua.Enabled {
+		// Use configuration values or defaults
+		maxStates := cfg.Lua.MaxStates
+		if maxStates <= 0 {
+			maxStates = 10
+		}
+		maxScripts := cfg.Lua.MaxScripts
+		if maxScripts <= 0 {
+			maxScripts = 100
+		}
+
+		luaEngine = lua.NewEngine(maxStates, maxScripts)
+		luaMetrics := lua.NewLuaMetrics()
+
+		// Create state pool for the Chi router
+		statePool := lua.NewLuaStatePool(maxStates, func() *lua_lib.LState {
+			return lua.CreateSecureLuaState(lua.DefaultSecurityConfig())
+		})
+
+		// Initialize Lua Chi router with the main Chi router
+		luaChiRouter = lua.NewChiRouter(r, statePool, luaMetrics, logger)
+
+		// Load tenant scripts - both middleware and routing
+		for tenantID, tenantConfig := range cfg.Lua.TenantScripts {
+			if !tenantConfig.Enabled {
+				continue
+			}
+
+			// Load middleware script first
+			if tenantConfig.MiddlewareScript != "" {
+				if err := loadTenantScript(luaChiRouter, statePool, cfg.Lua.ScriptsDir, tenantConfig.MiddlewareScript, tenantID, logger); err != nil {
+					logger.Error("failed to load tenant middleware script",
+						"tenant", tenantID,
+						"script", tenantConfig.MiddlewareScript,
+						"error", err)
+				} else {
+					logger.Info("loaded tenant middleware script",
+						"tenant", tenantID,
+						"script", tenantConfig.MiddlewareScript)
+				}
+			}
+
+			// Load routing script second (so routes are registered after middleware)
+			if tenantConfig.RoutingScript != "" {
+				if err := loadTenantScript(luaChiRouter, statePool, cfg.Lua.ScriptsDir, tenantConfig.RoutingScript, tenantID, logger); err != nil {
+					logger.Error("failed to load tenant routing script",
+						"tenant", tenantID,
+						"script", tenantConfig.RoutingScript,
+						"error", err)
+				} else {
+					logger.Info("loaded tenant routing script",
+						"tenant", tenantID,
+						"script", tenantConfig.RoutingScript)
+				}
+			}
+		}
+
+		logger.Info("lua scripting enabled",
+			"max_states", maxStates,
+			"max_scripts", maxScripts,
+			"scripts_dir", cfg.Lua.ScriptsDir)
+	} else {
+		logger.Info("lua scripting disabled")
+	}
 
 	// Create a server instance first to access in closures
 	srv := &http.Server{
@@ -111,11 +169,10 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create a proxy-enabled sub-router for all other requests
 	// This ensures only non-admin routes get proxied to backends
 	proxyRouter := chi.NewRouter()
-	
-	// Add Lua routing middleware before proxy middleware
-	// This allows Lua scripts to intercept and handle requests
-	proxyRouter.Use(LuaRoutingMiddleware(luaEngine, logger))
-	
+
+	// Lua middleware is already registered via luaChiRouter.SetupLuaBindings()
+	// when tenant scripts call chi_middleware() during script execution
+
 	// Add proxy middleware as fallback
 	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
 
@@ -331,4 +388,31 @@ func (s *Server) Stop() error {
 	}
 
 	return s.server.Shutdown(ctx)
+}
+
+// loadTenantScript loads and executes a tenant's Lua middleware script
+// This allows the script to register middleware via chi_middleware() calls
+func loadTenantScript(luaChiRouter *lua.ChiRouter, statePool *lua.LuaStatePool, scriptsDir, scriptFile, tenantID string, logger *slog.Logger) error {
+	// Read script file
+	scriptPath := filepath.Join(scriptsDir, scriptFile)
+	scriptContent, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return fmt.Errorf("failed to read script file %s: %w", scriptPath, err)
+	}
+
+	// Get Lua state from pool
+	L := statePool.Get()
+	defer statePool.Put(L)
+
+	// Set up bindings so script can call chi_middleware()
+	if err := luaChiRouter.SetupLuaBindings(L, scriptFile, tenantID); err != nil {
+		return fmt.Errorf("failed to setup Lua bindings: %w", err)
+	}
+
+	// Execute script - this will register middleware
+	if err := L.DoString(string(scriptContent)); err != nil {
+		return fmt.Errorf("failed to execute script: %w", err)
+	}
+
+	return nil
 }

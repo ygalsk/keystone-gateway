@@ -1,0 +1,42 @@
+# Simple Keystone Gateway Configuration - Basic Lua Test
+# Minimal configuration for testing Lua route functionality
+
+server:
+  addr: ":8080"
+  read_header_timeout: "5s"
+  idle_timeout: "120s"
+
+# Simple upstream configuration
+upstreams:
+  load_balancing:
+    strategy: "round_robin"
+  
+  health_check:
+    enabled: true
+    path: "/health"
+    interval: "30s"
+    timeout: "5s"
+    failure_threshold: 2
+    success_threshold: 1
+    expected_status_codes: [200]
+  
+  targets:
+    - name: "test-backend"
+      url: "http://localhost:3001"
+      weight: 100
+      enabled: true
+
+# Minimal Lua configuration - just one tenant
+lua:
+  enabled: true
+  max_states: 10        # Number of Lua states in the pool
+  max_scripts: 100      # Maximum number of cached compiled scripts
+  script_timeout: "30s" # Maximum execution time for Lua scripts
+  middleware_timeout: "10s" # Maximum execution time for Lua middleware
+  scripts_dir: "./lua-scripts" # Directory containing Lua scripts (optional)
+  
+  tenant_scripts:
+    "simple":
+      enabled: true
+      routing_script: "simple_routes.lua"
+      middleware_script: "simple_middleware.lua"

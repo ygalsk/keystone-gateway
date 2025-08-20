@@ -15,7 +15,7 @@ import (
 
 // ChiRouter provides Lua integration with Chi router
 type ChiRouter struct {
-	// Core dependencies - NO INTERFACES
+	// Core dependencies
 	router    chi.Router
 	statePool *LuaStatePool
 	metrics   *LuaMetrics // Single metrics system
@@ -807,6 +807,15 @@ func (cr *ChiRouter) createLuaRequest(L *lua.LState, r *http.Request) *lua.LTabl
 	}
 	L.SetField(reqTable, "params", paramsTable)
 
+	// Add headers
+	headersTable := L.NewTable()
+	for key, values := range r.Header {
+		if len(values) > 0 {
+			L.SetField(headersTable, key, lua.LString(values[0]))
+		}
+	}
+	L.SetField(reqTable, "headers", headersTable)
+
 	return reqTable
 }
 
@@ -828,6 +837,14 @@ func (cr *ChiRouter) createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua
 		return 0
 	})
 	L.SetField(respTable, "status", statusFunc)
+
+	headerFunc := L.NewFunction(func(L *lua.LState) int {
+		key := L.ToString(1)
+		value := L.ToString(2)
+		w.Header().Set(key, value)
+		return 0
+	})
+	L.SetField(respTable, "header", headerFunc)
 
 	return respTable
 }

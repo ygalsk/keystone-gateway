@@ -18,6 +18,8 @@ type Config struct {
 	Server ServerConfig `yaml:"server" json:"server"`
 	// Upstream configuration
 	Upstreams UpstreamsConfig `yaml:"upstreams" json:"upstreams"`
+	// Lua configuration (optional)
+	Lua *LuaConfig `yaml:"lua,omitempty" json:"lua,omitempty"`
 }
 
 // ServerConfig defines basic server settings.
@@ -68,6 +70,34 @@ type UpstreamTarget struct {
 type LoadBalancingConfig struct {
 	// Strategy defines the load balancing algorithm
 	Strategy string `yaml:"strategy" json:"strategy"`
+}
+
+// LuaConfig defines Lua scripting configuration.
+type LuaConfig struct {
+	// Enabled determines if Lua scripting is enabled
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// MaxStates defines the maximum number of Lua states in the pool
+	MaxStates int `yaml:"max_states" json:"max_states"`
+	// MaxScripts defines the maximum number of cached compiled scripts
+	MaxScripts int `yaml:"max_scripts" json:"max_scripts"`
+	// ScriptTimeout defines the maximum execution time for Lua scripts
+	ScriptTimeout time.Duration `yaml:"script_timeout" json:"script_timeout"`
+	// MiddlewareTimeout defines the maximum execution time for Lua middleware
+	MiddlewareTimeout time.Duration `yaml:"middleware_timeout" json:"middleware_timeout"`
+	// ScriptsDir defines the directory where Lua scripts are stored
+	ScriptsDir string `yaml:"scripts_dir,omitempty" json:"scripts_dir,omitempty"`
+	// TenantScripts defines per-tenant Lua script mappings
+	TenantScripts map[string]TenantLuaConfig `yaml:"tenant_scripts,omitempty" json:"tenant_scripts,omitempty"`
+}
+
+// TenantLuaConfig defines Lua script configuration for a specific tenant.
+type TenantLuaConfig struct {
+	// RoutingScript defines the script for request routing decisions
+	RoutingScript string `yaml:"routing_script,omitempty" json:"routing_script,omitempty"`
+	// MiddlewareScript defines the script for request middleware
+	MiddlewareScript string `yaml:"middleware_script,omitempty" json:"middleware_script,omitempty"`
+	// Enabled determines if Lua scripting is enabled for this tenant
+	Enabled bool `yaml:"enabled" json:"enabled"`
 }
 
 // Default returns a minimal default configuration.
@@ -207,6 +237,29 @@ func (c *Config) Validate() error {
 		}
 		if _, err := os.Stat(c.Server.TLS.KeyFile); os.IsNotExist(err) {
 			return fmt.Errorf("tls.key_file does not exist: %s", c.Server.TLS.KeyFile)
+		}
+	}
+
+	// Validate Lua configuration if enabled
+	if c.Lua != nil && c.Lua.Enabled {
+		if c.Lua.MaxStates <= 0 {
+			return fmt.Errorf("lua.max_states must be positive when Lua is enabled")
+		}
+		if c.Lua.MaxScripts <= 0 {
+			return fmt.Errorf("lua.max_scripts must be positive when Lua is enabled")
+		}
+		if c.Lua.ScriptTimeout <= 0 {
+			return fmt.Errorf("lua.script_timeout must be positive when Lua is enabled")
+		}
+		if c.Lua.MiddlewareTimeout <= 0 {
+			return fmt.Errorf("lua.middleware_timeout must be positive when Lua is enabled")
+		}
+		
+		// Validate scripts directory if provided
+		if c.Lua.ScriptsDir != "" {
+			if _, err := os.Stat(c.Lua.ScriptsDir); os.IsNotExist(err) {
+				return fmt.Errorf("lua.scripts_dir does not exist: %s", c.Lua.ScriptsDir)
+			}
 		}
 	}
 

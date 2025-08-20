@@ -11,7 +11,6 @@ import (
 
 	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/proxy"
-	"keystone-gateway/internal/lua"
 )
 
 // BuildBaseMiddleware creates the base middleware stack without proxy middleware
@@ -61,20 +60,3 @@ func ProxyMiddleware(lb *proxy.LoadBalancer, hc *proxy.HealthChecker, logger *sl
 	}
 }
 
-// LuaRoutingMiddleware creates middleware for Lua-based request routing
-// TODO(human): Implement Lua routing middleware function
-func LuaRoutingMiddleware(luaEngine *lua.Engine, logger *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// TODO(human): Implement the middleware logic here
-			// This should:
-			// 1. Extract tenant info from request (e.g., from headers like X-Tenant-ID)
-			// 2. Check if there's a Lua script for this tenant/route
-			// 3. Execute Lua script if found, handling the response
-			// 4. Fall back to next.ServeHTTP(w, r) if no script or execution fails
-			
-			// For now, just continue to next middleware
-			next.ServeHTTP(w, r)
-		})
-	}
-}
