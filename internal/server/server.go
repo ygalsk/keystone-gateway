@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"keystone-gateway/internal/lua"
-	"keystone-gateway/internal/proxy"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +14,8 @@ import (
 	lua_lib "github.com/yuin/gopher-lua"
 
 	"keystone-gateway/internal/config"
+	"keystone-gateway/internal/lua"
+	"keystone-gateway/internal/proxy"
 )
 
 type Server struct {
@@ -58,7 +58,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 
 	// Start the health checker
 	hc.Start()
-
+	//TODO from here --->
 	// Build a router with base middleware (excluding proxy middleware)
 	r := chi.NewRouter()
 	baseMiddleware := BuildBaseMiddleware(logger, cfg)
@@ -134,6 +134,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	} else {
 		logger.Info("lua scripting disabled")
 	}
+	//TODO until here <---
 
 	// Create a server instance first to access in closures
 	srv := &http.Server{
@@ -154,7 +155,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		luaEngine:     luaEngine,
 		luaChiRouter:  luaChiRouter,
 	}
-
+	// TODO think about protecting admin routes (JWT, private/pub key)
 	// Gateway health endpoint - handled directly by gateway
 	r.Get("/health", server.handleHealth)
 
@@ -169,9 +170,6 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	// Create a proxy-enabled sub-router for all other requests
 	// This ensures only non-admin routes get proxied to backends
 	proxyRouter := chi.NewRouter()
-
-	// Lua middleware is already registered via luaChiRouter.SetupLuaBindings()
-	// when tenant scripts call chi_middleware() during script execution
 
 	// Add proxy middleware as fallback
 	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
@@ -292,6 +290,7 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// TODO maybe clean up the conversion part into a designated function
 // handleAdminMetrics handles the Prometheus metrics endpoint
 func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
@@ -390,6 +389,7 @@ func (s *Server) Stop() error {
 	return s.server.Shutdown(ctx)
 }
 
+// TODO needs to be moved to engine.go or similar
 // loadTenantScript loads and executes a tenant's Lua middleware script
 // This allows the script to register middleware via chi_middleware() calls
 func loadTenantScript(luaChiRouter *lua.ChiRouter, statePool *lua.LuaStatePool, scriptsDir, scriptFile, tenantID string, logger *slog.Logger) error {

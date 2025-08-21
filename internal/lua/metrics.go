@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"log/slog"
 	"sync/atomic"
 	"time"
 )
@@ -194,8 +195,36 @@ func (m *LuaMetrics) updateAverageOperationTime() {
 	}
 }
 
+// TrackOperation records metrics for router operations - moved from ChiRouter
+func (m *LuaMetrics) TrackOperation(operation string, start time.Time, err error, logger *slog.Logger) {
+	duration := time.Since(start)
+
+	if err != nil {
+		// Track error based on the operation type
+		switch operation {
+		case "route_add", "route_remove":
+			m.RecordRouteError()
+		case "middleware_add":
+			m.RecordMiddlewareError()
+		case "group_create":
+			m.RecordGroupError()
+		}
+		m.RecordFailedOperation(duration)
+		logger.Error("chi router operation failed",
+			"operation", operation,
+			"duration_ms", duration.Milliseconds(),
+			"error", err.Error())
+	} else {
+		m.RecordSuccessfulOperation(duration)
+		logger.Debug("chi router operation completed",
+			"operation", operation,
+			"duration_ms", duration.Milliseconds())
+	}
+}
+
 // GetStats returns unified metrics combining all previous implementations
-func (m *LuaMetrics) GetStats() map[string]int64 {
+// Accepts router state counts to provide complete statistics for Prometheus
+func (m *LuaMetrics) GetStats(routesCount, middlewaresCount, groupsCount int) map[string]int64 {
 	return map[string]int64{
 		// Route operations
 		"route_adds":        m.RouteAdds.Load(),
@@ -205,6 +234,11 @@ func (m *LuaMetrics) GetStats() map[string]int64 {
 		"route_errors":      m.RouteErrors.Load(),
 		"middleware_errors": m.MiddlewareErrors.Load(),
 		"group_errors":      m.GroupErrors.Load(),
+
+		// Current router state
+		"routes_registered":      int64(routesCount),
+		"middlewares_registered": int64(middlewaresCount),
+		"groups_created":         int64(groupsCount),
 
 		// Lua execution
 		"lua_executions":      m.LuaExecutions.Load(),

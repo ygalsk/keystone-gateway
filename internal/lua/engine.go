@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	"keystone-gateway/internal/types"
 	lua "github.com/yuin/gopher-lua"
+	"keystone-gateway/internal/types"
 )
 
 // Engine represents the main Lua execution engine
@@ -90,7 +90,6 @@ func (e *Engine) ExecuteRouteScript(ctx context.Context, r *http.Request) (*type
 	return result, err
 }
 
-
 // setupRequestContext exposes request data to Lua
 func (e *Engine) setupRequestContext(L *lua.LState, r *http.Request) error {
 	// Create request table for Lua
@@ -169,6 +168,7 @@ func (e *Engine) extractRouteResult(L *lua.LState) (*types.RouteResult, error) {
 
 // getRoutingScript returns the Lua script for the request (implement based on your needs)
 func (e *Engine) getRoutingScript(r *http.Request) string {
+	// TODO get from server.go!!!!!
 	// This is where you'd implement tenant-specific script resolution
 	// For now, return a simple example script
 	return `
@@ -183,7 +183,6 @@ func (e *Engine) getRoutingScript(r *http.Request) string {
     `
 }
 
-
 // GetStats returns engine statistics
 func (e *Engine) GetStats() map[string]interface{} {
 	stats := map[string]interface{}{
@@ -196,8 +195,8 @@ func (e *Engine) GetStats() map[string]interface{} {
 		stats["pool_"+k] = v
 	}
 
-	// Add execution metrics
-	for k, v := range e.metrics.GetStats() {
+	// Add execution metrics (Engine doesn't track router state, pass zeros)
+	for k, v := range e.metrics.GetStats(0, 0, 0) {
 		stats["exec_"+k] = v
 	}
 

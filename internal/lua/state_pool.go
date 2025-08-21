@@ -3,7 +3,6 @@ package lua
 import (
 	"sync"
 	"sync/atomic"
-	//"time"
 
 	lua "github.com/yuin/gopher-lua"
 )
