@@ -3,20 +3,21 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	lua_lib "github.com/yuin/gopher-lua"
 
 	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/lua"
+	"keystone-gateway/internal/metrics"
+	"keystone-gateway/internal/middleware"
 	"keystone-gateway/internal/proxy"
+	"keystone-gateway/internal/router"
 )
+
+// TODO(human): Update luaMetrics variables and handleAdminMetrics function below
 
 type Server struct {
 	router        *chi.Mux
@@ -26,6 +27,7 @@ type Server struct {
 	loadBalancer  *proxy.LoadBalancer
 	healthChecker *proxy.HealthChecker
 	startTime     time.Time
+	metrics       *metrics.LuaMetrics
 	// Lua components
 	luaEngine    *lua.Engine
 	luaChiRouter *lua.ChiRouter
@@ -58,83 +60,20 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 
 	// Start the health checker
 	hc.Start()
-	//TODO from here --->
-	// Build a router with base middleware (excluding proxy middleware)
-	r := chi.NewRouter()
-	baseMiddleware := BuildBaseMiddleware(logger, cfg)
-	for _, m := range baseMiddleware {
-		r.Use(m)
+
+	// Create router with all middleware and Lua components
+	routerResult, err := router.NewRouter(router.RouterConfig{
+		Logger: logger,
+		Config: cfg,
+	})
+	if err != nil {
+		logger.Error("failed to create router", "error", err)
+		return nil
 	}
 
-	// Initialize Lua components based on configuration
-	var luaEngine *lua.Engine
-	var luaChiRouter *lua.ChiRouter
-
-	if cfg.Lua != nil && cfg.Lua.Enabled {
-		// Use configuration values or defaults
-		maxStates := cfg.Lua.MaxStates
-		if maxStates <= 0 {
-			maxStates = 10
-		}
-		maxScripts := cfg.Lua.MaxScripts
-		if maxScripts <= 0 {
-			maxScripts = 100
-		}
-
-		luaEngine = lua.NewEngine(maxStates, maxScripts)
-		luaMetrics := lua.NewLuaMetrics()
-
-		// Create state pool for the Chi router
-		statePool := lua.NewLuaStatePool(maxStates, func() *lua_lib.LState {
-			return lua.CreateSecureLuaState(lua.DefaultSecurityConfig())
-		})
-
-		// Initialize Lua Chi router with the main Chi router
-		luaChiRouter = lua.NewChiRouter(r, statePool, luaMetrics, logger)
-
-		// Load tenant scripts - both middleware and routing
-		for tenantID, tenantConfig := range cfg.Lua.TenantScripts {
-			if !tenantConfig.Enabled {
-				continue
-			}
-
-			// Load middleware script first
-			if tenantConfig.MiddlewareScript != "" {
-				if err := loadTenantScript(luaChiRouter, statePool, cfg.Lua.ScriptsDir, tenantConfig.MiddlewareScript, tenantID, logger); err != nil {
-					logger.Error("failed to load tenant middleware script",
-						"tenant", tenantID,
-						"script", tenantConfig.MiddlewareScript,
-						"error", err)
-				} else {
-					logger.Info("loaded tenant middleware script",
-						"tenant", tenantID,
-						"script", tenantConfig.MiddlewareScript)
-				}
-			}
-
-			// Load routing script second (so routes are registered after middleware)
-			if tenantConfig.RoutingScript != "" {
-				if err := loadTenantScript(luaChiRouter, statePool, cfg.Lua.ScriptsDir, tenantConfig.RoutingScript, tenantID, logger); err != nil {
-					logger.Error("failed to load tenant routing script",
-						"tenant", tenantID,
-						"script", tenantConfig.RoutingScript,
-						"error", err)
-				} else {
-					logger.Info("loaded tenant routing script",
-						"tenant", tenantID,
-						"script", tenantConfig.RoutingScript)
-				}
-			}
-		}
-
-		logger.Info("lua scripting enabled",
-			"max_states", maxStates,
-			"max_scripts", maxScripts,
-			"scripts_dir", cfg.Lua.ScriptsDir)
-	} else {
-		logger.Info("lua scripting disabled")
-	}
-	//TODO until here <---
+	r := routerResult.Router
+	luaEngine := routerResult.LuaEngine
+	luaChiRouter := routerResult.LuaChiRouter
 
 	// Create a server instance first to access in closures
 	srv := &http.Server{
@@ -144,6 +83,9 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
+	// Initialize metrics (needed for admin endpoints)
+	luaMetrics := metrics.NewLuaMetrics()
+
 	server := &Server{
 		router:        r,
 		config:        cfg,
@@ -152,15 +94,17 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		loadBalancer:  lb,
 		healthChecker: hc,
 		startTime:     time.Now(),
+		metrics:       luaMetrics,
 		luaEngine:     luaEngine,
 		luaChiRouter:  luaChiRouter,
 	}
-	// TODO think about protecting admin routes (JWT, private/pub key)
 	// Gateway health endpoint - handled directly by gateway
 	r.Get("/health", server.handleHealth)
 
 	// Admin endpoints - handled directly by gateway, no proxying
 	r.Route("/admin", func(r chi.Router) {
+		// Apply admin security middleware to all admin routes
+		r.Use(middleware.AdminSecurityMiddleware(cfg.Server.Admin, logger))
 		r.Get("/health", server.handleAdminHealth)
 		r.Get("/stats", server.handleAdminStats)
 		r.Get("/status", server.handleAdminStatus)
@@ -172,7 +116,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 	proxyRouter := chi.NewRouter()
 
 	// Add proxy middleware as fallback
-	proxyRouter.Use(ProxyMiddleware(lb, hc, logger))
+	proxyRouter.Use(middleware.ProxyMiddleware(lb, hc, logger))
 
 	// Mount the proxy router to handle all other paths
 	// This will catch any request that doesn't match admin routes
@@ -290,7 +234,6 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// TODO maybe clean up the conversion part into a designated function
 // handleAdminMetrics handles the Prometheus metrics endpoint
 func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
@@ -298,59 +241,43 @@ func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 	// Get load balancer stats
 	lbStats := s.loadBalancer.GetStats()
 
-	// Server uptime
-	uptime := time.Since(s.startTime)
-
-	// Convert to Prometheus format
-	fmt.Fprintf(w, "# HELP keystone_gateway_info Information about the keystone gateway\n")
-	fmt.Fprintf(w, "# TYPE keystone_gateway_info gauge\n")
-	fmt.Fprintf(w, "keystone_gateway_info{version=\"v1.0.0\",strategy=\"%s\"} 1\n", lbStats.Strategy)
-
-	fmt.Fprintf(w, "# HELP keystone_gateway_uptime_seconds Server uptime in seconds\n")
-	fmt.Fprintf(w, "# TYPE keystone_gateway_uptime_seconds counter\n")
-	fmt.Fprintf(w, "keystone_gateway_uptime_seconds %.2f\n", uptime.Seconds())
-
-	fmt.Fprintf(w, "# HELP keystone_upstreams_total Total number of upstreams\n")
-	fmt.Fprintf(w, "# TYPE keystone_upstreams_total gauge\n")
-	fmt.Fprintf(w, "keystone_upstreams_total %d\n", lbStats.TotalUpstreams)
-
-	fmt.Fprintf(w, "# HELP keystone_healthy_upstreams Total healthy upstreams\n")
-	fmt.Fprintf(w, "# TYPE keystone_healthy_upstreams gauge\n")
-	fmt.Fprintf(w, "keystone_healthy_upstreams %d\n", lbStats.HealthyUpstreams)
-
-	// Per-upstream metrics
-	fmt.Fprintf(w, "# HELP keystone_upstream_requests_total Total requests sent to upstream\n")
-	fmt.Fprintf(w, "# TYPE keystone_upstream_requests_total counter\n")
-
-	fmt.Fprintf(w, "# HELP keystone_upstream_response_time_microseconds Average response time in microseconds\n")
-	fmt.Fprintf(w, "# TYPE keystone_upstream_response_time_microseconds gauge\n")
-
-	fmt.Fprintf(w, "# HELP keystone_upstream_healthy Health status of upstream (1=healthy, 0=unhealthy)\n")
-	fmt.Fprintf(w, "# TYPE keystone_upstream_healthy gauge\n")
-
-	fmt.Fprintf(w, "# HELP keystone_upstream_active_connections Current active connections to upstream\n")
-	fmt.Fprintf(w, "# TYPE keystone_upstream_active_connections gauge\n")
-
-	fmt.Fprintf(w, "# HELP keystone_upstream_consecutive_failures Number of consecutive failures\n")
-	fmt.Fprintf(w, "# TYPE keystone_upstream_consecutive_failures gauge\n")
-
-	for _, upstream := range lbStats.UpstreamStats {
-		labels := fmt.Sprintf("upstream=\"%s\",url=\"%s\"", upstream.Name, upstream.URL)
-
-		fmt.Fprintf(w, "keystone_upstream_requests_total{%s} %d\n", labels, upstream.TotalRequests)
-		fmt.Fprintf(w, "keystone_upstream_response_time_microseconds{%s} %d\n", labels, upstream.AvgResponseTime.Microseconds())
-		fmt.Fprintf(w, "keystone_upstream_healthy{%s} %d\n", labels, boolToInt(upstream.Healthy))
-		fmt.Fprintf(w, "keystone_upstream_active_connections{%s} %d\n", labels, upstream.ActiveConnections)
-		fmt.Fprintf(w, "keystone_upstream_consecutive_failures{%s} %d\n", labels, upstream.ConsecutiveFailures)
+	// Convert to metrics formatter compatible format
+	formatterStats := metrics.LoadBalancerStats{
+		Strategy:         lbStats.Strategy,
+		TotalUpstreams:   lbStats.TotalUpstreams,
+		HealthyUpstreams: lbStats.HealthyUpstreams,
+		UpstreamStats:    make([]metrics.UpstreamStat, len(lbStats.UpstreamStats)),
 	}
-}
 
-// boolToInt converts boolean to integer for Prometheus metrics
-func boolToInt(b bool) int {
-	if b {
-		return 1
+	// Convert upstream stats to formatter format
+	for i, upstream := range lbStats.UpstreamStats {
+		formatterStats.UpstreamStats[i] = metrics.UpstreamStat{
+			Name:                upstream.Name,
+			URL:                 upstream.URL,
+			TotalRequests:       upstream.TotalRequests,
+			AvgResponseTime:     upstream.AvgResponseTime,
+			Healthy:             upstream.Healthy,
+			ActiveConnections:   int64(upstream.ActiveConnections),
+			ConsecutiveFailures: int64(upstream.ConsecutiveFailures),
+		}
 	}
-	return 0
+
+	// Format load balancer metrics using consolidated formatter
+	if err := metrics.FormatPrometheusMetrics(w, formatterStats, s.startTime); err != nil {
+		s.logger.Error("failed to format load balancer metrics", "error", err)
+	}
+
+	// Add Lua metrics if available
+	if s.luaChiRouter != nil {
+		luaStats := s.metrics.GetStats(
+			len(s.luaChiRouter.GetRoutes()),
+			0, // middlewares count - would need to be tracked separately
+			0, // groups count - would need to be tracked separately  
+		)
+		if err := metrics.FormatLuaMetrics(w, luaStats); err != nil {
+			s.logger.Error("failed to format lua metrics", "error", err)
+		}
+	}
 }
 
 func (s *Server) Start() error {
@@ -389,30 +316,3 @@ func (s *Server) Stop() error {
 	return s.server.Shutdown(ctx)
 }
 
-// TODO needs to be moved to engine.go or similar
-// loadTenantScript loads and executes a tenant's Lua middleware script
-// This allows the script to register middleware via chi_middleware() calls
-func loadTenantScript(luaChiRouter *lua.ChiRouter, statePool *lua.LuaStatePool, scriptsDir, scriptFile, tenantID string, logger *slog.Logger) error {
-	// Read script file
-	scriptPath := filepath.Join(scriptsDir, scriptFile)
-	scriptContent, err := os.ReadFile(scriptPath)
-	if err != nil {
-		return fmt.Errorf("failed to read script file %s: %w", scriptPath, err)
-	}
-
-	// Get Lua state from pool
-	L := statePool.Get()
-	defer statePool.Put(L)
-
-	// Set up bindings so script can call chi_middleware()
-	if err := luaChiRouter.SetupLuaBindings(L, scriptFile, tenantID); err != nil {
-		return fmt.Errorf("failed to setup Lua bindings: %w", err)
-	}
-
-	// Execute script - this will register middleware
-	if err := L.DoString(string(scriptContent)); err != nil {
-		return fmt.Errorf("failed to execute script: %w", err)
-	}
-
-	return nil
-}

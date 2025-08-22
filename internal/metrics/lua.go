@@ -1,4 +1,4 @@
-package lua
+package metrics
 
 import (
 	"log/slog"

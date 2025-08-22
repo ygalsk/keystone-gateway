@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	lua "github.com/yuin/gopher-lua"
+	"keystone-gateway/internal/metrics"
 )
 
 // RouterInterface defines the operations that LuaBindings needs from a router
@@ -25,7 +26,7 @@ type LuaBindings struct {
 	// Core dependencies
 	router    RouterInterface
 	statePool *LuaStatePool
-	metrics   *LuaMetrics
+	metrics   *metrics.LuaMetrics
 	logger    *slog.Logger
 
 	// Current execution context
@@ -34,7 +35,7 @@ type LuaBindings struct {
 }
 
 // NewLuaBindings creates a new LuaBindings instance with the required dependencies
-func NewLuaBindings(router RouterInterface, statePool *LuaStatePool, metrics *LuaMetrics, logger *slog.Logger) *LuaBindings {
+func NewLuaBindings(router RouterInterface, statePool *LuaStatePool, metrics *metrics.LuaMetrics, logger *slog.Logger) *LuaBindings {
 	if logger == nil {
 		logger = slog.Default()
 	}

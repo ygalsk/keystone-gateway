@@ -7,14 +7,17 @@ import (
 	"sync/atomic"
 
 	lua "github.com/yuin/gopher-lua"
+	"keystone-gateway/internal/metrics"
 	"keystone-gateway/internal/types"
 )
+
+// TODO(human): Update the metrics field type and NewLuaMetrics() call below
 
 // Engine represents the main Lua execution engine
 type Engine struct {
 	statePool *LuaStatePool
 	compiler  *ScriptCompiler
-	metrics   *LuaMetrics
+	metrics   *metrics.LuaMetrics
 	config    SecurityConfig
 
 	// Atomic counters for engine state
@@ -28,7 +31,7 @@ func NewEngine(maxStates, maxScripts int) *Engine {
 
 	engine := &Engine{
 		compiler: NewScriptCompiler(maxScripts),
-		metrics:  NewLuaMetrics(),
+		metrics:  metrics.NewLuaMetrics(),
 		config:   config,
 	}
 

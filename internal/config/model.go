@@ -4,12 +4,15 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"time"
 
 	"gopkg.in/yaml.v3"
 	"keystone-gateway/internal/types"
 )
+
+//TODO on the whole config section!! : create default values for almost ANYTHING, create sensible defaults so the config stays clean and only has the ability to creat emore detail config IF NEEDED by the user
 
 // Config represents the minimal configuration for Keystone Gateway.
 // Focused on upstream management with extensibility for future features.
@@ -32,6 +35,8 @@ type ServerConfig struct {
 	IdleTimeout time.Duration `yaml:"idle_timeout" json:"idle_timeout"`
 	// TLS configuration (optional)
 	TLS *TLSConfig `yaml:"tls,omitempty" json:"tls,omitempty"`
+	// Admin endpoints security configuration (optional)
+	Admin *AdminConfig `yaml:"admin,omitempty" json:"admin,omitempty"`
 }
 
 // TLSConfig defines TLS/HTTPS settings.
@@ -42,6 +47,16 @@ type TLSConfig struct {
 	CertFile string `yaml:"cert_file" json:"cert_file"`
 	// KeyFile path to TLS private key file
 	KeyFile string `yaml:"key_file" json:"key_file"`
+}
+
+// AdminConfig defines security settings for admin endpoints.
+type AdminConfig struct {
+	// Enabled determines if admin endpoints are enabled
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// LocalhostOnly restricts admin endpoints to localhost connections only
+	LocalhostOnly bool `yaml:"localhost_only" json:"localhost_only"`
+	// AllowedIPs is a list of allowed IP addresses/CIDR blocks for admin access
+	AllowedIPs []string `yaml:"allowed_ips,omitempty" json:"allowed_ips,omitempty"`
 }
 
 // UpstreamsConfig defines upstream server configuration.
@@ -230,7 +245,7 @@ func (c *Config) Validate() error {
 		if c.Server.TLS.KeyFile == "" {
 			return fmt.Errorf("tls.key_file cannot be empty when TLS is enabled")
 		}
-		
+
 		// Check if cert and key files exist
 		if _, err := os.Stat(c.Server.TLS.CertFile); os.IsNotExist(err) {
 			return fmt.Errorf("tls.cert_file does not exist: %s", c.Server.TLS.CertFile)
@@ -254,12 +269,19 @@ func (c *Config) Validate() error {
 		if c.Lua.MiddlewareTimeout <= 0 {
 			return fmt.Errorf("lua.middleware_timeout must be positive when Lua is enabled")
 		}
-		
+
 		// Validate scripts directory if provided
 		if c.Lua.ScriptsDir != "" {
 			if _, err := os.Stat(c.Lua.ScriptsDir); os.IsNotExist(err) {
 				return fmt.Errorf("lua.scripts_dir does not exist: %s", c.Lua.ScriptsDir)
 			}
+		}
+	}
+
+	// Validate Admin configuration if provided
+	if c.Server.Admin != nil {
+		if err := c.Server.Admin.Validate(); err != nil {
+			return fmt.Errorf("admin config: %w", err)
 		}
 	}
 
@@ -289,4 +311,26 @@ func (c *Config) GetEnabledUpstreams() []UpstreamTarget {
 		}
 	}
 	return enabled
+}
+
+// Validate validates the AdminConfig for correctness.
+func (a *AdminConfig) Validate() error {
+	// Validate allowed IPs if provided
+	for i, ip := range a.AllowedIPs {
+		// Try to parse as CIDR first
+		if _, _, err := net.ParseCIDR(ip); err != nil {
+			// If not valid CIDR, try as IP address
+			if net.ParseIP(ip) == nil {
+				return fmt.Errorf("allowed_ip %d: invalid IP address or CIDR block '%s'", i, ip)
+			}
+		}
+	}
+
+	// If localhost_only is true and allowed_ips are specified, warn about redundancy
+	if a.LocalhostOnly && len(a.AllowedIPs) > 0 {
+		// This is not an error, but localhost_only will take precedence
+		// We could log a warning here in the future
+	}
+
+	return nil
 }
