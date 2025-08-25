@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"keystone-gateway/internal/router"
 	"log/slog"
 	"net/http"
 	"time"
@@ -13,55 +15,24 @@ import (
 	"keystone-gateway/internal/lua"
 	"keystone-gateway/internal/metrics"
 	"keystone-gateway/internal/middleware"
-	"keystone-gateway/internal/proxy"
-	"keystone-gateway/internal/router"
 )
-
-// TODO(human): Update luaMetrics variables and handleAdminMetrics function below
 
 type Server struct {
 	router        *chi.Mux
 	config        *config.Config
 	logger        *slog.Logger
 	server        *http.Server
-	loadBalancer  *proxy.LoadBalancer
-	healthChecker *proxy.HealthChecker
+	gateway       *router.Gateway
 	startTime     time.Time
 	metrics       *metrics.LuaMetrics
 	// Lua components
-	luaEngine    *lua.Engine
-	luaChiRouter *lua.ChiRouter
+	luaEngine   *lua.Engine
+	luaRegistry *router.LuaRouteRegistry
 }
 
 func New(cfg *config.Config, logger *slog.Logger) *Server {
-	// Create proxy components
-	lb := proxy.NewLoadBalancer(cfg.Upstreams.LoadBalancing.Strategy, logger)
-	hc := proxy.NewHealthChecker(cfg.Upstreams.HealthCheck, logger)
 
-	// Setup upstreams from configuration
-	for _, target := range cfg.GetEnabledUpstreams() {
-		upstream, err := proxy.NewUpstream(
-			target.Name,
-			target.URL,
-			target.Weight,
-			cfg.Upstreams.HealthCheck.Path,
-		)
-		if err != nil {
-			logger.Error("failed to create upstream", "name", target.Name, "error", err)
-			continue
-		}
-
-		// Add to load balancer and health checker
-		lb.AddUpstream(upstream)
-		hc.AddUpstream(upstream)
-
-		logger.Info("configured upstream", "name", target.Name, "url", target.URL)
-	}
-
-	// Start the health checker
-	hc.Start()
-
-	// Create router with all middleware and Lua components
+	// Create simplified router - handles both static and Lua routes
 	routerResult, err := router.NewRouter(router.RouterConfig{
 		Logger: logger,
 		Config: cfg,
@@ -70,12 +41,10 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		logger.Error("failed to create router", "error", err)
 		return nil
 	}
-
+	// Extract router from result
 	r := routerResult.Router
-	luaEngine := routerResult.LuaEngine
-	luaChiRouter := routerResult.LuaChiRouter
 
-	// Create a server instance first to access in closures
+	// Create a server instance
 	srv := &http.Server{
 		Addr:              cfg.Server.Addr,
 		Handler:           r,
@@ -83,7 +52,7 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		IdleTimeout:       cfg.Server.IdleTimeout,
 	}
 
-	// Initialize metrics (needed for admin endpoints)
+	// Initialize metrics
 	luaMetrics := metrics.NewLuaMetrics()
 
 	server := &Server{
@@ -91,12 +60,11 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		config:        cfg,
 		logger:        logger,
 		server:        srv,
-		loadBalancer:  lb,
-		healthChecker: hc,
+		gateway:       routerResult.Gateway,
 		startTime:     time.Now(),
 		metrics:       luaMetrics,
-		luaEngine:     luaEngine,
-		luaChiRouter:  luaChiRouter,
+		luaEngine:     routerResult.LuaEngine,
+		luaRegistry:   routerResult.LuaRouteRegistry,
 	}
 	// Gateway health endpoint - handled directly by gateway
 	r.Get("/health", server.handleHealth)
@@ -111,33 +79,28 @@ func New(cfg *config.Config, logger *slog.Logger) *Server {
 		r.Get("/metrics", server.handleAdminMetrics)
 	})
 
-	// Create a proxy-enabled sub-router for all other requests
-	// This ensures only non-admin routes get proxied to backends
-	proxyRouter := chi.NewRouter()
+	// Mount tenant routes dynamically from the Lua route registry
+	if server.luaRegistry != nil {
+		tenants := server.luaRegistry.ListTenants()
+		logger.Info("lua route registry available", "tenant_count", len(tenants))
+		// Note: Actual route mounting will be handled by the Gateway's internal routing
+		// The LuaRouteRegistry integrates directly with the Gateway's MatchRoute system
+	}
 
-	// Add proxy middleware as fallback
-	proxyRouter.Use(middleware.ProxyMiddleware(lb, hc, logger))
-
-	// Mount the proxy router to handle all other paths
-	// This will catch any request that doesn't match admin routes
-	r.Mount("/", proxyRouter)
+	// Add fallback handler for tenant routing and proxying via Gateway
+	r.NotFound(server.handleTenantRequests)
 
 	return server
 }
 
-// handleHealth handles the gateway's own health endpoint
+// handleHealth handles the server's basic health endpoint
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Get basic stats for the health check
-	lbStats := s.loadBalancer.GetStats()
-
 	response := map[string]interface{}{
-		"status":            "healthy",
-		"version":           "v1.0.0",
-		"timestamp":         time.Now(),
-		"total_upstreams":   lbStats.TotalUpstreams,
-		"healthy_upstreams": lbStats.HealthyUpstreams,
+		"status":    "healthy",
+		"version":   "v1.0.0",
+		"timestamp": time.Now(),
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -146,21 +109,45 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleTenantRequests handles requests using the Gateway's tenant routing system
+func (s *Server) handleTenantRequests(w http.ResponseWriter, r *http.Request) {
+	// Use Gateway to find the appropriate tenant router
+	tenantRouter, stripPrefix := s.gateway.MatchRoute(r.Host, r.URL.Path)
+	if tenantRouter == nil {
+		s.logger.Warn("no tenant route matched", "host", r.Host, "path", r.URL.Path)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Get next healthy backend from tenant router
+	backend := tenantRouter.NextBackend()
+	if backend == nil {
+		s.logger.Error("no healthy backends available", "tenant", tenantRouter.Name)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Create proxy and forward request
+	proxy := s.gateway.CreateProxy(backend, stripPrefix)
+	proxy.ServeHTTP(w, r)
+}
+
 // handleAdminStats handles the admin stats endpoint
 func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Get load balancer stats
-	lbStats := s.loadBalancer.GetStats()
-
-	// Create comprehensive admin response
+	// Create comprehensive admin response using Gateway stats
 	adminStats := map[string]interface{}{
 		"timestamp": time.Now(),
 		"server": map[string]interface{}{
 			"version": "v1.0.0",
 			"uptime":  time.Since(s.startTime),
 		},
-		"load_balancer": lbStats,
+		"gateway": map[string]interface{}{
+			"transport_stats":    s.gateway.GetTransportStats(),
+			"proxy_cache_stats": s.gateway.GetProxyCacheStats(),
+			"start_time":         s.gateway.GetStartTime(),
+		},
 	}
 
 	if err := json.NewEncoder(w).Encode(adminStats); err != nil {
@@ -169,37 +156,19 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleAdminHealth handles the admin health endpoint with detailed upstream health
+// handleAdminHealth handles the admin health endpoint with detailed backend health
 func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Get all upstream health stats
-	healthStats := s.healthChecker.GetAllUpstreamHealth()
-
-	// Calculate overall health summary
-	totalUpstreams := len(healthStats)
-	healthyCount := 0
-	for _, stats := range healthStats {
-		if stats.Status.String() == "healthy" {
-			healthyCount++
-		}
-	}
-
+	// TODO(human): Implement Gateway-based health status collection
+	// The Gateway handles health checks internally, but we need to expose the health status
+	// through a new method like GetAllBackendHealth() similar to the old health checker
 	healthResponse := map[string]interface{}{
 		"timestamp": time.Now(),
 		"summary": map[string]interface{}{
-			"total_upstreams":   totalUpstreams,
-			"healthy_upstreams": healthyCount,
-			"overall_status": func() string {
-				if healthyCount == 0 {
-					return "critical"
-				} else if healthyCount < totalUpstreams {
-					return "degraded"
-				}
-				return "healthy"
-			}(),
+			"status": "gateway_health_integration_pending",
+			"note":   "Gateway health checks are running, but health status API needs implementation",
 		},
-		"upstreams": healthStats,
 	}
 
 	if err := json.NewEncoder(w).Encode(healthResponse); err != nil {
@@ -212,20 +181,15 @@ func (s *Server) handleAdminHealth(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	// Get comprehensive status
-	lbStats := s.loadBalancer.GetStats()
-	healthStats := s.healthChecker.GetAllUpstreamHealth()
-
 	statusResponse := map[string]interface{}{
 		"timestamp": time.Now(),
 		"version":   "v1.0.0",
 		"status":    "operational",
-		"summary": map[string]interface{}{
-			"total_upstreams":   lbStats.TotalUpstreams,
-			"healthy_upstreams": lbStats.HealthyUpstreams,
-			"load_strategy":     lbStats.Strategy,
+		"gateway": map[string]interface{}{
+			"transport_stats":    s.gateway.GetTransportStats(),
+			"proxy_cache_stats": s.gateway.GetProxyCacheStats(),
+			"start_time":         s.gateway.GetStartTime(),
 		},
-		"detailed_health": healthStats,
 	}
 
 	if err := json.NewEncoder(w).Encode(statusResponse); err != nil {
@@ -238,41 +202,24 @@ func (s *Server) handleAdminStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminMetrics(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 
-	// Get load balancer stats
-	lbStats := s.loadBalancer.GetStats()
-
-	// Convert to metrics formatter compatible format
-	formatterStats := metrics.LoadBalancerStats{
-		Strategy:         lbStats.Strategy,
-		TotalUpstreams:   lbStats.TotalUpstreams,
-		HealthyUpstreams: lbStats.HealthyUpstreams,
-		UpstreamStats:    make([]metrics.UpstreamStat, len(lbStats.UpstreamStats)),
-	}
-
-	// Convert upstream stats to formatter format
-	for i, upstream := range lbStats.UpstreamStats {
-		formatterStats.UpstreamStats[i] = metrics.UpstreamStat{
-			Name:                upstream.Name,
-			URL:                 upstream.URL,
-			TotalRequests:       upstream.TotalRequests,
-			AvgResponseTime:     upstream.AvgResponseTime,
-			Healthy:             upstream.Healthy,
-			ActiveConnections:   int64(upstream.ActiveConnections),
-			ConsecutiveFailures: int64(upstream.ConsecutiveFailures),
-		}
-	}
-
-	// Format load balancer metrics using consolidated formatter
-	if err := metrics.FormatPrometheusMetrics(w, formatterStats, s.startTime); err != nil {
-		s.logger.Error("failed to format load balancer metrics", "error", err)
-	}
+	// TODO(human): Implement Gateway metrics collection
+	// Need to create a method to extract backend statistics from Gateway's internal state
+	// for metrics formatting, similar to the old LoadBalancer.GetStats()
+	
+	// For now, provide basic server metrics
+	fmt.Fprintf(w, "# HELP keystone_gateway_info Gateway information\n")
+	fmt.Fprintf(w, "# TYPE keystone_gateway_info gauge\n")
+	fmt.Fprintf(w, "keystone_gateway_info{version=\"v1.0.0\"} 1\n")
+	fmt.Fprintf(w, "# HELP keystone_gateway_uptime_seconds Gateway uptime in seconds\n")
+	fmt.Fprintf(w, "# TYPE keystone_gateway_uptime_seconds counter\n")
+	fmt.Fprintf(w, "keystone_gateway_uptime_seconds %.2f\n", time.Since(s.startTime).Seconds())
 
 	// Add Lua metrics if available
-	if s.luaChiRouter != nil {
+	if s.luaEngine != nil {
 		luaStats := s.metrics.GetStats(
-			len(s.luaChiRouter.GetRoutes()),
+			0, // routes count - would need to be tracked separately
 			0, // middlewares count - would need to be tracked separately
-			0, // groups count - would need to be tracked separately  
+			0, // groups count - would need to be tracked separately
 		)
 		if err := metrics.FormatLuaMetrics(w, luaStats); err != nil {
 			s.logger.Error("failed to format lua metrics", "error", err)
@@ -306,13 +253,10 @@ func (s *Server) Stop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Shutdown Lua components
-	if s.luaChiRouter != nil {
-		if err := s.luaChiRouter.Shutdown(); err != nil {
-			s.logger.Error("failed to shutdown Lua Chi router", "error", err)
-		}
+	// Stop Gateway health checks
+	if s.gateway != nil {
+		s.gateway.StopHealthChecks()
 	}
 
 	return s.server.Shutdown(ctx)
 }
-

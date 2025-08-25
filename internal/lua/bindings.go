@@ -3,8 +3,12 @@ package lua
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -12,6 +16,7 @@ import (
 	"keystone-gateway/internal/metrics"
 )
 
+// TODO look at ideas.md for new binding ideas
 // RouterInterface defines the operations that LuaBindings needs from a router
 type RouterInterface interface {
 	RegisterRoute(ctx context.Context, method, pattern string, handler http.HandlerFunc, tenantName, scriptTag string) error
@@ -32,6 +37,9 @@ type LuaBindings struct {
 	// Current execution context
 	scriptTag  string
 	tenantName string
+
+	// bindingsInitialized tracks which states have bindings set up to prevent recreating functions per request
+	bindingsInitialized *sync.Map // map[*lua.LState]bool
 }
 
 // NewLuaBindings creates a new LuaBindings instance with the required dependencies
@@ -41,28 +49,41 @@ func NewLuaBindings(router RouterInterface, statePool *LuaStatePool, metrics *me
 	}
 
 	return &LuaBindings{
-		router:    router,
-		statePool: statePool,
-		metrics:   metrics,
-		logger:    logger,
+		router:              router,
+		statePool:           statePool,
+		metrics:             metrics,
+		logger:              logger,
+		bindingsInitialized: &sync.Map{}, // Initialize the cache
 	}
 }
 
 // WithContext returns a new LuaBindings instance configured for specific script execution context
 func (lb *LuaBindings) WithContext(scriptTag, tenantName string) *LuaBindings {
 	return &LuaBindings{
-		router:     lb.router,
-		statePool:  lb.statePool,
-		metrics:    lb.metrics,
-		logger:     lb.logger,
-		scriptTag:  scriptTag,
-		tenantName: tenantName,
+		router:              lb.router,
+		statePool:           lb.statePool,
+		metrics:             lb.metrics,
+		logger:              lb.logger,
+		scriptTag:           scriptTag,
+		tenantName:          tenantName,
+		bindingsInitialized: lb.bindingsInitialized, // Share the same cache across contexts
 	}
 }
 
-// SetupLuaBindings registers all Chi functions with the provided Lua state
+// SetupLuaBindings registers all Chi functions with the provided Lua state (cached per state)
 func (lb *LuaBindings) SetupLuaBindings(L *lua.LState, scriptTag, tenantName string) error {
-	// Create context-specific bindings
+	// Skip initialization if state is nil or cache is not available
+	if L == nil || lb.bindingsInitialized == nil {
+		return fmt.Errorf("invalid lua state or uninitialized bindings cache")
+	}
+
+	// Check if this state has already been initialized with bindings
+	if _, alreadyInitialized := lb.bindingsInitialized.LoadOrStore(L, true); alreadyInitialized {
+		// Bindings already exist for this state, skip expensive function creation
+		return nil
+	}
+
+	// First time initialization for this state - create all bindings
 	contextualBindings := lb.WithContext(scriptTag, tenantName)
 
 	// Register all Lua API functions
@@ -73,14 +94,156 @@ func (lb *LuaBindings) SetupLuaBindings(L *lua.LState, scriptTag, tenantName str
 		"chi_param":        contextualBindings.createParamFunction(),
 		"chi_get_routes":   contextualBindings.createGetRoutesFunction(),
 		"chi_remove_route": contextualBindings.createRemoveRouteFunction(),
+
+		"http_post": createHTTPPostFunction(),
+		"get_env":   createGetEnvFunction(),
 	}
 
-	// Register functions safely
+	// Register functions safely - this is expensive and only happens once per state
 	for name, fn := range functions {
 		L.SetGlobal(name, L.NewFunction(fn))
 	}
 
+	// Create pre-cached response functions to avoid per-request function creation
+	lb.setupResponseFunctions(L)
+
+	// Create pre-cached middleware next function
+	nextFunc := L.NewFunction(func(L *lua.LState) int {
+		// Get the request table and extract the next callback
+		if reqTable := L.ToTable(1); reqTable != nil {
+			if nextCallbackUserData := reqTable.RawGetString("__next_callback"); nextCallbackUserData != lua.LNil {
+				if userData, ok := nextCallbackUserData.(*lua.LUserData); ok {
+					if callback, ok := userData.Value.(func()); ok {
+						callback()
+					}
+				}
+			}
+		}
+		return 0
+	})
+	L.SetGlobal("__middleware_next", nextFunc)
+
+	lb.logger.Debug("initialized lua bindings for state", 
+		"script_tag", scriptTag, 
+		"tenant", tenantName,
+		"functions_count", len(functions)+4) // +3 response functions +1 next function
+
 	return nil
+}
+
+// ClearCachedBindings removes a Lua state from the bindings cache
+// This should be called when a state is being closed/destroyed
+func (lb *LuaBindings) ClearCachedBindings(L *lua.LState) {
+	if lb.bindingsInitialized != nil && L != nil {
+		lb.bindingsInitialized.Delete(L)
+	}
+}
+
+// setupResponseFunctions creates pre-cached response functions that access writer via userdata
+func (lb *LuaBindings) setupResponseFunctions(L *lua.LState) {
+	// Create write function that extracts writer from response table
+	writeFunc := L.NewFunction(func(L *lua.LState) int {
+		// Get response table (passed as first argument) 
+		respTable := L.ToTable(1)
+		data := L.ToString(2)
+		
+		if respTable != nil {
+			if writerUserData := respTable.RawGetString("__writer"); writerUserData != lua.LNil {
+				if userData, ok := writerUserData.(*lua.LUserData); ok {
+					if writer, ok := userData.Value.(*luaResponseWriter); ok {
+						_, _ = writer.Write([]byte(data)) // Ignore write error in Lua context
+					}
+				}
+			}
+		}
+		return 0
+	})
+	L.SetGlobal("__response_write", writeFunc)
+
+	// Create status function
+	statusFunc := L.NewFunction(func(L *lua.LState) int {
+		respTable := L.ToTable(1)
+		status := int(L.ToNumber(2))
+		
+		if respTable != nil {
+			if writerUserData := respTable.RawGetString("__writer"); writerUserData != lua.LNil {
+				if userData, ok := writerUserData.(*lua.LUserData); ok {
+					if writer, ok := userData.Value.(*luaResponseWriter); ok {
+						writer.WriteHeader(status)
+					}
+				}
+			}
+		}
+		return 0
+	})
+	L.SetGlobal("__response_status", statusFunc)
+
+	// Create header function
+	headerFunc := L.NewFunction(func(L *lua.LState) int {
+		respTable := L.ToTable(1)
+		key := L.ToString(2)
+		value := L.ToString(3)
+		
+		if respTable != nil {
+			if writerUserData := respTable.RawGetString("__writer"); writerUserData != lua.LNil {
+				if userData, ok := writerUserData.(*lua.LUserData); ok {
+					if writer, ok := userData.Value.(*luaResponseWriter); ok {
+						writer.Header().Set(key, value)
+					}
+				}
+			}
+		}
+		return 0
+	})
+	L.SetGlobal("__response_header", headerFunc)
+}
+
+// Util Bindings
+
+// createHTTPPostFunction creates a simple HTTP POST helper for OAuth
+func createHTTPPostFunction() lua.LGFunction {
+	return func(L *lua.LState) int {
+		url := L.CheckString(1)
+		body := L.CheckString(2)
+
+		// Optional 3rd param: headers table
+		var contentType string = "application/x-www-form-urlencoded"
+		if L.GetTop() >= 3 {
+			if tbl, ok := L.Get(3).(*lua.LTable); ok {
+				// Look for "Content-Type" header
+				tbl.ForEach(func(k, v lua.LValue) {
+					if strings.ToLower(k.String()) == "content-type" {
+						contentType = v.String()
+					}
+				})
+			}
+		}
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Post(url, contentType, strings.NewReader(body))
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		defer resp.Body.Close()
+
+		responseBody, _ := io.ReadAll(resp.Body)
+		L.Push(lua.LString(string(responseBody)))
+		L.Push(lua.LNumber(resp.StatusCode))
+		return 2
+	}
+}
+
+// TODO does this even work in embedded luaVM?
+// createGetEnvFunction creates a helper to read environment variables
+func createGetEnvFunction() lua.LGFunction {
+	return func(L *lua.LState) int {
+		key := L.CheckString(1)
+		value := os.Getenv(key)
+		L.Push(lua.LString(value))
+		return 1
+	}
 }
 
 // ========================================
@@ -287,36 +450,39 @@ func (lb *LuaBindings) createRemoveRouteFunction() lua.LGFunction {
 // createLuaRouteHandler creates an HTTP handler that executes Lua code
 func (lb *LuaBindings) createLuaRouteHandler(handlerFunc *lua.LFunction) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Get Lua state from the pool
-		L := lb.statePool.Get()
+		// Acquire Lua state from the pool with a short timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		L, err := lb.statePool.Get(ctx)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("failed to get Lua state: %v", err), http.StatusServiceUnavailable)
+			return
+		}
 		defer lb.statePool.Put(L)
 
-		// Set the execution context with timeout
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
+		// Set execution context with per-request timeout
 
 		L.SetContext(ctx)
 		defer L.RemoveContext()
 
-		// Set up Chi bindings for this execution
+		// Setup Lua bindings for this request
 		if err := lb.SetupLuaBindings(L, lb.scriptTag, lb.tenantName); err != nil {
 			http.Error(w, fmt.Sprintf("Script setup error: %v", err), http.StatusInternalServerError)
 			return
 		}
 
-		// Create Lua request/response tables
+		// Prepare request/response tables for Lua
 		reqTable := lb.createLuaRequest(L, r)
 		respWriter := &luaResponseWriter{w: w}
 		respTable := lb.createLuaResponse(L, respWriter)
 
 		// Execute Lua handler function
-		err := L.CallByParam(lua.P{
+		if err := L.CallByParam(lua.P{
 			Fn:      handlerFunc,
 			NRet:    0,
 			Protect: true,
-		}, reqTable, respTable)
-
-		if err != nil {
+		}, reqTable, respTable); err != nil {
 			http.Error(w, fmt.Sprintf("Handler execution error: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -327,13 +493,18 @@ func (lb *LuaBindings) createLuaRouteHandler(handlerFunc *lua.LFunction) http.Ha
 func (lb *LuaBindings) createLuaMiddleware(middlewareFunc *lua.LFunction) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Get Lua state from the pool
-			L := lb.statePool.Get()
+			// Get Lua state from the pool with timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer cancel()
+
+			L, err := lb.statePool.Get(ctx)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("failed to get Lua state: %v", err), http.StatusServiceUnavailable)
+				return
+			}
 			defer lb.statePool.Put(L)
 
-			// Set execution context
-			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-			defer cancel()
+			// Set execution context with per-request timeout
 
 			L.SetContext(ctx)
 			defer L.RemoveContext()
@@ -349,21 +520,28 @@ func (lb *LuaBindings) createLuaMiddleware(middlewareFunc *lua.LFunction) func(h
 			respWriter := &luaResponseWriter{w: w}
 			respTable := lb.createLuaResponse(L, respWriter)
 
-			// Create a next function
+			// Use pre-created next function with callback mechanism
 			nextCalled := false
-			nextFunc := L.NewFunction(func(L *lua.LState) int {
-				nextCalled = true
-				return 0
-			})
+			nextCallbackUserData := L.NewUserData()
+			nextCallbackUserData.Value = func() { nextCalled = true }
+			reqTable.RawSetString("__next_callback", nextCallbackUserData)
+			
+			// Get pre-created next function
+			nextFunc := L.GetGlobal("__middleware_next")
+			if nextFunc == lua.LNil {
+				// Fallback if global not found
+				nextFunc = L.NewFunction(func(L *lua.LState) int {
+					nextCalled = true
+					return 0
+				})
+			}
 
 			// Execute Lua middleware function
-			err := L.CallByParam(lua.P{
+			if err := L.CallByParam(lua.P{
 				Fn:      middlewareFunc,
 				NRet:    0,
 				Protect: true,
-			}, reqTable, respTable, nextFunc)
-
-			if err != nil {
+			}, reqTable, respTable, nextFunc); err != nil {
 				http.Error(w, fmt.Sprintf("Middleware execution error: %v", err), http.StatusInternalServerError)
 				return
 			}
@@ -429,28 +607,21 @@ func (lb *LuaBindings) createLuaRequest(L *lua.LState, r *http.Request) *lua.LTa
 func (lb *LuaBindings) createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 	respTable := L.NewTable()
 
-	// Add response methods (write, header, etc.)
-	writeFunc := L.NewFunction(func(L *lua.LState) int {
-		data := L.ToString(1)
-		_, _ = w.Write([]byte(data)) // Ignore write error in Lua context
-		return 0
-	})
-	L.SetField(respTable, "write", writeFunc)
+	// Use userdata to store the response writer and access it in pre-created functions
+	writerUserData := L.NewUserData()
+	writerUserData.Value = w
+	L.SetField(respTable, "__writer", writerUserData)
 
-	statusFunc := L.NewFunction(func(L *lua.LState) int {
-		status := int(L.ToNumber(1))
-		w.WriteHeader(status)
-		return 0
-	})
-	L.SetField(respTable, "status", statusFunc)
-
-	headerFunc := L.NewFunction(func(L *lua.LState) int {
-		key := L.ToString(1)
-		value := L.ToString(2)
-		w.Header().Set(key, value)
-		return 0
-	})
-	L.SetField(respTable, "header", headerFunc)
+	// Get pre-created response functions from globals (set during state initialization)
+	if writeFunc := L.GetGlobal("__response_write"); writeFunc != lua.LNil {
+		L.SetField(respTable, "write", writeFunc)
+	}
+	if statusFunc := L.GetGlobal("__response_status"); statusFunc != lua.LNil {
+		L.SetField(respTable, "status", statusFunc)
+	}
+	if headerFunc := L.GetGlobal("__response_header"); headerFunc != lua.LNil {
+		L.SetField(respTable, "header", headerFunc)
+	}
 
 	return respTable
 }

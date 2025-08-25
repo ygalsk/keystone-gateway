@@ -1,6 +1,7 @@
 package lua
 
 import (
+	"context"
 	lua "github.com/yuin/gopher-lua"
 	"sync"
 	"testing"
@@ -18,7 +19,11 @@ func TestStatePoolConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			L := pool.Get()
+			L, err := pool.Get(context.Background())
+			if err != nil {
+				t.Errorf("Failed to get state: %v", err)
+				return
+			}
 			defer pool.Put(L)
 
 			// Execute simple script
@@ -30,9 +35,11 @@ func TestStatePoolConcurrency(t *testing.T) {
 	wg.Wait()
 
 	// Verify pool statistics
-	stats := pool.GetStats()
-	if stats["total_executions"] != 50 {
-		t.Errorf("Expected 50 executions, got %d", stats["total_executions"])
+	active, available := pool.GetStats()
+	detailedStats := pool.GetDetailedStats()
+	t.Logf("Pool stats: active=%d, available=%d", active, available)
+	if detailedStats["get_operations"].(int64) != 50 {
+		t.Errorf("Expected 50 get operations, got %d", detailedStats["get_operations"])
 	}
 }
 
@@ -43,7 +50,10 @@ func TestStateCleanup(t *testing.T) {
 	defer pool.Shutdown()
 
 	// Get state and leave data on stack
-	L := pool.Get()
+	L, err := pool.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Failed to get state: %v", err)
+	}
 	L.Push(lua.LString("test"))
 	L.Push(lua.LNumber(42))
 
@@ -51,7 +61,10 @@ func TestStateCleanup(t *testing.T) {
 	pool.Put(L)
 
 	// Get state again - should be clean
-	L2 := pool.Get()
+	L2, err := pool.Get(context.Background())
+	if err != nil {
+		t.Fatalf("Failed to get state: %v", err)
+	}
 	if L2.GetTop() != 0 {
 		t.Errorf("Stack not cleaned: got %d items", L2.GetTop())
 	}

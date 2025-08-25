@@ -11,14 +11,12 @@ import (
 	"keystone-gateway/internal/types"
 )
 
-// TODO(human): Update the metrics field type and NewLuaMetrics() call below
-
 // Engine represents the main Lua execution engine
 type Engine struct {
 	statePool *LuaStatePool
 	compiler  *ScriptCompiler
 	metrics   *metrics.LuaMetrics
-	config    SecurityConfig
+	config    EnhancedSecurityConfig
 
 	// Atomic counters for engine state
 	initialized atomic.Bool
@@ -27,7 +25,7 @@ type Engine struct {
 
 // NewEngine creates a new Lua engine with proper initialization
 func NewEngine(maxStates, maxScripts int) *Engine {
-	config := DefaultSecurityConfig()
+	config := DefaultEnhancedSecurityConfig()
 
 	engine := &Engine{
 		compiler: NewScriptCompiler(maxScripts),
@@ -35,9 +33,44 @@ func NewEngine(maxStates, maxScripts int) *Engine {
 		config:   config,
 	}
 
-	// Initialize state pool with secure factory
-	engine.statePool = NewLuaStatePool(maxStates, func() *lua.LState {
-		return CreateSecureLuaState(config)
+	// Create memory-aware state pool configuration
+	stateConfig := StateConfig{
+		MaxStates:          maxStates,
+		MaxTotalMemoryMB:   config.GlobalMemoryMB,
+		PerStateMemoryMB:   config.MemoryLimitMB,
+		MemoryCheckEnabled: config.MemoryPressureMode,
+		AggressiveCleanup:  config.AggressiveGC,
+	}
+
+	// Initialize memory-aware state pool with enhanced security
+	engine.statePool = NewLuaStatePoolWithConfig(stateConfig, func() *lua.LState {
+		return CreateEnhancedSecureLuaState(config)
+	})
+
+	engine.initialized.Store(true)
+	return engine
+}
+
+// NewEngineWithConfig creates a new Lua engine with custom configuration
+func NewEngineWithConfig(maxStates, maxScripts int, config EnhancedSecurityConfig) *Engine {
+	engine := &Engine{
+		compiler: NewScriptCompiler(maxScripts),
+		metrics:  metrics.NewLuaMetrics(),
+		config:   config,
+	}
+
+	// Create memory-aware state pool configuration
+	stateConfig := StateConfig{
+		MaxStates:          maxStates,
+		MaxTotalMemoryMB:   config.GlobalMemoryMB,
+		PerStateMemoryMB:   config.MemoryLimitMB,
+		MemoryCheckEnabled: config.MemoryPressureMode,
+		AggressiveCleanup:  config.AggressiveGC,
+	}
+
+	// Initialize memory-aware state pool with enhanced security
+	engine.statePool = NewLuaStatePoolWithConfig(stateConfig, func() *lua.LState {
+		return CreateEnhancedSecureLuaState(config)
 	})
 
 	engine.initialized.Store(true)
@@ -61,7 +94,11 @@ func (e *Engine) ExecuteRouteScript(ctx context.Context, r *http.Request) (*type
 	defer done(nil) // Will be updated with actual error
 
 	// Get Lua state from pool
-	L := e.statePool.Get()
+	L, err := e.statePool.Get(ctx)
+	if err != nil {
+		done(err)
+		return nil, fmt.Errorf("failed to get Lua state: %w", err)
+	}
 	defer e.statePool.Put(L)
 
 	// Set execution context with timeout
@@ -81,10 +118,16 @@ func (e *Engine) ExecuteRouteScript(ctx context.Context, r *http.Request) (*type
 		return nil, fmt.Errorf("context setup failed: %w", err)
 	}
 
-	// Execute bytecode
+	// Execute bytecode with memory monitoring
 	if err := ExecuteWithBytecode(L, script); err != nil {
 		done(err)
 		return nil, fmt.Errorf("script execution failed: %w", err)
+	}
+
+	// Validate security limits after execution
+	if err := ValidateEnhancedSecurityLimits(L, e.config); err != nil {
+		done(err)
+		return nil, fmt.Errorf("security validation failed: %w", err)
 	}
 
 	// Extract result
@@ -194,9 +237,9 @@ func (e *Engine) GetStats() map[string]interface{} {
 	}
 
 	// Add pool stats
-	for k, v := range e.statePool.GetStats() {
-		stats["pool_"+k] = v
-	}
+	active, available := e.statePool.GetStats()
+	stats["pool_active"] = active
+	stats["pool_available"] = available
 
 	// Add execution metrics (Engine doesn't track router state, pass zeros)
 	for k, v := range e.metrics.GetStats(0, 0, 0) {

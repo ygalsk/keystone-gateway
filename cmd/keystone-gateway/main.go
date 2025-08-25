@@ -1,7 +1,10 @@
 package main
 
 import (
+	"log"
 	"log/slog"
+	"net/http"
+	_ "net/http/pprof" // Enable pprof endpoints
 	"os"
 	"os/signal"
 	"syscall"
@@ -13,6 +16,12 @@ import (
 func main() {
 	// Setup structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+
+	// Start pprof server for memory profiling
+	go func() {
+		logger.Info("starting pprof server on :6060")
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	// Determine config file path
 	configPath := "config.yaml" // default

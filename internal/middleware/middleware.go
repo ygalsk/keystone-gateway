@@ -1,18 +1,14 @@
 package middleware
 
 import (
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
+	"keystone-gateway/internal/config"
+	"keystone-gateway/internal/proxy"
 	"log/slog"
 	"net"
 	"net/http"
 	"strings"
-	"time"
-
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
-	"github.com/go-chi/httprate"
-
-	"keystone-gateway/internal/config"
-	"keystone-gateway/internal/proxy"
 )
 
 // BuildBaseMiddleware creates the base middleware stack without proxy middleware
@@ -20,7 +16,7 @@ import (
 func BuildBaseMiddleware(logger *slog.Logger, cfg *config.Config) []func(http.Handler) http.Handler {
 	var middlewareStack []func(http.Handler) http.Handler
 	middlewareStack = append(middlewareStack, middleware.RequestID)
-	middlewareStack = append(middlewareStack, middleware.RealIP)
+	//middlewareStack = append(middlewareStack, middleware.RealIP)
 	middlewareStack = append(middlewareStack, middleware.Logger)
 	middlewareStack = append(middlewareStack, middleware.Recoverer)
 	middlewareStack = append(middlewareStack, middleware.Timeout(cfg.Server.ReadHeaderTimeout))
@@ -33,8 +29,9 @@ func BuildBaseMiddleware(logger *slog.Logger, cfg *config.Config) []func(http.Ha
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+	// TEMPORARILY DISABLED for memory leak testing
 	middlewareStack = append(middlewareStack, middleware.Compress(5, "application/json", "text/html"))
-	middlewareStack = append(middlewareStack, httprate.LimitByIP(1000, time.Minute))
+	//middlewareStack = append(middlewareStack, httprate.LimitByIP(1000, time.Minute))
 	return middlewareStack
 }
 
@@ -125,7 +122,7 @@ func AdminSecurityMiddleware(adminConfig *config.AdminConfig, logger *slog.Logge
 						}
 					}
 				}
-				
+
 				if !allowed {
 					logger.Warn("admin endpoint access denied - not in allowed IPs list",
 						"path", r.URL.Path,

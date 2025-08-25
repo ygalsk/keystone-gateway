@@ -12,6 +12,7 @@ import (
 	"keystone-gateway/internal/types"
 )
 
+//TODO ACTIVE MULTI TENANT!!!!
 //TODO on the whole config section!! : create default values for almost ANYTHING, create sensible defaults so the config stays clean and only has the ability to creat emore detail config IF NEEDED by the user
 
 // Config represents the minimal configuration for Keystone Gateway.
@@ -19,6 +20,8 @@ import (
 type Config struct {
 	// Server configuration
 	Server ServerConfig `yaml:"server" json:"server"`
+	// Tenants configuration
+	Tenants []types.Tenant `yaml:"tenants,omitempty" json:"tenants,omitempty"`
 	// Upstream configuration
 	Upstreams UpstreamsConfig `yaml:"upstreams" json:"upstreams"`
 	// Lua configuration (optional)
