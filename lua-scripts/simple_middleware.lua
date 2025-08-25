@@ -7,7 +7,7 @@ function simple_logging(req, resp, next)
     resp.header("X-Request-Path", req.path)
     
     -- Log the request (optional, for debugging)
-    print("[SIMPLE] Processing request: " .. req.method .. " " .. req.path)
+    --print("[SIMPLE] Processing request: " .. req.method .. " " .. req.path)
     
     -- Continue to next handler
     next()
