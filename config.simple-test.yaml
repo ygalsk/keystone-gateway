@@ -6,6 +6,18 @@ server:
   read_header_timeout: "5s"
   idle_timeout: "120s"
 
+  admin:
+    # Enable/disable admin endpoints entirely
+    enabled: true
+
+    # Option 1: Localhost-only access (recommended for development)
+    # Restricts admin endpoints to 127.0.0.1 and ::1 only
+    localhost_only: false
+    allowed_ips:
+       - "192.168.1.100"        # Operations team workstation
+    #   - "10.0.0.0/8"           # Internal corporate network
+    #   - "172.16.50.0/24"       # Monitoring subnet
+
 # Simple upstream configuration
 upstreams:
   load_balancing:
@@ -26,13 +38,21 @@ upstreams:
       weight: 100
       enabled: true
 
+# Tenants map requests to upstreams and can have Lua scripts
+tenants:
+  - name: "simple"
+    base_path: "/api"  # All /api/* requests go to this tenant
+    upstreams:
+      - name: "test-backend"
+        url: "http://localhost:3001"
+
 # Minimal Lua configuration - just one tenant
 lua:
   enabled: true
-  max_states: 10        # Number of Lua states in the pool
+  max_states: 5     # Number of Lua states in the pool - reduced to prevent OOM until bindings cache is active
   max_scripts: 100      # Maximum number of cached compiled scripts
-  script_timeout: "30s" # Maximum execution time for Lua scripts
-  middleware_timeout: "10s" # Maximum execution time for Lua middleware
+  script_timeout: "500ms" # Maximum execution time for Lua scripts
+  middleware_timeout: "1s" # Maximum execution time for Lua middleware
   scripts_dir: "./lua-scripts" # Directory containing Lua scripts (optional)
   
   tenant_scripts:
