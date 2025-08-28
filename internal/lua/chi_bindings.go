@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -46,9 +47,11 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 		L.Push(lua.LString(""))
 		return 1
 	}))
-	
+
 	// Add HTTP POST function for OAuth and other HTTP requests
 	L.SetGlobal("http_post", L.NewFunction(createHTTPPostFunction()))
+	// Add environment variable getter
+	L.SetGlobal("get_env", L.NewFunction(createGetEnvFunction()))
 }
 
 // luaChiRoute handles route registration from Lua: chi_route(method, pattern, handler)
@@ -319,5 +322,15 @@ func createHTTPPostFunction() lua.LGFunction {
 		L.Push(lua.LString(string(responseBody)))
 		L.Push(lua.LNumber(resp.StatusCode))
 		return 2
+	}
+}
+
+// createGetEnvFunction creates a helper to read environment variables
+func createGetEnvFunction() lua.LGFunction {
+	return func(L *lua.LState) int {
+		key := L.CheckString(1)
+		value := os.Getenv(key)
+		L.Push(lua.LString(value))
+		return 1
 	}
 }

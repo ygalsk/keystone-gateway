@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,6 +33,27 @@ const (
 func init() {
 	// Simple structured JSON logging
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	// Optional .env loading (simple parser: KEY=VALUE lines, ignores # comments)
+	if _, err := os.Stat(".env"); err == nil {
+		if data, err := os.ReadFile(".env"); err == nil {
+			lines := strings.Split(string(data), "\n")
+			for _, l := range lines {
+				l = strings.TrimSpace(l)
+				if l == "" || strings.HasPrefix(l, "#") {
+					continue
+				}
+				if eq := strings.IndexByte(l, '='); eq > 0 {
+					k := strings.TrimSpace(l[:eq])
+					v := strings.TrimSpace(l[eq+1:])
+					if _, exists := os.LookupEnv(k); !exists {
+						os.Setenv(k, v)
+					}
+				}
+			}
+			slog.Info("env_file_loaded", "file", ".env", "component", "startup")
+		}
+	}
 }
 
 // HealthStatus represents the current health status of the gateway and all tenants.

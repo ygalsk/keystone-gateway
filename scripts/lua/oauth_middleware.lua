@@ -17,6 +17,32 @@ local function parse_json(str)
     }
 end
 
+-- Load (no defaults) so script is generic for any Auth0 tenant. get_env must be provided by the host.
+local OAUTH_AUTH_URL       = get_env("OAUTH_AUTH_URL") or nil
+local OAUTH_AUDIENCE       = get_env("OAUTH_AUDIENCE") or nil
+local OAUTH_SCOPE          = get_env("OAUTH_SCOPE") or nil
+local OAUTH_EXCHANGE_URL   = get_env("OAUTH_EXCHANGE_URL") or nil
+local OAUTH_EXPIRES_LEEWAY = tonumber((get_env("OAUTH_EXPIRES_LEEWAY")) or "60") or 60
+local OAUTH_CLIENT_ID      = get_env("OAUTH_CLIENT_ID") or nil
+local OAUTH_CLIENT_SECRET  = get_env("OAUTH_CLIENT_SECRET") or nil
+
+local function validate_config()
+    local missing = {}
+    local function req(name, value)
+        if not value or value == '' then table.insert(missing, name) end
+    end
+    req("OAUTH_CLIENT_ID", OAUTH_CLIENT_ID)
+    req("OAUTH_CLIENT_SECRET", OAUTH_CLIENT_SECRET)
+    req("OAUTH_AUTH_URL", OAUTH_AUTH_URL)
+    req("OAUTH_AUDIENCE", OAUTH_AUDIENCE)
+    req("OAUTH_EXCHANGE_URL", OAUTH_EXCHANGE_URL)
+    -- Scope can be optional; if absent we'll just omit it from request
+    if #missing > 0 then
+        return false, missing
+    end
+    return true, nil
+end
+
 -- URL decode function
 local function url_decode(str)
     if not str then
@@ -49,24 +75,31 @@ local token_cache = {
     expires_at = 0
 }
 
--- Step 1: get subject_token from auth.eco-platform.org
+-- Step 1: get subject_token from auth server
 local function get_subject_token()
-    local client_id = "byeY9sp8Snuu7MwmgXCqgeeXB5fdP8D6"
-    local client_secret = "qCVw6759CwpNDNTw8JJcr5S88ZQPfCztYbY3tENt7XdTo4btlVTGO9z0rBeA4cVc"
+    local ok, missing = validate_config()
+    if not ok then
+        return nil, 'missing_env: ' .. table.concat(missing, ',')
+    end
 
-    local body = string.format(
-        "grant_type=client_credentials&client_id=%s&client_secret=%s&audience=https://portal.eco-platform.org&scope=create:token",
-        client_id, client_secret
+    local base = string.format(
+        "grant_type=client_credentials&client_id=%s&client_secret=%s&audience=%s",
+        OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_AUDIENCE
     )
+    local body = base
+    if OAUTH_SCOPE and OAUTH_SCOPE ~= '' then
+        body = body .. "&scope=" .. OAUTH_SCOPE
+    end
 
     local response, status = http_post(
-        "https://auth.eco-platform.org/oauth/token",
+        OAUTH_AUTH_URL,
         body,
         { ["Content-Type"] = "application/x-www-form-urlencoded" }
     )
 
     if status ~= 200 then
-        return nil, "Step1 OAuth failed: " .. status
+        local snippet = response and response:sub(1,180) or ''
+        return nil, "oauth_client_credentials_failed: " .. status .. (snippet ~= '' and (" body=" .. snippet) or '')
     end
 
     local auth = parse_json(response)
@@ -83,7 +116,7 @@ local function exchange_token(subject_token)
     }]], subject_token)
 
     local response, status = http_post(
-        "https://portal.eco-platform.org/resource/authenticate/token/exchange",
+        OAUTH_EXCHANGE_URL,
         body,
         {
             ["Content-Type"] = "application/json",
@@ -118,11 +151,11 @@ local function get_portal_token()
     -- Step 2: exchange for portal token
     local portal_token, expires_in = exchange_token(subject_token)
     if not portal_token then
-        return nil, "Failed to exchange subject token"
+        return nil, "token_exchange_failed"
     end
 
     token_cache.token = portal_token
-    token_cache.expires_at = os.time() + (expires_in or 3600) - 60
+    token_cache.expires_at = os.time() + (expires_in or 3600) - OAUTH_EXPIRES_LEEWAY
     return token_cache.token
 end
 
@@ -136,7 +169,11 @@ chi_middleware("/*", function(request, response, next)
     local token, err = get_portal_token()
     if not token then
         print("OAuth token fetch failed:", err)
-        response:status(503)
+        if err and err:match('missing_env') then
+            response:status(500)
+        else
+            response:status(503)
+        end
         response:header("Content-Type", "application/json")
         response:write('{"error": "' .. (err or "Failed to get portal token") .. '"}')
         return
@@ -176,13 +213,3 @@ chi_middleware("/*", function(request, response, next)
     request.headers["Authorization"] = "Bearer " .. token
     next()
 end)
-
-
-
-
-
--- STEP 2: No routes needed - middleware only
--- The middleware above adds OAuth token, then LuaFallbackHandler will proxy to backend
--- Since no routes are registered, the gateway will automatically proxy after middleware
-
-print("OAuth middleware registered for tenant routes (call /api/auth?redirect_uri=...) ")
