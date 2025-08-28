@@ -282,6 +282,21 @@ func setRequestHeaders(L *lua.LState, reqTable *lua.LTable, r *http.Request) {
 	reqTable.RawSetString("headers", headersTable)
 }
 
+// applyLuaRequestChanges applies changes from Lua request table back to Go request
+func applyLuaRequestChanges(reqTable *lua.LTable, r *http.Request) {
+	// Apply header changes from Lua back to Go request
+	if headersTable := reqTable.RawGetString("headers"); headersTable != lua.LNil {
+		if headerTable, ok := headersTable.(*lua.LTable); ok {
+			headerTable.ForEach(func(k, v lua.LValue) {
+				headerName := k.String()
+				headerValue := v.String()
+				// Set the header in the Go request
+				r.Header.Set(headerName, headerValue)
+			})
+		}
+	}
+}
+
 // setRequestParams sets URL parameters from Chi router context
 func setRequestParams(L *lua.LState, reqTable *lua.LTable, r *http.Request) {
 	paramsTable := L.NewTable()

@@ -22,7 +22,7 @@ lua_routing:
 
 tenants:
   - name: "api"
-    domains: ["127.0.0.1"]
+    domains: ["localhost.com"]
     lua_routes: "basic-routes"
     health_interval: 30
     services:

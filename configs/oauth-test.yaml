@@ -1,0 +1,29 @@
+# OAuth Middleware Test Configuration
+
+admin_base_path: "/admin"
+
+# HTTP Response Compression Configuration
+compression:
+  enabled: true
+  level: 5
+  content_types:
+    - "text/html"
+    - "text/css" 
+    - "text/javascript"
+    - "application/json"
+    - "application/xml"
+    - "text/plain"
+
+lua_routing:
+  enabled: true
+  scripts_dir: "./scripts/lua"
+
+tenants:
+  - name: "api"
+    path_prefix: "/api/"
+    lua_routes: "oauth_middleware"
+    health_interval: 30
+    services:
+      - name: "backend"
+        url: "http://127.0.0.1:3001"
+        health: "/health"

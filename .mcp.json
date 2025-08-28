@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+      }
+    },
+    "claude-context": {
+      "command": "npx",
+      "args": ["@zilliz/claude-context-mcp@latest"],
+      "env": {
+        "OPENAI_API_KEY": "y5xx27aeQJweWnPHRf6Q86gRH9rzlYwnckzmDoU2vA_qrCT3BlbkFJg9av62oUgyjqA6agASeL9VfIsj4sgXlR_jXJI6IZGKRBHd2ORBq5vU1I8tmp5Cd4MsxQS56F4A",
+        "MILVUS_TOKEN": "d1fc4b60b24d4198a5fb6322a5db17aa99d9662c72a20301a3f70ca2ef7069ed5403ce5a9b3c767b6ac4b4ac7dbf1e4ae00b4e84"
+      }
+    }
+  }
+}

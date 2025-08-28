@@ -139,13 +139,22 @@ func (app *Application) LuaFallbackHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Check if this tenant has Lua routes - if so, let 404 stand (Lua route didn't match)
+	// Check if this tenant has actual Lua routes registered (not just middleware)
+	// If tenant has lua_routes configured but no actual routes registered, fall back to proxy
 	cfg := app.gateway.GetConfig()
 	for _, tenant := range cfg.Tenants {
 		if tenant.Name == router.Name && tenant.LuaRoutes != "" {
-			// Tenant has Lua routes, so this is a genuine 404
-			http.NotFound(w, r)
-			return
+			// Check if there are actual routes registered, not just middleware
+			if app.luaEngine != nil {
+				if app.luaEngine.RouteRegistry().HasRoutes(tenant.Name) {
+					// Tenant has actual Lua routes registered, so this is a genuine 404
+					http.NotFound(w, r)
+					return
+				}
+			}
+			// Tenant has lua_routes config but no actual routes - only middleware
+			// Fall through to proxy (middleware-only scenario)
+			break
 		}
 	}
 
@@ -274,15 +283,31 @@ func (app *Application) setupLuaBasedRouting(r *chi.Mux) {
 					"routing_type", "host_based",
 					"component", "routing")
 			} else if tenant.PathPrefix != "" {
-				// Mount tenant submux at path prefix
-				tenantRoutes := app.luaEngine.RouteRegistry().GetTenantRoutes(tenant.Name)
-				if tenantRoutes != nil {
-					r.Mount(tenant.PathPrefix, tenantRoutes)
-					slog.Info("tenant_routes_mounted",
-						"tenant", tenant.Name,
-						"path_prefix", tenant.PathPrefix,
-						"routing_type", "path_based",
-						"component", "routing")
+				// Only mount tenant submux if it has actual routes, not just middleware
+				if app.luaEngine.RouteRegistry().HasRoutes(tenant.Name) {
+					tenantRoutes := app.luaEngine.RouteRegistry().GetTenantRoutes(tenant.Name)
+					if tenantRoutes != nil {
+						r.Mount(tenant.PathPrefix, tenantRoutes)
+						slog.Info("tenant_routes_mounted",
+							"tenant", tenant.Name,
+							"path_prefix", tenant.PathPrefix,
+							"routing_type", "path_based",
+							"component", "routing")
+					}
+				} else {
+					// Tenant has lua_routes but no actual routes - apply middleware to path prefix
+					// then set up proxy fallback
+					tenantSubmux := app.luaEngine.RouteRegistry().GetTenantRoutes(tenant.Name)
+					if tenantSubmux != nil {
+						// Apply middleware to the submux, then add a catch-all route that proxies
+						tenantSubmux.HandleFunc("/*", app.ProxyHandler)
+						r.Mount(tenant.PathPrefix, tenantSubmux)
+						slog.Info("tenant_middleware_with_proxy_mounted",
+							"tenant", tenant.Name,
+							"path_prefix", tenant.PathPrefix,
+							"routing_type", "middleware_with_proxy",
+							"component", "routing")
+					}
 				}
 			}
 		}

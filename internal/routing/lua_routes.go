@@ -170,6 +170,21 @@ func (r *LuaRouteRegistry) GetTenantRoutes(tenantName string) *chi.Mux {
 	return r.routeGroups[tenantName]
 }
 
+// HasRoutes checks if a tenant has actual routes registered (not just middleware)
+func (r *LuaRouteRegistry) HasRoutes(tenantName string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	
+	// Check if any registered routes belong to this tenant
+	for routeKey := range r.registeredRoutes {
+		// Route keys are formatted as "tenantName:method:pattern"
+		if strings.HasPrefix(routeKey, tenantName+":") {
+			return true
+		}
+	}
+	return false
+}
+
 // ListTenants returns all tenants that have registered routes
 func (r *LuaRouteRegistry) ListTenants() []string {
 	r.mu.RLock()

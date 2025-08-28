@@ -5,13 +5,13 @@ admin_base_path: "/admin"
 
 lua_routing:
   enabled: true
-  scripts_dir: "./scripts/lua"
+  scripts_dir: "./scripts/lua/examples"
 
 tenants:
   # Host-based routing tenant
   - name: "api-tenant"
     domains: ["api.example.com", "api.mysite.com"]
-    lua_routes: "auth-routes.lua"
+    lua_routes: "auth-routes"
     health_interval: 30
     services:
       - name: "api-backend-1"
@@ -24,7 +24,7 @@ tenants:
   # Path-based routing tenant
   - name: "app-tenant"
     path_prefix: "/app/"
-    lua_routes: "app-routes.lua"
+    lua_routes: "app-routes"
     health_interval: 45
     services:
       - name: "app-backend"
@@ -34,7 +34,7 @@ tenants:
   # Another host-based tenant
   - name: "legacy-tenant"
     domains: ["legacy.example.com"]
-    lua_routes: "legacy-routes.lua"
+    lua_routes: "legacy-routes"
     health_interval: 60
     services:
       - name: "legacy-service"

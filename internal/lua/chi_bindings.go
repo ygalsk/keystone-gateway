@@ -4,7 +4,10 @@ package lua
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 
@@ -43,6 +46,9 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 		L.Push(lua.LString(""))
 		return 1
 	}))
+	
+	// Add HTTP POST function for OAuth and other HTTP requests
+	L.SetGlobal("http_post", L.NewFunction(createHTTPPostFunction()))
 }
 
 // luaChiRoute handles route registration from Lua: chi_route(method, pattern, handler)
@@ -195,6 +201,9 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 				return
 			}
 
+			// Apply any changes from Lua request table back to Go request
+			applyLuaRequestChanges(reqTable, r)
+
 			// Call next handler if middleware called next()
 			if nextCalled && next != nil {
 				next.ServeHTTP(w, r)
@@ -275,5 +284,40 @@ func (e *Engine) executeGroupSetup(L *lua.LState, setupFunc *lua.LFunction, full
 
 	if err != nil {
 		L.RaiseError("Failed to execute group setup function: %v", err)
+	}
+}
+
+// createHTTPPostFunction creates a simple HTTP POST helper for OAuth and other HTTP requests
+func createHTTPPostFunction() lua.LGFunction {
+	return func(L *lua.LState) int {
+		url := L.CheckString(1)
+		body := L.CheckString(2)
+
+		// Optional 3rd param: headers table
+		var contentType string = "application/x-www-form-urlencoded"
+		if L.GetTop() >= 3 {
+			if tbl, ok := L.Get(3).(*lua.LTable); ok {
+				// Look for "Content-Type" header
+				tbl.ForEach(func(k, v lua.LValue) {
+					if strings.ToLower(k.String()) == "content-type" {
+						contentType = v.String()
+					}
+				})
+			}
+		}
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Post(url, contentType, strings.NewReader(body))
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		defer resp.Body.Close()
+
+		responseBody, _ := io.ReadAll(resp.Body)
+		L.Push(lua.LString(string(responseBody)))
+		L.Push(lua.LNumber(resp.StatusCode))
+		return 2
 	}
 }
