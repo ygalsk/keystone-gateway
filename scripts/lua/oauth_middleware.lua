@@ -17,6 +17,32 @@ local function parse_json(str)
     }
 end
 
+-- URL decode function
+local function url_decode(str)
+    if not str then
+        return nil
+    end
+
+    -- Replace + with spaces
+    str = str:gsub("+", " ")
+
+    -- Replace %XX with corresponding character
+    str = str:gsub("%%(%x%x)", function(hex)
+        return string.char(tonumber(hex, 16))
+    end)
+
+    return str
+end
+
+-- Extract and decode redirect_uri parameter
+local function get_redirect_uri(url)
+    local redirect_uri = url:match("[?&]redirect_uri=([^&]*)")
+    if redirect_uri then
+        return url_decode(redirect_uri)
+    end
+    return nil
+end
+
 -- Token cache for final portal token
 local token_cache = {
     token = nil,
@@ -103,7 +129,10 @@ end
 -- STEP 1: Define middleware FIRST (Chi router requirement)
 -- Since path_prefix is /api/, we use /* to catch all requests under this tenant
 chi_middleware("/*", function(request, response, next)
-    print("OAuth middleware called for:", request.path)
+    local path = request.path or ""
+    print("OAuth middleware called for:", path)
+
+    -- Always perform token retrieval (will use cache after first time)
     local token, err = get_portal_token()
     if not token then
         print("OAuth token fetch failed:", err)
@@ -112,13 +141,48 @@ chi_middleware("/*", function(request, response, next)
         response:write('{"error": "' .. (err or "Failed to get portal token") .. '"}')
         return
     end
-    print("OAuth token obtained, adding to request headers")
+
+    -- Special handling for auth endpoint (supports root or prefixed like /api/auth)
+    if path == "/auth" or path == "/auth/" or path == "/api/auth" or path == "/api/auth/" then
+        -- Prefer structured query table if present
+        local redirect_uri = nil
+        if request.query and request.query["redirect_uri"] then
+            redirect_uri = request.query["redirect_uri"]
+        else
+            redirect_uri = get_redirect_uri(request.url or "")
+        end
+
+        if not redirect_uri or redirect_uri == "" then
+            print("Redirect block: missing redirect_uri")
+            response.status(400)
+            response.header("Content-Type", "application/json")
+            response.write('{"error":"missing redirect_uri"}')
+            return
+        end
+
+    local decoded = url_decode(redirect_uri) or redirect_uri
+    print("Redirecting to decoded redirect_uri:", decoded)
+
+    -- IMPORTANT: Set headers BEFORE writing status (WriteHeader sends headers immediately)
+    response:header("Location", decoded)
+    response:header("Cache-Control", "no-store")
+    response:header("Pragma", "no-cache")
+    response:status(302)
+    response:write("")
+        return
+    end
+
+    -- Default behavior: attach Authorization header and continue
     request.headers["Authorization"] = "Bearer " .. token
     next()
 end)
+
+
+
+
 
 -- STEP 2: No routes needed - middleware only
 -- The middleware above adds OAuth token, then LuaFallbackHandler will proxy to backend
 -- Since no routes are registered, the gateway will automatically proxy after middleware
 
-print("OAuth middleware registered for tenant routes")
+print("OAuth middleware registered for tenant routes (call /api/auth?redirect_uri=...) ")
