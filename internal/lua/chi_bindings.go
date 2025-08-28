@@ -50,6 +50,8 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 
 	// Add HTTP POST function for OAuth and other HTTP requests
 	L.SetGlobal("http_post", L.NewFunction(createHTTPPostFunction()))
+	// Add HTTP GET function
+	L.SetGlobal("http_get", L.NewFunction(createHTTPGetFunction()))
 	// Add environment variable getter
 	L.SetGlobal("get_env", L.NewFunction(createGetEnvFunction()))
 }
@@ -332,5 +334,48 @@ func createGetEnvFunction() lua.LGFunction {
 		value := os.Getenv(key)
 		L.Push(lua.LString(value))
 		return 1
+	}
+}
+
+// createHTTPGetFunction creates a simple HTTP GET helper with optional headers table param
+func createHTTPGetFunction() lua.LGFunction {
+	return func(L *lua.LState) int {
+		url := L.CheckString(1)
+
+		// Optional second param: headers table
+		headers := make(http.Header)
+		if L.GetTop() >= 2 {
+			if tbl, ok := L.Get(2).(*lua.LTable); ok {
+				tbl.ForEach(func(k, v lua.LValue) {
+					headers.Set(k.String(), v.String())
+				})
+			}
+		}
+
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		for k, vals := range headers {
+			for _, val := range vals {
+				req.Header.Add(k, val)
+			}
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		defer resp.Body.Close()
+
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		L.Push(lua.LString(string(bodyBytes)))
+		L.Push(lua.LNumber(resp.StatusCode))
+		return 2
 	}
 }
