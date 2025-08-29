@@ -1,1 +1,0 @@
--- Empty routes script - let the gateway handle all proxying automatically
