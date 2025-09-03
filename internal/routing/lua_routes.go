@@ -99,7 +99,7 @@ func (r *LuaRouteRegistry) RegisterRoute(def RouteDefinition) error {
 
 // RegisterMiddleware registers middleware for a pattern from a Lua script
 func (r *LuaRouteRegistry) RegisterMiddleware(def MiddlewareDefinition) error {
-	// Store middleware for later application (Chi requires middleware before routes)
+	// Store middleware for later application when submux is built
 	r.mu.Lock()
 	r.middleware[def.TenantName] = append(r.middleware[def.TenantName], def)
 	r.mu.Unlock()
@@ -197,7 +197,8 @@ func (r *LuaRouteRegistry) ListTenants() []string {
 	return tenants
 }
 
-// ApplyMiddleware applies all stored middleware for a tenant (call after routes are registered)
+// ApplyMiddleware applies all stored middleware for a tenant (call this before registering routes)
+// Note: Chi's Use() applies middleware globally, but our middleware functions contain pattern matching logic
 func (r *LuaRouteRegistry) ApplyMiddleware(tenantName string) error {
 	r.mu.RLock()
 	middlewares := r.middleware[tenantName]
@@ -209,6 +210,8 @@ func (r *LuaRouteRegistry) ApplyMiddleware(tenantName string) error {
 
 	submux := r.getTenantSubmux(tenantName)
 	for _, def := range middlewares {
+		// Apply middleware with pattern matching logic built into the middleware function
+		// The middleware function itself checks if the request matches the pattern
 		submux.Use(def.Middleware)
 	}
 	return nil

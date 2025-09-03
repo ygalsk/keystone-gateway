@@ -5,6 +5,7 @@ package lua
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -151,6 +152,14 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 	// Create middleware that executes the cached Lua function directly
 	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Check if request path matches the middleware pattern
+			if !e.pathMatchesPattern(r.URL.Path, pattern) {
+				// Pattern doesn't match, skip this middleware
+				if next != nil {
+					next.ServeHTTP(w, r)
+				}
+				return
+			}
 			// Get state from pool
 			L := e.statePool.Get()
 			defer e.statePool.Put(L)
@@ -186,6 +195,19 @@ func (e *Engine) luaChiMiddleware(L *lua.LState, scriptTag, tenantName string) i
 			respWriter := &luaResponseWriter{w: w}
 			respTable := createLuaResponse(L, respWriter)
 			reqTable := createLuaRequest(L, r)
+
+			// Inject remote_addr helper (kept in chi_bindings per design requirement)
+			// Provides request:remote_addr() and request:ip() returning client IP without port
+			ip := r.RemoteAddr
+			if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+				ip = host
+			}
+			remoteFunc := L.NewFunction(func(L *lua.LState) int {
+				L.Push(lua.LString(ip))
+				return 1
+			})
+			reqTable.RawSetString("remote_addr", remoteFunc)
+			reqTable.RawSetString("ip", remoteFunc) // alias
 
 			// Create next function
 			nextCalled := false
@@ -335,6 +357,24 @@ func createGetEnvFunction() lua.LGFunction {
 		L.Push(lua.LString(value))
 		return 1
 	}
+}
+
+// pathMatchesPattern checks if a request path matches a middleware pattern
+func (e *Engine) pathMatchesPattern(requestPath, middlewarePattern string) bool {
+	// Handle wildcard patterns like "/api/*" or "/auth/*"
+	if strings.HasSuffix(middlewarePattern, "/*") {
+		prefix := strings.TrimSuffix(middlewarePattern, "/*")
+		return strings.HasPrefix(requestPath, prefix)
+	}
+	
+	// Handle patterns ending with "*" like "/api*"
+	if strings.HasSuffix(middlewarePattern, "*") {
+		prefix := strings.TrimSuffix(middlewarePattern, "*")
+		return strings.HasPrefix(requestPath, prefix)
+	}
+	
+	// Exact match
+	return requestPath == middlewarePattern
 }
 
 // createHTTPGetFunction creates a simple HTTP GET helper with optional headers table param

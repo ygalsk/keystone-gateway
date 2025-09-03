@@ -36,6 +36,13 @@ const (
 	DefaultFileMode = 0644
 )
 
+// Script naming prefixes for categorization
+const (
+	MiddlewarePrefix = "middleware-"
+	RoutesPrefix     = "routes-"
+	GroupsPrefix     = "groups-"
+)
+
 // CompiledLuaScript represents a pre-compiled Lua script for faster execution
 type CompiledLuaScript struct {
 	Script      *lua.LFunction // Pre-compiled Lua function
@@ -45,17 +52,19 @@ type CompiledLuaScript struct {
 
 // Engine manages embedded Lua script execution and route registration
 type Engine struct {
-	scriptsDir      string
-	scriptPaths     map[string]string             // script_tag -> file_path
-	globalPaths     map[string]string             // global_script_tag -> file_path
-	scriptCache     map[string]string             // script_tag -> cached_content
-	globalCache     map[string]string             // global_script_tag -> cached_content
-	compiledScripts map[string]*CompiledLuaScript // script_tag -> compiled_script
-	compiledGlobals map[string]*CompiledLuaScript // global_script_tag -> compiled_script
-	cacheMutex      sync.RWMutex                  // Protects cache access
-	router          *chi.Mux                      // Chi router for dynamic route registration
-	routeRegistry   *routing.LuaRouteRegistry     // Route registry for Lua integration
-	statePool       *LuaStatePool                 // Pool of Lua states for thread safety
+	scriptsDir        string
+	middlewarePaths   map[string]string             // middleware_script_tag -> file_path
+	routesPaths       map[string]string             // routes_script_tag -> file_path
+	groupsPaths       map[string]string             // groups_script_tag -> file_path
+	globalPaths       map[string]string             // global_script_tag -> file_path
+	scriptCache       map[string]string             // script_tag -> cached_content
+	globalCache       map[string]string             // global_script_tag -> cached_content
+	compiledScripts   map[string]*CompiledLuaScript // script_tag -> compiled_script
+	compiledGlobals   map[string]*CompiledLuaScript // global_script_tag -> compiled_script
+	cacheMutex        sync.RWMutex                  // Protects cache access
+	router            *chi.Mux                      // Chi router for dynamic route registration
+	routeRegistry     *routing.LuaRouteRegistry     // Route registry for Lua integration
+	statePool         *LuaStatePool                 // Pool of Lua states for thread safety
 }
 
 // GetScript returns the script content for a given scriptTag, loading it if necessary
@@ -67,10 +76,15 @@ func (e *Engine) GetScript(scriptTag string) (string, bool) {
 	}
 	e.cacheMutex.RUnlock()
 
-	// Check if we have the path for this script
-	path, exists := e.scriptPaths[scriptTag]
-	if !exists {
-		return "", false
+	// Check if we have the path for this script in any category
+	var path string
+	var exists bool
+	if path, exists = e.middlewarePaths[scriptTag]; !exists {
+		if path, exists = e.routesPaths[scriptTag]; !exists {
+			if path, exists = e.groupsPaths[scriptTag]; !exists {
+				return "", false
+			}
+		}
 	}
 
 	// Load the script content
@@ -147,14 +161,16 @@ func (e *Engine) RouteRegistry() *routing.LuaRouteRegistry {
 // NewEngine creates a new embedded Lua engine
 func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 	engine := &Engine{
-		scriptsDir:      scriptsDir,
-		scriptPaths:     make(map[string]string),
-		globalPaths:     make(map[string]string),
-		scriptCache:     make(map[string]string),
-		globalCache:     make(map[string]string),
-		compiledScripts: make(map[string]*CompiledLuaScript),
-		compiledGlobals: make(map[string]*CompiledLuaScript),
-		router:          router,
+		scriptsDir:        scriptsDir,
+		middlewarePaths:   make(map[string]string),
+		routesPaths:       make(map[string]string),
+		groupsPaths:       make(map[string]string),
+		globalPaths:       make(map[string]string),
+		scriptCache:       make(map[string]string),
+		globalCache:       make(map[string]string),
+		compiledScripts:   make(map[string]*CompiledLuaScript),
+		compiledGlobals:   make(map[string]*CompiledLuaScript),
+		router:            router,
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router, engine)
 
@@ -213,9 +229,24 @@ func (e *Engine) loadScriptPaths() {
 			globalScriptName := strings.TrimPrefix(scriptName, "global-")
 			e.globalPaths[globalScriptName] = path
 			slog.Info("lua_global_script_discovered", "script", globalScriptName, "path", path, "component", "lua_engine")
+		} else if strings.HasPrefix(scriptName, MiddlewarePrefix) {
+			// middleware-*.lua scripts
+			middlewareScriptName := strings.TrimPrefix(scriptName, MiddlewarePrefix)
+			e.middlewarePaths[middlewareScriptName] = path
+			slog.Info("lua_middleware_script_discovered", "script", middlewareScriptName, "path", path, "component", "lua_engine")
+		} else if strings.HasPrefix(scriptName, RoutesPrefix) {
+			// routes-*.lua scripts
+			routesScriptName := strings.TrimPrefix(scriptName, RoutesPrefix)
+			e.routesPaths[routesScriptName] = path
+			slog.Info("lua_routes_script_discovered", "script", routesScriptName, "path", path, "component", "lua_engine")
+		} else if strings.HasPrefix(scriptName, GroupsPrefix) {
+			// groups-*.lua scripts
+			groupsScriptName := strings.TrimPrefix(scriptName, GroupsPrefix)
+			e.groupsPaths[groupsScriptName] = path
+			slog.Info("lua_groups_script_discovered", "script", groupsScriptName, "path", path, "component", "lua_engine")
 		} else {
-			e.scriptPaths[scriptName] = path
-			slog.Info("lua_route_script_discovered", "script", scriptName, "path", path, "component", "lua_engine")
+			slog.Warn("lua_script_uncategorized", "script", scriptName, "path", path, "component", "lua_engine",
+				"expected_prefixes", []string{MiddlewarePrefix, RoutesPrefix, GroupsPrefix, "global-"})
 		}
 		return nil
 	})
@@ -265,11 +296,6 @@ func (e *Engine) ExecuteRouteScript(scriptTag, tenantName string) error {
 	err := L.DoString(cached.Content)
 	if err != nil {
 		return fmt.Errorf("lua script execution failed: %w", err)
-	}
-
-	// Apply stored middleware after routes are registered (Chi requirement)
-	if err := e.routeRegistry.ApplyMiddleware(tenantName); err != nil {
-		return fmt.Errorf("middleware application failed: %w", err)
 	}
 
 	return nil
@@ -373,7 +399,9 @@ func (e *Engine) ReloadScripts() error {
 	e.compiledScripts = make(map[string]*CompiledLuaScript)
 	e.compiledGlobals = make(map[string]*CompiledLuaScript)
 	e.cacheMutex.Unlock()
-	e.scriptPaths = make(map[string]string)
+	e.middlewarePaths = make(map[string]string)
+	e.routesPaths = make(map[string]string)
+	e.groupsPaths = make(map[string]string)
 	e.globalPaths = make(map[string]string)
 	e.loadScriptPaths()
 	return nil
@@ -381,16 +409,116 @@ func (e *Engine) ReloadScripts() error {
 
 // GetLoadedScripts returns list of available script names
 func (e *Engine) GetLoadedScripts() []string {
-	scripts := make([]string, 0, len(e.scriptPaths))
-	for name := range e.scriptPaths {
+	totalScripts := len(e.middlewarePaths) + len(e.routesPaths) + len(e.groupsPaths)
+	scripts := make([]string, 0, totalScripts)
+	
+	for name := range e.middlewarePaths {
+		scripts = append(scripts, name)
+	}
+	for name := range e.routesPaths {
+		scripts = append(scripts, name)
+	}
+	for name := range e.groupsPaths {
 		scripts = append(scripts, name)
 	}
 	return scripts
 }
 
-// GetScriptMap returns the script paths map for testing purposes
-func (e *Engine) GetScriptMap() map[string]string {
-	return e.scriptPaths
+// GetMiddlewareScripts returns list of middleware script names
+func (e *Engine) GetMiddlewareScripts() []string {
+	scripts := make([]string, 0, len(e.middlewarePaths))
+	for name := range e.middlewarePaths {
+		scripts = append(scripts, name)
+	}
+	return scripts
+}
+
+// GetRoutesScripts returns list of routes script names
+func (e *Engine) GetRoutesScripts() []string {
+	scripts := make([]string, 0, len(e.routesPaths))
+	for name := range e.routesPaths {
+		scripts = append(scripts, name)
+	}
+	return scripts
+}
+
+// GetGroupsScripts returns list of groups script names
+func (e *Engine) GetGroupsScripts() []string {
+	scripts := make([]string, 0, len(e.groupsPaths))
+	for name := range e.groupsPaths {
+		scripts = append(scripts, name)
+	}
+	return scripts
+}
+
+// ExecuteTenantScriptsOrdered executes tenant scripts in the correct order:
+// 1. Middleware scripts first
+// 2. Routes and Groups scripts second
+func (e *Engine) ExecuteTenantScriptsOrdered(tenantScripts []string, tenantName string) error {
+	// Phase 1: Execute all middleware scripts first
+	for _, script := range tenantScripts {
+		if _, exists := e.middlewarePaths[script]; exists {
+			slog.Info("lua_middleware_script_executing",
+				"script", script,
+				"tenant", tenantName,
+				"phase", "middleware",
+				"component", "lua_engine")
+			if err := e.ExecuteRouteScript(script, tenantName); err != nil {
+				slog.Error("lua_middleware_script_failed",
+					"script", script,
+					"tenant", tenantName,
+					"error", err,
+					"component", "lua_engine")
+				return fmt.Errorf("middleware script '%s' failed: %w", script, err)
+			}
+		}
+	}
+
+	// Apply middleware to submux before registering routes (Chi requirement)
+	if err := e.routeRegistry.ApplyMiddleware(tenantName); err != nil {
+		return fmt.Errorf("middleware application failed: %w", err)
+	}
+
+	// Phase 2: Execute routes and groups scripts
+	for _, script := range tenantScripts {
+		if _, exists := e.routesPaths[script]; exists {
+			slog.Info("lua_routes_script_executing",
+				"script", script,
+				"tenant", tenantName,
+				"phase", "routes",
+				"component", "lua_engine")
+			if err := e.ExecuteRouteScript(script, tenantName); err != nil {
+				slog.Error("lua_routes_script_failed",
+					"script", script,
+					"tenant", tenantName,
+					"error", err,
+					"component", "lua_engine")
+				return fmt.Errorf("routes script '%s' failed: %w", script, err)
+			}
+		} else if _, exists := e.groupsPaths[script]; exists {
+			slog.Info("lua_groups_script_executing",
+				"script", script,
+				"tenant", tenantName,
+				"phase", "groups",
+				"component", "lua_engine")
+			if err := e.ExecuteRouteScript(script, tenantName); err != nil {
+				slog.Error("lua_groups_script_failed",
+					"script", script,
+					"tenant", tenantName,
+					"error", err,
+					"component", "lua_engine")
+				return fmt.Errorf("groups script '%s' failed: %w", script, err)
+			}
+		} else {
+			// Script not found in any category
+			slog.Warn("lua_script_not_found",
+				"script", script,
+				"tenant", tenantName,
+				"component", "lua_engine")
+		}
+	}
+
+	return nil
 }
 
 // registerChiModule registers the chi module in the Lua state so scripts can use require('chi')
