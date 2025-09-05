@@ -170,6 +170,10 @@ func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 	})
 
 	engine.loadScriptPaths()
+	
+	// Start background cache cleanup goroutine
+	go engine.startCacheCleanup()
+	
 	return engine
 }
 
@@ -450,4 +454,15 @@ func (e *Engine) EnableHotReload() error {
 	// TODO: Implement with fsnotify when dependency is added
 	// This would watch e.scriptsDir and call e.ReloadScripts() on changes
 	return nil
+}
+
+// startCacheCleanup runs a background goroutine to clean expired cache entries
+func (e *Engine) startCacheCleanup() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		globalCache.cleanExpired()
+		slog.Debug("lua_cache_cleanup_completed", "component", "lua_engine")
+	}
 }

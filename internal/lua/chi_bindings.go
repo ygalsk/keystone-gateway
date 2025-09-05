@@ -8,12 +8,140 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	lua "github.com/yuin/gopher-lua"
 
 	"keystone-gateway/internal/routing"
 )
+
+// CacheEntry represents a cached value with expiration
+type CacheEntry struct {
+	Value     lua.LValue
+	ExpiresAt int64
+	CreatedAt int64
+}
+
+// LuaCache provides thread-safe caching with TTL support
+type LuaCache struct {
+	data    *sync.Map
+	hits    int64
+	misses  int64
+	cleanMu sync.Mutex
+}
+
+// Global cache instance
+var globalCache = &LuaCache{
+	data: &sync.Map{},
+}
+
+// Helper functions for cache operations
+func (c *LuaCache) isExpired(entry *CacheEntry) bool {
+	return time.Now().Unix() >= entry.ExpiresAt
+}
+
+func (c *LuaCache) get(key string) (lua.LValue, bool) {
+	if val, ok := c.data.Load(key); ok {
+		if entry, ok := val.(*CacheEntry); ok {
+			if !c.isExpired(entry) {
+				atomic.AddInt64(&c.hits, 1)
+				return entry.Value, true
+			}
+			c.data.Delete(key)
+		}
+	}
+	atomic.AddInt64(&c.misses, 1)
+	return lua.LNil, false
+}
+
+func (c *LuaCache) set(key string, value lua.LValue, ttlSeconds int) {
+	if ttlSeconds <= 0 {
+		ttlSeconds = 3600 // Default 1 hour
+	}
+	
+	entry := &CacheEntry{
+		Value:     value,
+		ExpiresAt: time.Now().Unix() + int64(ttlSeconds),
+		CreatedAt: time.Now().Unix(),
+	}
+	
+	c.data.Store(key, entry)
+}
+
+func (c *LuaCache) delete(key string) {
+	c.data.Delete(key)
+}
+
+func (c *LuaCache) exists(key string) bool {
+	if val, ok := c.data.Load(key); ok {
+		if entry, ok := val.(*CacheEntry); ok {
+			if !c.isExpired(entry) {
+				return true
+			}
+			c.data.Delete(key)
+		}
+	}
+	return false
+}
+
+func (c *LuaCache) ttl(key string) int64 {
+	if val, ok := c.data.Load(key); ok {
+		if entry, ok := val.(*CacheEntry); ok {
+			remaining := entry.ExpiresAt - time.Now().Unix()
+			if remaining > 0 {
+				return remaining
+			}
+			c.data.Delete(key)
+		}
+	}
+	return -1
+}
+
+func (c *LuaCache) addIfNotExists(key string, value lua.LValue, ttlSeconds int) bool {
+	if ttlSeconds <= 0 {
+		ttlSeconds = 3600
+	}
+	
+	entry := &CacheEntry{
+		Value:     value,
+		ExpiresAt: time.Now().Unix() + int64(ttlSeconds),
+		CreatedAt: time.Now().Unix(),
+	}
+	
+	_, loaded := c.data.LoadOrStore(key, entry)
+	return !loaded // true if successfully added, false if key already exists
+}
+
+func (c *LuaCache) clear() {
+	c.data = &sync.Map{}
+	atomic.StoreInt64(&c.hits, 0)
+	atomic.StoreInt64(&c.misses, 0)
+}
+
+func (c *LuaCache) stats() (int64, int64) {
+	return atomic.LoadInt64(&c.hits), atomic.LoadInt64(&c.misses)
+}
+
+func (c *LuaCache) cleanExpired() {
+	c.cleanMu.Lock()
+	defer c.cleanMu.Unlock()
+	
+	toDelete := make([]string, 0)
+	c.data.Range(func(key, value interface{}) bool {
+		if entry, ok := value.(*CacheEntry); ok {
+			if c.isExpired(entry) {
+				toDelete = append(toDelete, key.(string))
+			}
+		}
+		return true
+	})
+	
+	for _, key := range toDelete {
+		c.data.Delete(key)
+	}
+}
 
 // setupChiBindings sets up Lua bindings for Chi router functions
 func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
@@ -54,6 +182,68 @@ func (e *Engine) SetupChiBindings(L *lua.LState, scriptTag, tenantName string) {
 	L.SetGlobal("http_get", L.NewFunction(createHTTPGetFunction()))
 	// Add environment variable getter
 	L.SetGlobal("get_env", L.NewFunction(createGetEnvFunction()))
+	
+	// Add cache functions
+	L.SetGlobal("cache_get", L.NewFunction(func(L *lua.LState) int {
+		key := L.CheckString(1)
+		if value, found := globalCache.get(key); found {
+			L.Push(value)
+			return 1
+		}
+		L.Push(lua.LNil)
+		return 1
+	}))
+
+	L.SetGlobal("cache_set", L.NewFunction(func(L *lua.LState) int {
+		key := L.CheckString(1)
+		value := L.Get(2)
+		ttl := L.OptInt(3, 3600) // Default 1 hour if not specified
+		globalCache.set(key, value, ttl)
+		return 0
+	}))
+
+	L.SetGlobal("cache_delete", L.NewFunction(func(L *lua.LState) int {
+		key := L.CheckString(1)
+		globalCache.delete(key)
+		return 0
+	}))
+
+	L.SetGlobal("cache_exists", L.NewFunction(func(L *lua.LState) int {
+		key := L.CheckString(1)
+		exists := globalCache.exists(key)
+		L.Push(lua.LBool(exists))
+		return 1
+	}))
+
+	L.SetGlobal("cache_ttl", L.NewFunction(func(L *lua.LState) int {
+		key := L.CheckString(1)
+		ttl := globalCache.ttl(key)
+		L.Push(lua.LNumber(ttl))
+		return 1
+	}))
+
+	L.SetGlobal("cache_add", L.NewFunction(func(L *lua.LState) int {
+		key := L.CheckString(1)
+		value := L.Get(2)
+		ttl := L.OptInt(3, 3600)
+		success := globalCache.addIfNotExists(key, value, ttl)
+		L.Push(lua.LBool(success))
+		return 1
+	}))
+
+	L.SetGlobal("cache_clear", L.NewFunction(func(L *lua.LState) int {
+		globalCache.clear()
+		return 0
+	}))
+
+	L.SetGlobal("cache_stats", L.NewFunction(func(L *lua.LState) int {
+		hits, misses := globalCache.stats()
+		statsTable := L.NewTable()
+		statsTable.RawSetString("hits", lua.LNumber(hits))
+		statsTable.RawSetString("misses", lua.LNumber(misses))
+		L.Push(statsTable)
+		return 1
+	}))
 }
 
 // luaChiRoute handles route registration from Lua: chi_route(method, pattern, handler)
@@ -342,7 +532,7 @@ func createHTTPGetFunction() lua.LGFunction {
 	return func(L *lua.LState) int {
 		url := L.CheckString(1)
 
-		// Optional second param: headers table
+		// Optional headers
 		headers := make(http.Header)
 		if L.GetTop() >= 2 {
 			if tbl, ok := L.Get(2).(*lua.LTable); ok {
@@ -358,6 +548,7 @@ func createHTTPGetFunction() lua.LGFunction {
 			L.Push(lua.LString(err.Error()))
 			return 2
 		}
+
 		for k, vals := range headers {
 			for _, val := range vals {
 				req.Header.Add(k, val)
@@ -374,8 +565,24 @@ func createHTTPGetFunction() lua.LGFunction {
 		defer resp.Body.Close()
 
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		L.Push(lua.LString(string(bodyBytes)))
-		L.Push(lua.LNumber(resp.StatusCode))
-		return 2
+
+		// Create Lua table for headers
+		luaHeaders := L.NewTable()
+		for k, vals := range resp.Header {
+			if len(vals) == 1 {
+				luaHeaders.RawSetString(k, lua.LString(vals[0]))
+			} else {
+				valTable := L.NewTable()
+				for i, v := range vals {
+					valTable.RawSetInt(i+1, lua.LString(v))
+				}
+				luaHeaders.RawSetString(k, valTable)
+			}
+		}
+
+		L.Push(lua.LString(string(bodyBytes)))  // body
+		L.Push(luaHeaders)                      // headers table
+		L.Push(lua.LNumber(resp.StatusCode))    // status code
+		return 3
 	}
 }
