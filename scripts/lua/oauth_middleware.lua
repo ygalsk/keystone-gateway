@@ -1,222 +1,231 @@
----
---- Created by dkremer.
---- DateTime: 8/22/25 3:41 PM
----
--- lua-scripts/oauth_middleware.lua
--- Simple JSON decode (very minimal)
-local function parse_json(str)
-    local token = str:match('"access_token"%s*:%s*"([^"]+)"')
-                  or str:match('"token"%s*:%s*"([^"]+)"')
-    local expires = str:match('"expires_in"%s*:%s*(%d+)')
-    return {
-        access_token = token,
-        expires_in = tonumber(expires) or 3600
-    }
+-- oauth_middleware.lua - Simple OAuth proxy
+
+-- Config
+local OAUTH_AUTH_URL = get_env("OAUTH_AUTH_URL")
+local OAUTH_AUDIENCE = get_env("OAUTH_AUDIENCE") 
+local OAUTH_EXCHANGE_URL = get_env("OAUTH_EXCHANGE_URL")
+local OAUTH_CLIENT_ID = get_env("OAUTH_CLIENT_ID")
+local OAUTH_CLIENT_SECRET = get_env("OAUTH_CLIENT_SECRET")
+
+-- Cache keys
+local CACHE_KEY_TOKEN = "oauth_token"
+local CACHE_KEY_LOCK = "oauth_lock"
+
+local function url_encode(str)
+    if not str then return "" end
+    str = str:gsub("([^%w%-_.~])", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end)
+    return str
 end
 
--- Load (no defaults) so script is generic for any Auth0 tenant. get_env must be provided by the host.
-local OAUTH_AUTH_URL       = get_env("OAUTH_AUTH_URL") or nil
-local OAUTH_AUDIENCE       = get_env("OAUTH_AUDIENCE") or nil
-local OAUTH_SCOPE          = get_env("OAUTH_SCOPE") or nil
-local OAUTH_EXCHANGE_URL   = get_env("OAUTH_EXCHANGE_URL") or nil
-local OAUTH_EXPIRES_LEEWAY = tonumber((get_env("OAUTH_EXPIRES_LEEWAY")) or "60") or 60
-local OAUTH_CLIENT_ID      = get_env("OAUTH_CLIENT_ID") or nil
-local OAUTH_CLIENT_SECRET  = get_env("OAUTH_CLIENT_SECRET") or nil
-
-local function validate_config()
-    local missing = {}
-    local function req(name, value)
-        if not value or value == '' then table.insert(missing, name) end
-    end
-    req("OAUTH_CLIENT_ID", OAUTH_CLIENT_ID)
-    req("OAUTH_CLIENT_SECRET", OAUTH_CLIENT_SECRET)
-    req("OAUTH_AUTH_URL", OAUTH_AUTH_URL)
-    req("OAUTH_AUDIENCE", OAUTH_AUDIENCE)
-    req("OAUTH_EXCHANGE_URL", OAUTH_EXCHANGE_URL)
-    
-    if #missing > 0 then
-        return false, missing
-    end
-    return true, nil
-end
-
--- URL decode function
+-- URL decode
 local function url_decode(str)
-    if not str then
-        return nil
-    end
-    -- Replace + with spaces
+    if not str then return nil end
     str = str:gsub("+", " ")
-    -- Replace %XX with corresponding character
     str = str:gsub("%%(%x%x)", function(hex)
         return string.char(tonumber(hex, 16))
     end)
     return str
 end
 
--- Extract and decode redirect_uri parameter
-local function get_redirect_uri(url)
-    local redirect_uri = url:match("[?&]redirect_uri=([^&]*)")
-    if redirect_uri then
-        return url_decode(redirect_uri)
+-- Get OAuth token with atomic locking to prevent thundering herd
+local function get_token()
+    -- Check global cache first
+    local cached_token = cache_get(CACHE_KEY_TOKEN)
+    if cached_token then
+        return cached_token
     end
-    return nil
+    
+    -- Try to acquire lock atomically - only ONE request should do OAuth
+    local got_lock = cache_add(CACHE_KEY_LOCK, "locked", 10) -- 10 second timeout
+    if not got_lock then
+        -- Another request is getting the token, fast-fail for client retry
+        return nil, "token_acquisition_in_progress"  
+    end
+    
+    -- We have the lock, proceed with OAuth
+    local success, token, error_msg = pcall(function()
+        -- Step 1: Get subject token
+        local body1 = string.format(
+            "grant_type=client_credentials&client_id=%s&client_secret=%s&audience=%s",
+            OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_AUDIENCE
+        )
+        
+        local resp1, status1 = http_post(OAUTH_AUTH_URL, body1, 
+            {["Content-Type"] = "application/x-www-form-urlencoded"})
+        
+        if status1 ~= 200 then
+            error("auth failed: " .. status1)
+        end
+        
+        local subject_token = resp1:match('"access_token"%s*:%s*"([^"]+)"')
+        if not subject_token then
+            error("no subject token in response")
+        end
+        
+        -- Step 2: Exchange for portal token
+        local body2 = string.format([[{
+            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "subject_token": "%s",
+            "subject_token_type": "urn:ietf:params:oauth:token-type:access_token"
+        }]], subject_token)
+        
+        local resp2, status2 = http_post(OAUTH_EXCHANGE_URL, body2,
+            {["Content-Type"] = "application/json"})
+        
+        if status2 ~= 200 then
+            error("exchange failed: " .. status2)
+        end
+        
+        local portal_token = resp2:match('"access_token"%s*:%s*"([^"]+)"')
+        local expires = resp2:match('"expires_in"%s*:%s*(%d+)') or "3600"
+        
+        if not portal_token then
+            error("no portal token in response")
+        end
+        
+        return portal_token, tonumber(expires)
+    end)
+    
+    -- Always release the lock
+    cache_delete(CACHE_KEY_LOCK)
+    
+    if success then
+        local portal_token, expires = token, error_msg
+        -- Cache with 60 second buffer  
+        local cache_ttl = expires - 60
+        if cache_ttl > 0 then
+            cache_set(CACHE_KEY_TOKEN, portal_token, cache_ttl)
+        else
+            -- Fallback: cache for at least 300 seconds if expires is too low
+            cache_set(CACHE_KEY_TOKEN, portal_token, 300)
+        end
+        return portal_token
+    else
+        return nil, token -- token contains error message when success is false
+    end
 end
 
--- Token cache for final portal token
-local token_cache = {
-    token = nil,
-    expires_at = 0
-}
-
--- Step 1: get subject_token from auth server
-local function get_subject_token()
-    local ok, missing = validate_config()
-    if not ok then
-        return nil, 'missing_env: ' .. table.concat(missing, ',')
-    end
-    
-    local base = string.format(
-        "grant_type=client_credentials&client_id=%s&client_secret=%s&audience=%s",
-        OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_AUDIENCE
-    )
-    local body = base
-    if OAUTH_SCOPE and OAUTH_SCOPE ~= '' then
-        body = body .. "&scope=" .. OAUTH_SCOPE
-    end
-    
-    local response, status = http_post(
-        OAUTH_AUTH_URL,
-        body,
-        { ["Content-Type"] = "application/x-www-form-urlencoded" }
-    )
-    
-    if status ~= 200 then
-        local snippet = response and response:sub(1,180) or ''
-        return nil, "oauth_client_credentials_failed: " .. status .. (snippet ~= '' and (" body=" .. snippet) or '')
-    end
-    
-    local auth = parse_json(response)
-    return auth.access_token
-end
-
--- Step 2: exchange subject_token for final portal token
-local function exchange_token(subject_token)
-    local body = string.format([[
-    {
-        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-        "subject_token": "%s",
-        "subject_token_type": "urn:ietf:params:oauth:token-type:access_token"
-    }]], subject_token)
-    
-    local response, status = http_post(
-        OAUTH_EXCHANGE_URL,
-        body,
-        {
-            ["Content-Type"] = "application/json",
-            ["Accept"] = "application/json"
-        }
-    )
-    
-    print("Step2 status:", status)
-    print("Step2 response:", response)
-    
-    if status ~= 200 then
-        return nil, "Step2 exchange failed: " .. status .. " body=" .. (response or "")
-    end
-    
-    local auth = parse_json(response)
-    return auth.access_token, auth.expires_in
-end
-
--- Get cached or fresh portal token
-local function get_portal_token()
-    if token_cache.token and os.time() < token_cache.expires_at then
-        return token_cache.token
-    end
-    
-    -- Step 1: subject token
-    local subject_token, err = get_subject_token()
-    if not subject_token then
-        return nil, err
-    end
-    
-    -- Step 2: exchange for portal token
-    local portal_token, expires_in = exchange_token(subject_token)
-    if not portal_token then
-        return nil, "token_exchange_failed"
-    end
-    
-    token_cache.token = portal_token
-    token_cache.expires_at = os.time() + (expires_in or 3600) - OAUTH_EXPIRES_LEEWAY
-    
-    return token_cache.token
-end
-
--- MIDDLEWARE - NO SECURITY CHECKS
+-- Simple proxy middleware
 chi_middleware("/*", function(request, response, next)
-    local path = request.path or ""
-    print("OAuth middleware called for:", path)
-    
-    -- Always perform token retrieval (will use cache after first time)
-    local token, err = get_portal_token()
-    if not token then
-        print("OAuth token fetch failed:", err)
-        if err and err:match('missing_env') then
-            response:status(500)
-        else
-            response:status(503)
-        end
+    -- Get the full query string and extract redirect_uri
+    local query_string = request.url:match("%?(.+)") or ""
+    local redirect_uri = query_string:match("redirect_uri=([^&]*)")
+    if not redirect_uri then
+        -- This middleware only handles requests with redirect_uri
+        response:status(404)
         response:header("Content-Type", "application/json")
-        response:write('{"error": "' .. (err or "Failed to get portal token") .. '"}')
+        response:write('{"error": "This gateway only proxies requests with redirect_uri parameter"}')
         return
     end
-    
-    -- Special handling for auth endpoint
-    if path == "/auth" or path == "/auth/" or path == "/api/auth" or path == "/api/auth/" then
-        -- Accept redirect_uri as target resource to fetch server-side
-        local target = nil
-        if request.query and request.query["redirect_uri"] then
-            target = request.query["redirect_uri"]
-        else
-            target = get_redirect_uri(request.url or "")
-        end
-        
-        if not target or target == "" then
-            response:status(400)
-            response:header("Content-Type", "application/json")
-            response:write('{"error":"missing redirect_uri"}')
+
+    -- Decode the redirect_uri
+    local target_url = url_decode(redirect_uri)
+    if not target_url then
+        response:status(400)
+        response:header("Content-Type", "application/json")
+        response:write('{"error": "invalid redirect_uri"}')
+        return
+    end
+
+-- Existing HTML and CSV logic (unchanged)
+    local base, uuid, params = target_url:match("^(https?://[^/]+)/resource/processes/([%w%-]+)%?(.*)$")
+    if base and uuid and params then
+        -- Check if format=html is present
+        if params:match("format=html") then
+            -- Remove format=html parameter
+            params = params:gsub("(^&?format=html&?)", ""):gsub("(&?format=html$)", "")
+            -- Clean up any double ampersands or leading/trailing ampersands  
+            params = params:gsub("&&", "&"):gsub("^&", ""):gsub("&$", "")
+
+            local new_query = "uuid=" .. uuid
+            if #params > 0 then new_query = new_query .. "&" .. params end
+            local new_url = string.format("%s/datasetdetail/process.xhtml?%s", base, new_query)
+
+            -- Redirect for HTML format
+            response:header("Location", new_url)
+            response:header("Cache-Control", "no-cache")
+            response:status(302)
             return
         end
-        
-        local decoded = url_decode(target) or target
-        print("Target URL to fetch:", decoded)
-        
-        -- REMOVED ALL HOST VALIDATION - ALLOW ANY URL
-        
-        -- Perform server-side GET with bearer token
-        local headers = { ["Authorization"] = "Bearer " .. token }
-        local body, status = http_get(decoded, headers)
-        
-        if not body then
-            response:status(502)
-            response:header("Content-Type", "application/json")
-            response:write('{"error":"upstream_fetch_failed"}')
+
+        -- CSV download
+        if params:match("format=csv") then
+            local body, headers, status = http_get(target_url)
+
+            -- Forward all headers from the remote response
+            for k, v in pairs(headers) do
+                if type(v) == "string" then
+                    response:header(k, v)
+                elseif type(v) == "table" then
+                    response:header(k, table.concat(v, ", "))
+                end
+            end
+
+            response:write(body)
+            response:status(status)
             return
         end
-        
-        response:status(status)
-        -- naive content type detection
-        if body:sub(1,1) == "{" then
-            response:header("Content-Type", "application/json")
-        else
-            response:header("Content-Type", "text/plain; charset=utf-8")
+    end
+
+    -- NEW separate check for ZIP export (pass-through headers)
+    local base_zip, uuid_zip, path_zip = target_url:match("^(https?://[^/]+)/resource/processes/([%w%-]+)(/[^?]*)")
+    if base_zip and uuid_zip and path_zip and path_zip:match("zipexport") then
+        local body, headers, status = http_get(target_url)
+
+        -- Forward all headers from the remote response
+        for k, v in pairs(headers) do
+            if type(v) == "string" then
+                response:header(k, v)
+            elseif type(v) == "table" then
+                response:header(k, table.concat(v, ", "))
+            end
         end
+
         response:write(body)
+        response:status(status)
         return
     end
-    
-    -- Default behavior: attach Authorization header and continue
-    request.headers["Authorization"] = "Bearer " .. token
-    next()
+
+    -- FALLBACK: OAuth proxy logic for all other requests
+    -- Add other params (except redirect_uri itself)
+    local other_params = {}
+    for param in query_string:gmatch("([^&]+)") do
+        if not param:match("^redirect_uri=") then
+            table.insert(other_params, param)
+        end
+    end
+    if #other_params > 0 then
+        local separator = target_url:match("%?") and "&" or "?"
+        target_url = target_url .. separator .. table.concat(other_params, "&")
+    end
+
+    -- Get token
+    local token, err = get_token()
+    if not token then
+        if err == "token_acquisition_in_progress" then
+            -- Fast-fail with retry guidance for concurrent requests
+            response:status(503)
+            response:header("Retry-After", "2")
+            response:header("Content-Type", "application/json")
+            response:write('{"error": "token_acquisition_in_progress", "retry_after_seconds": 2}')
+        else
+            -- Other auth failures
+            response:status(503)
+            response:header("Content-Type", "application/json")
+            response:write('{"error": "' .. (err or "auth failed") .. '"}')
+        end
+        return
+    end
+
+    -- Proxy the request with auth headers
+    local headers_table = {
+        ["Authorization"] = "Bearer " .. token,
+        ["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
+    local body, resp_headers, status = http_get(target_url, headers_table)
+
+    response:status(status or 502)
+    response:write(body or '{"error": "upstream failed"}')
 end)

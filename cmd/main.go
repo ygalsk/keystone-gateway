@@ -32,7 +32,7 @@ const (
 
 func init() {
 	// Simple structured JSON logging
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 
 	// Optional .env loading (simple parser: KEY=VALUE lines, ignores # comments)
 	if _, err := os.Stat(".env"); err == nil {
@@ -47,7 +47,13 @@ func init() {
 					k := strings.TrimSpace(l[:eq])
 					v := strings.TrimSpace(l[eq+1:])
 					if _, exists := os.LookupEnv(k); !exists {
-						os.Setenv(k, v)
+						if os.Setenv(k, v) == nil {
+							slog.Error("env_file_load_failed",
+								"key", k,
+								"value", v,
+								"error", "failed to set environment variable",
+								"component", "startup")
+						}
 					}
 				}
 			}
@@ -202,18 +208,18 @@ func (app *Application) SetupRouter() *chi.Mux {
 
 // setupBaseMiddleware configures the core middleware stack
 func (app *Application) setupBaseMiddleware(r *chi.Mux) {
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.RequestID)
-
-	// Add compression middleware for better performance on text content
+	r.Use(middleware.RequestID) // Generate request ID first
+	r.Use(middleware.RealIP)    // Extract real client IP
+	r.Use(middleware.Logger)    // Log requests (BEFORE Recoverer!)
+	r.Use(middleware.Recoverer) // Handle panics (AFTER Logger!)
+	r.Use(middleware.Timeout(DefaultRequestTimeout))
+	r.Use(middleware.Throttle(100))
 	compressionConfig := app.config.GetCompressionConfig()
 	if compressionConfig.Enabled {
 		r.Use(middleware.Compress(compressionConfig.Level, compressionConfig.ContentTypes...))
 	}
-
-	r.Use(middleware.Timeout(DefaultRequestTimeout))
+	r.Use(middleware.CleanPath)
+	r.Use(middleware.StripSlashes)
 
 	// Add host-based routing middleware if we have host-based tenants
 	if app.hasHostBasedTenants() {
@@ -436,21 +442,9 @@ func main() {
 			"router", "chi",
 			"component", "server")
 
-		// Start server with TLS support if configured
-		if cfg.TLS != nil && cfg.TLS.Enabled {
-			slog.Info("tls_enabled",
-				"cert_file", cfg.TLS.CertFile,
-				"key_file", cfg.TLS.KeyFile,
-				"component", "server")
-			if err := server.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile); err != nil && err != http.ErrServerClosed {
-				slog.Error("server_failed", "error", err, "component", "server")
-				os.Exit(1)
-			}
-		} else {
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				slog.Error("server_failed", "error", err, "component", "server")
-				os.Exit(1)
-			}
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("server_failed", "error", err, "component", "server")
+			os.Exit(1)
 		}
 	}()
 

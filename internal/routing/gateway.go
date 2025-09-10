@@ -430,9 +430,6 @@ func (gw *Gateway) createDirectorFunction(backend *GatewayBackend, stripPrefix s
 			originalHost = req.URL.Host
 		}
 		originalProto := "http"
-		if req.TLS != nil || strings.EqualFold(req.Header.Get(xForwardedProtoHeader), "https") {
-			originalProto = "https"
-		}
 
 		// Compute original client IP robustly (IPv4/IPv6)
 		var originalFor string
@@ -475,7 +472,7 @@ func (gw *Gateway) setTargetURL(req *http.Request, backend *GatewayBackend) {
 	req.URL.Host = backend.URL.Host
 }
 
-// handlePathStripping handles path prefix stripping
+// handlePathStripping handles path prefix stripping NOTE: DONT NEED CAN BE REMOVED FOR chi middleware cleanPath etc.
 func (gw *Gateway) handlePathStripping(req *http.Request, stripPrefix string) {
 	if stripPrefix == "" {
 		return
@@ -490,7 +487,7 @@ func (gw *Gateway) handlePathStripping(req *http.Request, stripPrefix string) {
 	req.URL.Path = newPath
 }
 
-// prependBackendPath prepends the backend URL path if it exists
+// prependBackendPath prepends the backend URL path if it exists NOTE: questionable function
 func (gw *Gateway) prependBackendPath(req *http.Request, backend *GatewayBackend) {
 	if backend.URL.Path == "" || backend.URL.Path == "/" {
 		return
