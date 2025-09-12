@@ -3,16 +3,18 @@ package lua
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	lua "github.com/yuin/gopher-lua"
 
+	"keystone-gateway/internal/config"
 	"keystone-gateway/internal/routing"
 )
 
@@ -24,36 +26,36 @@ const (
 	DefaultDirMode         = 0755
 )
 
-type CompiledLuaScript struct {
-	Script      *lua.LFunction
-	Content     string
-	CompileTime time.Time
+// luaResponseWriter wraps http.ResponseWriter for Lua integration
+type luaResponseWriter struct {
+	w http.ResponseWriter
 }
 
 type Engine struct {
-	scriptsDir      string
-	scriptPaths     map[string]string
-	globalPaths     map[string]string
-	scriptCache     map[string]string
-	globalCache     map[string]string
-	compiledScripts map[string]*CompiledLuaScript
-	compiledGlobals map[string]*CompiledLuaScript
-	cacheMutex      sync.RWMutex
-	router          *chi.Mux
-	routeRegistry   *routing.LuaRouteRegistry
-	statePool       *LuaStatePool
+	scriptsDir     string
+	scriptPaths    map[string]string
+	globalPaths    map[string]string
+	scriptCache    map[string]string
+	globalCache    map[string]string
+	scriptCompiler *ScriptCompiler
+	globalCompiler *ScriptCompiler
+	router         *chi.Mux
+	routeRegistry  *routing.LuaRouteRegistry
+	statePool      *LuaStatePool
+	config         *config.Config
 }
 
-func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
+func NewEngine(scriptsDir string, router *chi.Mux, cfg *config.Config) *Engine {
 	engine := &Engine{
-		scriptsDir:      scriptsDir,
-		scriptPaths:     make(map[string]string),
-		globalPaths:     make(map[string]string),
-		scriptCache:     make(map[string]string),
-		globalCache:     make(map[string]string),
-		compiledScripts: make(map[string]*CompiledLuaScript),
-		compiledGlobals: make(map[string]*CompiledLuaScript),
-		router:          router,
+		scriptsDir:     scriptsDir,
+		scriptPaths:    make(map[string]string),
+		globalPaths:    make(map[string]string),
+		scriptCache:    make(map[string]string),
+		globalCache:    make(map[string]string),
+		scriptCompiler: NewScriptCompiler(100), // Cache up to 100 scripts
+		globalCompiler: NewScriptCompiler(50),  // Cache up to 50 globals
+		router:         router,
+		config:         cfg,
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router)
 
@@ -77,12 +79,10 @@ func NewEngine(scriptsDir string, router *chi.Mux) *Engine {
 }
 
 func (e *Engine) GetScript(scriptTag string) (string, bool) {
-	e.cacheMutex.RLock()
+	// Check string cache first
 	if s, ok := e.scriptCache[scriptTag]; ok {
-		e.cacheMutex.RUnlock()
 		return s, true
 	}
-	e.cacheMutex.RUnlock()
 
 	path, exists := e.scriptPaths[scriptTag]
 	if !exists {
@@ -95,28 +95,18 @@ func (e *Engine) GetScript(scriptTag string) (string, bool) {
 		return "", false
 	}
 
-	e.cacheMutex.Lock()
-	e.scriptCache[scriptTag] = string(content)
-	e.cacheMutex.Unlock()
-	e.precompileScript(scriptTag, string(content))
-	return string(content), true
+	contentStr := string(content)
+	e.scriptCache[scriptTag] = contentStr
+
+	// Pre-compile to bytecode using new compiler
+	if _, err := e.scriptCompiler.CompileScript(scriptTag, contentStr); err != nil {
+		slog.Error("lua_script_compile_failed", "script", scriptTag, "error", err)
+	}
+
+	return contentStr, true
 }
 
-func (e *Engine) precompileScript(scriptTag, content string) {
-	e.cacheMutex.Lock()
-	defer e.cacheMutex.Unlock()
-	if _, exists := e.compiledScripts[scriptTag]; !exists {
-		e.compiledScripts[scriptTag] = &CompiledLuaScript{Content: content, CompileTime: time.Now()}
-	}
-}
-
-func (e *Engine) precompileGlobalScript(scriptTag, content string) {
-	e.cacheMutex.Lock()
-	defer e.cacheMutex.Unlock()
-	if _, exists := e.compiledGlobals[scriptTag]; !exists {
-		e.compiledGlobals[scriptTag] = &CompiledLuaScript{Content: content, CompileTime: time.Now()}
-	}
-}
+// Removed - now handled by ScriptCompiler
 
 func (e *Engine) ExecuteRouteScript(scriptTag string) error {
 	_, ok := e.GetScript(scriptTag)
@@ -124,15 +114,18 @@ func (e *Engine) ExecuteRouteScript(scriptTag string) error {
 		return fmt.Errorf("route script not found: %s", scriptTag)
 	}
 
-	e.cacheMutex.RLock()
-	cached := e.compiledScripts[scriptTag]
-	e.cacheMutex.RUnlock()
+	// Get compiled script from new compiler
+	compiled, exists := e.scriptCompiler.GetScript(scriptTag)
+	if !exists {
+		return fmt.Errorf("compiled script not found: %s", scriptTag)
+	}
 
 	L := e.statePool.Get()
 	defer e.statePool.Put(L)
 	e.SetupChiBindings(L, e.router)
 
-	if err := L.DoString(cached.Content); err != nil {
+	// Use bytecode execution for better performance
+	if err := ExecuteWithBytecode(L, compiled); err != nil {
 		return fmt.Errorf("lua script execution failed: %w", err)
 	}
 
@@ -140,12 +133,10 @@ func (e *Engine) ExecuteRouteScript(scriptTag string) error {
 }
 
 func (e *Engine) getGlobalScript(scriptTag string) (string, bool) {
-	e.cacheMutex.RLock()
+	// Check string cache first
 	if s, ok := e.globalCache[scriptTag]; ok {
-		e.cacheMutex.RUnlock()
 		return s, true
 	}
-	e.cacheMutex.RUnlock()
 
 	path, exists := e.globalPaths[scriptTag]
 	if !exists {
@@ -158,11 +149,15 @@ func (e *Engine) getGlobalScript(scriptTag string) (string, bool) {
 		return "", false
 	}
 
-	e.cacheMutex.Lock()
-	e.globalCache[scriptTag] = string(content)
-	e.cacheMutex.Unlock()
-	e.precompileGlobalScript(scriptTag, string(content))
-	return string(content), true
+	contentStr := string(content)
+	e.globalCache[scriptTag] = contentStr
+
+	// Pre-compile to bytecode using new compiler
+	if _, err := e.globalCompiler.CompileScript(scriptTag, contentStr); err != nil {
+		slog.Error("lua_global_script_compile_failed", "script", scriptTag, "error", err)
+	}
+
+	return contentStr, true
 }
 
 func (e *Engine) ExecuteGlobalScripts() error {
@@ -172,9 +167,12 @@ func (e *Engine) ExecuteGlobalScripts() error {
 			continue
 		}
 
-		e.cacheMutex.RLock()
-		cached := e.compiledGlobals[name]
-		e.cacheMutex.RUnlock()
+		// Get compiled script from new compiler
+		compiled, exists := e.globalCompiler.GetScript(name)
+		if !exists {
+			slog.Warn("compiled_global_script_not_found", "script", name)
+			continue
+		}
 
 		L := e.statePool.Get()
 		defer e.statePool.Put(L)
@@ -184,7 +182,7 @@ func (e *Engine) ExecuteGlobalScripts() error {
 		defer cancel()
 
 		done := make(chan error, 1)
-		go func() { done <- L.DoString(cached.Content) }()
+		go func() { done <- ExecuteWithBytecode(L, compiled) }()
 
 		select {
 		case err := <-done:
@@ -219,10 +217,13 @@ func (e *Engine) loadScriptPaths() {
 }
 
 func (e *Engine) ReloadScripts() {
-	e.cacheMutex.Lock()
+	// Clear caches
 	e.scriptCache, e.globalCache = make(map[string]string), make(map[string]string)
-	e.compiledScripts, e.compiledGlobals = make(map[string]*CompiledLuaScript), make(map[string]*CompiledLuaScript)
-	e.cacheMutex.Unlock()
+
+	// Clear compiled bytecode caches
+	e.scriptCompiler.ClearCache()
+	e.globalCompiler.ClearCache()
+
 	e.scriptPaths, e.globalPaths = make(map[string]string), make(map[string]string)
 	e.loadScriptPaths()
 }
@@ -235,6 +236,155 @@ func (e *Engine) GetLoadedScripts() []string {
 	return scripts
 }
 
+// ExecuteScriptHandler executes a Lua script handler function for HTTP requests
+func (e *Engine) ExecuteScriptHandler(scriptKey, functionName string, w http.ResponseWriter, r *http.Request) error {
+	// Get compiled script from compiler
+	compiled, exists := e.scriptCompiler.GetScript(scriptKey)
+	if !exists {
+		return fmt.Errorf("compiled script not found: %s", scriptKey)
+	}
+
+	L := e.statePool.Get()
+	defer e.statePool.Put(L)
+	e.SetupChiBindings(L, e.router)
+
+	// Use bytecode execution
+	if err := ExecuteWithBytecode(L, compiled); err != nil {
+		return fmt.Errorf("script execution failed: %w", err)
+	}
+
+	// Get the handler function and call it
+	handlerFunc := L.GetGlobal(functionName)
+	if handlerFunc.Type() != lua.LTFunction {
+		return fmt.Errorf("handler function not found: %s", functionName)
+	}
+
+	// Create request/response tables and call the handler
+	respWriter := &luaResponseWriter{w: w}
+	respTable := createLuaResponse(L, respWriter)
+	reqTable := createLuaRequest(L, r)
+
+	return L.CallByParam(lua.P{
+		Fn:      handlerFunc.(*lua.LFunction),
+		NRet:    0,
+		Protect: true,
+	}, reqTable, respTable)
+}
+
+// CompileScript compiles a script to bytecode (public method for LuaHandler)
+func (e *Engine) CompileScript(scriptKey, content string) error {
+	_, err := e.scriptCompiler.CompileScript(scriptKey, content)
+	return err
+}
+
+// createLuaRequest creates a Lua table representing an HTTP request
+func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
+	reqTable := L.NewTable()
+
+	// Basic request info
+	reqTable.RawSetString("method", lua.LString(r.Method))
+	reqTable.RawSetString("url", lua.LString(r.URL.String()))
+	reqTable.RawSetString("path", lua.LString(r.URL.Path))
+	reqTable.RawSetString("host", lua.LString(r.Host))
+
+	// Headers
+	headersTable := L.NewTable()
+	for key, values := range r.Header {
+		if len(values) > 0 {
+			headersTable.RawSetString(key, lua.LString(values[0]))
+		}
+	}
+	reqTable.RawSetString("headers", headersTable)
+
+	// URL parameters from Chi router
+	paramsTable := L.NewTable()
+	if r.Context() != nil {
+		if rctx := chi.RouteContext(r.Context()); rctx != nil {
+			for i, key := range rctx.URLParams.Keys {
+				if i < len(rctx.URLParams.Values) {
+					paramsTable.RawSetString(key, lua.LString(rctx.URLParams.Values[i]))
+				}
+			}
+		}
+	}
+	reqTable.RawSetString("params", paramsTable)
+
+	// Query parameters
+	queryTable := L.NewTable()
+	for key, values := range r.URL.Query() {
+		if len(values) > 0 {
+			queryTable.RawSetString(key, lua.LString(values[0]))
+		}
+	}
+	reqTable.RawSetString("query", queryTable)
+
+	// Body content
+	var bodyContent string
+	if r.Body != nil {
+		if body, err := io.ReadAll(r.Body); err == nil {
+			bodyContent = string(body)
+		}
+	}
+
+	// Add helper methods
+	reqTable.RawSetString("body", L.NewFunction(func(L *lua.LState) int {
+		L.Push(lua.LString(bodyContent))
+		return 1
+	}))
+
+	reqTable.RawSetString("header", L.NewFunction(func(L *lua.LState) int {
+		headerName := L.ToString(1)
+		headerValue := r.Header.Get(headerName)
+		L.Push(lua.LString(headerValue))
+		return 1
+	}))
+
+	return reqTable
+}
+
+// createLuaResponse creates a Lua table representing an HTTP response
+func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
+	respTable := L.NewTable()
+
+	writeFunc := L.NewFunction(func(L *lua.LState) int {
+		content := L.ToString(1)
+		if _, err := w.w.Write([]byte(content)); err != nil {
+			slog.Error("lua_response_write_failed", "error", err)
+		}
+		return 0
+	})
+
+	headerFunc := L.NewFunction(func(L *lua.LState) int {
+		key := L.ToString(1)
+		value := L.ToString(2)
+		w.w.Header().Set(key, value)
+		return 0
+	})
+
+	statusFunc := L.NewFunction(func(L *lua.LState) int {
+		statusCode := L.ToInt(1)
+		w.w.WriteHeader(statusCode)
+		return 0
+	})
+
+	jsonFunc := L.NewFunction(func(L *lua.LState) int {
+		jsonContent := L.ToString(1)
+		w.w.Header().Set("Content-Type", "application/json")
+		if _, err := w.w.Write([]byte(jsonContent)); err != nil {
+			slog.Error("lua_json_response_failed", "error", err)
+		}
+		return 0
+	})
+
+	respTable.RawSetString("write", writeFunc)
+	respTable.RawSetString("header", headerFunc)
+	respTable.RawSetString("status", statusFunc)
+	respTable.RawSetString("json", jsonFunc)
+
+	return respTable
+}
+
+// TODO: check if this can be removed cause cache and script lifecycle is manged by the compiler
 func (e *Engine) startCacheCleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()

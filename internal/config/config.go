@@ -33,6 +33,13 @@ type CompressionConfig struct {
 	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
 }
 
+// RequestLimitsConfig represents request size and header limits
+type RequestLimitsConfig struct {
+	MaxBodySize   int64 `yaml:"max_body_size,omitempty"`   // Max request body size in bytes (default: 10MB)
+	MaxHeaderSize int64 `yaml:"max_header_size,omitempty"` // Max header size in bytes (default: 1MB)
+	MaxURLSize    int64 `yaml:"max_url_size,omitempty"`    // Max URL length in bytes (default: 8KB)
+}
+
 // ServerConfig represents server configuration
 type ServerConfig struct {
 	Port string `yaml:"port,omitempty"` // Server port (default: 8080)
@@ -84,15 +91,43 @@ func (c *Config) GetPort() string {
 	return "8080"
 }
 
+// GetRequestLimits returns request limits configuration with defaults
+func (c *Config) GetRequestLimits() RequestLimitsConfig {
+	if c.RequestLimits == nil {
+		// Return secure default limits
+		return RequestLimitsConfig{
+			MaxBodySize:   10 << 20, // 10MB
+			MaxHeaderSize: 1 << 20,  // 1MB
+			MaxURLSize:    8 << 10,  // 8KB
+		}
+	}
+
+	config := *c.RequestLimits
+
+	// Apply defaults for missing values
+	if config.MaxBodySize <= 0 {
+		config.MaxBodySize = 10 << 20 // 10MB
+	}
+	if config.MaxHeaderSize <= 0 {
+		config.MaxHeaderSize = 1 << 20 // 1MB
+	}
+	if config.MaxURLSize <= 0 {
+		config.MaxURLSize = 8 << 10 // 8KB
+	}
+
+	return config
+}
+
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
-	Tenants       []Tenant           `yaml:"tenants"`
-	AdminBasePath string             `yaml:"admin_base_path,omitempty"`
-	Server        *ServerConfig      `yaml:"server,omitempty"`
-	LuaRouting    *LuaRoutingConfig  `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
-	TLS           *TLSConfig         `yaml:"tls,omitempty"`
-	Compression   *CompressionConfig `yaml:"compression,omitempty"`
+	Tenants       []Tenant             `yaml:"tenants"`
+	AdminBasePath string               `yaml:"admin_base_path,omitempty"`
+	Server        *ServerConfig        `yaml:"server,omitempty"`
+	LuaRouting    *LuaRoutingConfig    `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
+	TLS           *TLSConfig           `yaml:"tls,omitempty"`
+	Compression   *CompressionConfig   `yaml:"compression,omitempty"`
+	RequestLimits *RequestLimitsConfig `yaml:"request_limits,omitempty"`
 }
 
 // Tenant represents a routing configuration for a specific application or service,
@@ -102,7 +137,7 @@ type Tenant struct {
 	PathPrefix string    `yaml:"path_prefix,omitempty"`
 	Domains    []string  `yaml:"domains,omitempty"`
 	Interval   int       `yaml:"health_interval"`
-	LuaRoutes  string    `yaml:"lua_routes,omitempty"` // Script for route definition
+	LuaRoutes  []string  `yaml:"lua_routes,omitempty"` // Scripts for route definition
 	Services   []Service `yaml:"services"`
 }
 
@@ -163,9 +198,9 @@ func ValidateTenant(t Tenant) error {
 		// }
 	}
 
-	// Require at least one service and validate service URLs
-	if len(t.Services) == 0 {
-		return fmt.Errorf("tenant must have at least one service")
+	// Require at least one service ONLY if no Lua routing is configured
+	if len(t.Services) == 0 && len(t.LuaRoutes) == 0 {
+		return fmt.Errorf("tenant must have at least one service or lua_routes configured")
 	}
 	for _, s := range t.Services {
 		u, err := url.Parse(s.URL)

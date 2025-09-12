@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"log/slog"
@@ -28,23 +29,24 @@ func init() {
 	// Simple structured JSON logging
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 
-	// Optional .env loading (simple parser: KEY=VALUE lines, ignores # comments)
-	if _, err := os.Stat(".env"); err == nil {
-		if data, err := os.ReadFile(".env"); err == nil {
-			lines := strings.Split(string(data), "\n")
-			for _, l := range lines {
-				l = strings.TrimSpace(l)
-				if l == "" || strings.HasPrefix(l, "#") {
-					continue
-				}
-				if eq := strings.IndexByte(l, '='); eq > 0 {
-					k := strings.TrimSpace(l[:eq])
-					v := strings.TrimSpace(l[eq+1:])
-					if _, exists := os.LookupEnv(k); !exists {
-						os.Setenv(k, v)
-					}
+	// Optional .env loading (efficient parser: KEY=VALUE lines, ignores # comments)
+	if file, err := os.Open(".env"); err == nil {
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if len(line) == 0 || line[0] == '#' {
+				continue
+			}
+			if eq := strings.IndexByte(line, '='); eq > 0 {
+				k := strings.TrimSpace(line[:eq])
+				v := strings.TrimSpace(line[eq+1:])
+				if _, exists := os.LookupEnv(k); !exists {
+					os.Setenv(k, v)
 				}
 			}
+		}
+		if scanner.Err() == nil {
 			slog.Info("env_file_loaded", "file", ".env", "component", "startup")
 		}
 	}
@@ -105,4 +107,3 @@ func main() {
 		slog.Info("server_shutdown_graceful")
 	}
 }
-

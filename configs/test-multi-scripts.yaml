@@ -1,0 +1,17 @@
+# Multi-script test configuration
+admin_base_path: "/admin"
+
+lua_routing:
+  enabled: true
+  scripts_dir: "./scripts/lua"
+
+server:
+  port: "8080"
+
+tenants:
+  - name: "multi-script-test"
+    path_prefix: "/api"
+    lua_routes: 
+      - "auth_middleware"
+      - "rate_limiter" 
+      - "api_routes"
