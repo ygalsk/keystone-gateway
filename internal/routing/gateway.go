@@ -3,6 +3,7 @@ package routing
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"keystone-gateway/internal/config"
+	httputil2 "keystone-gateway/internal/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/hostrouter"
@@ -29,6 +31,7 @@ type Gateway struct {
 	router     *chi.Mux
 	hostRouter hostrouter.Routes
 	backends   map[string][]*Backend
+	transport  *http.Transport
 	healthCtx  context.Context
 	healthStop context.CancelFunc
 	healthWG   sync.WaitGroup
@@ -44,6 +47,7 @@ func NewGateway(cfg *config.Config) *Gateway {
 		router:     chi.NewRouter(),
 		hostRouter: hostrouter.New(),
 		backends:   make(map[string][]*Backend),
+		transport:  httputil2.CreateTransport(),
 		healthCtx:  healthCtx,
 		healthStop: healthStop,
 	}
@@ -58,19 +62,31 @@ func NewGatewayWithRouter(cfg *config.Config, router *chi.Mux) *Gateway {
 		router:     router,
 		hostRouter: hostrouter.New(),
 		backends:   make(map[string][]*Backend),
+		transport:  httputil2.CreateTransport(),
 		healthCtx:  healthCtx,
 		healthStop: healthStop,
 	}
 
+	return gw
+}
+
+// SetupRoutes configures all tenant routes and starts health checks
+func (gw *Gateway) SetupRoutes() {
 	gw.setupRoutes()
 	gw.startHealthChecks()
-	return gw
 }
 
 // setupRoutes configures all tenant routes
 func (gw *Gateway) setupRoutes() {
 	for _, tenant := range gw.config.Tenants {
-		gw.setupTenantRoutes(tenant)
+		if err := gw.setupTenantRoutes(tenant); err != nil {
+			slog.Error("tenant_setup_failed",
+				"tenant", tenant.Name,
+				"error", err,
+				"component", "gateway")
+			continue
+		}
+		
 		slog.Info("tenant_initialized",
 			"tenant", tenant.Name,
 			"backend_count", len(tenant.Services),
@@ -79,17 +95,27 @@ func (gw *Gateway) setupRoutes() {
 }
 
 // setupTenantRoutes sets up routes for a specific tenant
-func (gw *Gateway) setupTenantRoutes(tenant config.Tenant) {
+func (gw *Gateway) setupTenantRoutes(tenant config.Tenant) error {
 	// Initialize backends for this tenant
 	var backends []*Backend
+	validServices := 0
+	
 	for _, svc := range tenant.Services {
 		u, err := url.Parse(svc.URL)
 		if err != nil {
-			slog.Warn("invalid_service_url", "service", svc.Name, "url", svc.URL, "error", err)
+			slog.Error("invalid_service_url", 
+				"tenant", tenant.Name,
+				"service", svc.Name, 
+				"url", svc.URL, 
+				"error", err,
+				"component", "gateway")
 			continue
 		}
+		
+		validServices++
 
 		proxy := httputil.NewSingleHostReverseProxy(u)
+		proxy.Transport = gw.transport
 		proxy.ErrorHandler = gw.proxyErrorHandler
 
 		backends = append(backends, &Backend{
@@ -97,6 +123,11 @@ func (gw *Gateway) setupTenantRoutes(tenant config.Tenant) {
 			Healthy: true, // Start optimistic
 			Proxy:   proxy,
 		})
+	}
+
+	// Validate that we have at least one valid service
+	if validServices == 0 {
+		return fmt.Errorf("tenant %s has no valid services configured", tenant.Name)
 	}
 
 	gw.mu.Lock()
@@ -107,24 +138,27 @@ func (gw *Gateway) setupTenantRoutes(tenant config.Tenant) {
 	handler := gw.createTenantHandler(tenant.Name)
 
 	if len(tenant.Domains) > 0 {
-		// Host-based routing
+		// Host-based routing - create single router for all domains of this tenant
+		var pattern string
+		if tenant.PathPrefix != "" {
+			pattern = tenant.PathPrefix + "*"
+		} else {
+			pattern = "/*"
+		}
+		
+		subrouter := chi.NewRouter()
+		subrouter.HandleFunc(pattern, handler)
+		
+		// Assign same router to all domains
 		for _, domain := range tenant.Domains {
-			if tenant.PathPrefix != "" {
-				// Host + path routing - mount router to hostrouter
-				subrouter := chi.NewRouter()
-				subrouter.HandleFunc(tenant.PathPrefix+"*", handler)
-				gw.hostRouter[domain] = subrouter
-			} else {
-				// Host-only routing - create simple router
-				subrouter := chi.NewRouter()
-				subrouter.HandleFunc("/*", handler)
-				gw.hostRouter[domain] = subrouter
-			}
+			gw.hostRouter[domain] = subrouter
 		}
 	} else if tenant.PathPrefix != "" {
 		// Path-only routing
 		gw.router.HandleFunc(tenant.PathPrefix+"*", handler)
 	}
+
+	return nil
 }
 
 // createTenantHandler creates a handler function for a tenant
@@ -192,6 +226,9 @@ func (gw *Gateway) Handler() http.Handler {
 func (gw *Gateway) startHealthChecks() {
 	interval := 30 * time.Second
 
+	gw.mu.RLock()
+	defer gw.mu.RUnlock()
+
 	for tenantName, backends := range gw.backends {
 		for _, backend := range backends {
 			gw.healthWG.Add(1)
@@ -227,7 +264,10 @@ func (gw *Gateway) healthCheckWorker(tenantName string, backend *Backend, interv
 func (gw *Gateway) checkBackendHealth(tenantName string, backend *Backend) {
 	healthURL := backend.URL.String() + "/health"
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{
+		Transport: gw.transport,
+		Timeout:   5 * time.Second,
+	}
 	resp, err := client.Get(healthURL)
 
 	healthy := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300

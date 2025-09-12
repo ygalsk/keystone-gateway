@@ -14,7 +14,7 @@ import (
 	"keystone-gateway/internal/routing"
 )
 
-const DefaultRequestTimeout = 60 * time.Second
+const DefaultRequestTimeout = 10 * time.Second
 
 type Application struct {
 	gateway   *routing.Gateway
@@ -30,7 +30,7 @@ func New(cfg *config.Config, version string) (*Application, error) {
 	// Setup middleware FIRST, before any routes are defined
 	setupMiddleware(router, cfg)
 
-	// Now create the Gateway which will add routes
+	// Create Gateway WITHOUT setting up routes yet
 	gateway := routing.NewGatewayWithRouter(cfg, router)
 
 	// Initialize Lua engine if enabled
@@ -40,7 +40,7 @@ func New(cfg *config.Config, version string) (*Application, error) {
 		if scriptsDir == "" {
 			scriptsDir = "./scripts"
 		}
-		luaEngine = lua.NewEngine(scriptsDir, router)
+		luaEngine = lua.NewEngine(scriptsDir, router, cfg)
 	}
 
 	// Create handlers
@@ -54,13 +54,16 @@ func New(cfg *config.Config, version string) (*Application, error) {
 		router:    router,
 	}
 
-	// Setup admin routes after Gateway routes are set up
-	app.setupAdminRoutes()
-
-	// Setup Lua routing if enabled
+	// Setup Lua routing FIRST (registers middleware)
 	if app.luaEngine != nil {
 		app.setupLuaRouting()
 	}
+
+	// Setup admin routes (these are regular routes)
+	app.setupAdminRoutes()
+
+	// Finally, setup Gateway routes (these are the tenant proxy routes)
+	gateway.SetupRoutes()
 
 	return app, nil
 }
@@ -73,6 +76,9 @@ func setupMiddleware(r *chi.Mux, cfg *config.Config) {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
 	r.Use(middleware.Throttle(100))
+	// Request size limits
+	requestLimits := cfg.GetRequestLimits()
+	r.Use(middleware.RequestSize(requestLimits.MaxBodySize))
 
 	compressionConfig := cfg.GetCompressionConfig()
 	if compressionConfig.Enabled {
@@ -118,14 +124,18 @@ func (app *Application) setupLuaRouting() {
 	// Execute tenant-specific Lua route scripts
 	luaTenantsCount := 0
 	for _, tenant := range app.config.Tenants {
-		if tenant.LuaRoutes != "" {
+		if len(tenant.LuaRoutes) > 0 {
 			luaTenantsCount++
-			slog.Info("lua_tenant_routes_starting", "tenant", tenant.Name, "script", tenant.LuaRoutes, "component", "lua")
-			if err := app.luaEngine.ExecuteRouteScript(tenant.LuaRoutes); err != nil {
-				slog.Error("lua_tenant_routes_failed", "tenant", tenant.Name, "script", tenant.LuaRoutes, "error", err, "component", "lua")
-			} else {
-				slog.Info("lua_tenant_routes_completed", "tenant", tenant.Name, "component", "lua")
+			slog.Info("lua_tenant_routes_starting", "tenant", tenant.Name, "scripts", tenant.LuaRoutes, "count", len(tenant.LuaRoutes), "component", "lua")
+			for _, script := range tenant.LuaRoutes {
+				slog.Info("lua_tenant_script_executing", "tenant", tenant.Name, "script", script, "component", "lua")
+				if err := app.luaEngine.ExecuteRouteScript(script); err != nil {
+					slog.Error("lua_tenant_script_failed", "tenant", tenant.Name, "script", script, "error", err, "component", "lua")
+				} else {
+					slog.Info("lua_tenant_script_completed", "tenant", tenant.Name, "script", script, "component", "lua")
+				}
 			}
+			slog.Info("lua_tenant_routes_completed", "tenant", tenant.Name, "component", "lua")
 		}
 	}
 

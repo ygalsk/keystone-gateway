@@ -44,9 +44,5 @@ clean: ## Clean build artifacts
 docker: ## Build Docker image
 	docker build -t keystone-gateway .
 
-.PHONY: bench
-bench: ## Run performance benchmarks
-	python3 scripts/bench.py
-
 .PHONY: all
 all: fmt lint test build ## Format, lint, test, and build

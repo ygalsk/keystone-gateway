@@ -18,12 +18,12 @@ lua_routing:
   enabled: true
   scripts_dir: "./scripts/lua"
 
+server:
+  port: "8080"
+
 tenants:
-  - name: "api"
-    path_prefix: "/api/"
-    lua_routes: "oauth_middleware"
-    health_interval: 30
-    services:
-      - name: "backend"
-        url: "http://127.0.0.1:3001"
-        health: "/health"
+  - name: "oauth-proxy"
+    path_prefix: "/"
+    lua_routes: 
+      - "oauth_middleware"
+    # No backend services needed - pure Lua OAuth proxy with caching
