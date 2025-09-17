@@ -88,7 +88,7 @@ func (c *ScriptCompiler) CompileScript(scriptTag, content string) (*CompiledScri
 func (c *ScriptCompiler) GetScript(scriptTag string) (*CompiledScript, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	script, exists := c.cache[scriptTag]
 	return script, exists
 }
@@ -104,7 +104,7 @@ func ExecuteWithBytecode(L *lua.LState, script *CompiledScript) error {
 func (c *ScriptCompiler) ClearCache() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	
+
 	c.cache = make(map[string]*CompiledScript)
 }
 
@@ -112,7 +112,7 @@ func (c *ScriptCompiler) ClearCache() {
 func (c *ScriptCompiler) CacheSize() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	
+
 	return len(c.cache)
 }
 

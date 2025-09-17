@@ -32,30 +32,24 @@ type luaResponseWriter struct {
 }
 
 type Engine struct {
-	scriptsDir     string
-	scriptPaths    map[string]string
-	globalPaths    map[string]string
-	scriptCache    map[string]string
-	globalCache    map[string]string
-	scriptCompiler *ScriptCompiler
-	globalCompiler *ScriptCompiler
-	router         *chi.Mux
-	routeRegistry  *routing.LuaRouteRegistry
-	statePool      *LuaStatePool
-	config         *config.Config
+	scriptsDir    string
+	scriptPaths   map[string]string
+	globalPaths   map[string]string
+	compiler      *ScriptCompiler
+	router        *chi.Mux
+	routeRegistry *routing.LuaRouteRegistry
+	statePool     *LuaStatePool
+	config        *config.Config
 }
 
 func NewEngine(scriptsDir string, router *chi.Mux, cfg *config.Config) *Engine {
 	engine := &Engine{
-		scriptsDir:     scriptsDir,
-		scriptPaths:    make(map[string]string),
-		globalPaths:    make(map[string]string),
-		scriptCache:    make(map[string]string),
-		globalCache:    make(map[string]string),
-		scriptCompiler: NewScriptCompiler(100), // Cache up to 100 scripts
-		globalCompiler: NewScriptCompiler(50),  // Cache up to 50 globals
-		router:         router,
-		config:         cfg,
+		scriptsDir:  scriptsDir,
+		scriptPaths: make(map[string]string),
+		globalPaths: make(map[string]string),
+		compiler:    NewScriptCompiler(150), // Unified cache for all scripts
+		router:      router,
+		config:      cfg,
 	}
 	engine.routeRegistry = routing.NewLuaRouteRegistry(router)
 
@@ -74,103 +68,70 @@ func NewEngine(scriptsDir string, router *chi.Mux, cfg *config.Config) *Engine {
 	})
 
 	engine.loadScriptPaths()
-	go engine.startCacheCleanup()
 	return engine
 }
 
-func (e *Engine) GetScript(scriptTag string) (string, bool) {
-	// Check string cache first
-	if s, ok := e.scriptCache[scriptTag]; ok {
-		return s, true
+// loadScript is the unified script loader - no more duplication
+func (e *Engine) loadScript(scriptTag string, isGlobal bool) (*CompiledScript, bool) {
+	cacheKey := scriptTag
+	if isGlobal {
+		cacheKey = "global-" + scriptTag
 	}
 
-	path, exists := e.scriptPaths[scriptTag]
+	// Check cache first
+	if compiled, exists := e.compiler.GetScript(cacheKey); exists {
+		return compiled, true
+	}
+
+	// Get file path
+	var path string
+	var exists bool
+	if isGlobal {
+		path, exists = e.globalPaths[scriptTag]
+	} else {
+		path, exists = e.scriptPaths[scriptTag]
+	}
 	if !exists {
-		return "", false
+		return nil, false
 	}
 
+	// Load and compile
 	content, err := os.ReadFile(path)
 	if err != nil {
-		slog.Error("lua_script_load_failed", "script", scriptTag, "error", err)
-		return "", false
+		slog.Error("lua_script_load_failed", "script", cacheKey, "error", err)
+		return nil, false
 	}
 
-	contentStr := string(content)
-	e.scriptCache[scriptTag] = contentStr
-
-	// Pre-compile to bytecode using new compiler
-	if _, err := e.scriptCompiler.CompileScript(scriptTag, contentStr); err != nil {
-		slog.Error("lua_script_compile_failed", "script", scriptTag, "error", err)
+	compiled, err := e.compiler.CompileScript(cacheKey, string(content))
+	if err != nil {
+		slog.Error("lua_script_compile_failed", "script", cacheKey, "error", err)
+		return nil, false
 	}
 
-	return contentStr, true
+	return compiled, true
 }
 
-// Removed - now handled by ScriptCompiler
-
 func (e *Engine) ExecuteRouteScript(scriptTag string) error {
-	_, ok := e.GetScript(scriptTag)
+	compiled, ok := e.loadScript(scriptTag, false)
 	if !ok {
 		return fmt.Errorf("route script not found: %s", scriptTag)
-	}
-
-	// Get compiled script from new compiler
-	compiled, exists := e.scriptCompiler.GetScript(scriptTag)
-	if !exists {
-		return fmt.Errorf("compiled script not found: %s", scriptTag)
 	}
 
 	L := e.statePool.Get()
 	defer e.statePool.Put(L)
 	e.SetupChiBindings(L, e.router)
 
-	// Use bytecode execution for better performance
 	if err := ExecuteWithBytecode(L, compiled); err != nil {
 		return fmt.Errorf("lua script execution failed: %w", err)
 	}
-
 	return nil
-}
-
-func (e *Engine) getGlobalScript(scriptTag string) (string, bool) {
-	// Check string cache first
-	if s, ok := e.globalCache[scriptTag]; ok {
-		return s, true
-	}
-
-	path, exists := e.globalPaths[scriptTag]
-	if !exists {
-		return "", false
-	}
-
-	content, err := os.ReadFile(path)
-	if err != nil {
-		slog.Error("lua_global_script_load_failed", "script", scriptTag, "error", err)
-		return "", false
-	}
-
-	contentStr := string(content)
-	e.globalCache[scriptTag] = contentStr
-
-	// Pre-compile to bytecode using new compiler
-	if _, err := e.globalCompiler.CompileScript(scriptTag, contentStr); err != nil {
-		slog.Error("lua_global_script_compile_failed", "script", scriptTag, "error", err)
-	}
-
-	return contentStr, true
 }
 
 func (e *Engine) ExecuteGlobalScripts() error {
 	for name := range e.globalPaths {
-		_, ok := e.getGlobalScript(name)
+		compiled, ok := e.loadScript(name, true)
 		if !ok {
-			continue
-		}
-
-		// Get compiled script from new compiler
-		compiled, exists := e.globalCompiler.GetScript(name)
-		if !exists {
-			slog.Warn("compiled_global_script_not_found", "script", name)
+			slog.Warn("global_script_not_found", "script", name)
 			continue
 		}
 
@@ -217,12 +178,8 @@ func (e *Engine) loadScriptPaths() {
 }
 
 func (e *Engine) ReloadScripts() {
-	// Clear caches
-	e.scriptCache, e.globalCache = make(map[string]string), make(map[string]string)
-
-	// Clear compiled bytecode caches
-	e.scriptCompiler.ClearCache()
-	e.globalCompiler.ClearCache()
+	// Clear unified cache
+	e.compiler.ClearCache()
 
 	e.scriptPaths, e.globalPaths = make(map[string]string), make(map[string]string)
 	e.loadScriptPaths()
@@ -238,8 +195,8 @@ func (e *Engine) GetLoadedScripts() []string {
 
 // ExecuteScriptHandler executes a Lua script handler function for HTTP requests
 func (e *Engine) ExecuteScriptHandler(scriptKey, functionName string, w http.ResponseWriter, r *http.Request) error {
-	// Get compiled script from compiler
-	compiled, exists := e.scriptCompiler.GetScript(scriptKey)
+	// Get compiled script from unified compiler
+	compiled, exists := e.compiler.GetScript(scriptKey)
 	if !exists {
 		return fmt.Errorf("compiled script not found: %s", scriptKey)
 	}
@@ -271,9 +228,17 @@ func (e *Engine) ExecuteScriptHandler(scriptKey, functionName string, w http.Res
 	}, reqTable, respTable)
 }
 
+// GetScript returns script content (backward compatibility)
+func (e *Engine) GetScript(scriptTag string) (string, bool) {
+	if compiled, ok := e.loadScript(scriptTag, false); ok {
+		return compiled.Content, true
+	}
+	return "", false
+}
+
 // CompileScript compiles a script to bytecode (public method for LuaHandler)
 func (e *Engine) CompileScript(scriptKey, content string) error {
-	_, err := e.scriptCompiler.CompileScript(scriptKey, content)
+	_, err := e.compiler.CompileScript(scriptKey, content)
 	return err
 }
 
@@ -384,11 +349,3 @@ func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
 	return respTable
 }
 
-// TODO: check if this can be removed cause cache and script lifecycle is manged by the compiler
-func (e *Engine) startCacheCleanup() {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
-	for range ticker.C {
-		// placeholder
-	}
-}

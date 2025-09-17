@@ -30,7 +30,7 @@ Create `scripts/routes.lua`:
 
 ```lua
 chi_route("GET", "/hello", function(request, response)
-    response:write("Hello World")
+    response_write(response, "Hello World")
 end)
 ```
 

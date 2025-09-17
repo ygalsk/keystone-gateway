@@ -86,7 +86,7 @@ func (gw *Gateway) setupRoutes() {
 				"component", "gateway")
 			continue
 		}
-		
+
 		slog.Info("tenant_initialized",
 			"tenant", tenant.Name,
 			"backend_count", len(tenant.Services),
@@ -99,19 +99,19 @@ func (gw *Gateway) setupTenantRoutes(tenant config.Tenant) error {
 	// Initialize backends for this tenant
 	var backends []*Backend
 	validServices := 0
-	
+
 	for _, svc := range tenant.Services {
 		u, err := url.Parse(svc.URL)
 		if err != nil {
-			slog.Error("invalid_service_url", 
+			slog.Error("invalid_service_url",
 				"tenant", tenant.Name,
-				"service", svc.Name, 
-				"url", svc.URL, 
+				"service", svc.Name,
+				"url", svc.URL,
 				"error", err,
 				"component", "gateway")
 			continue
 		}
-		
+
 		validServices++
 
 		proxy := httputil.NewSingleHostReverseProxy(u)
@@ -145,10 +145,10 @@ func (gw *Gateway) setupTenantRoutes(tenant config.Tenant) error {
 		} else {
 			pattern = "/*"
 		}
-		
+
 		subrouter := chi.NewRouter()
 		subrouter.HandleFunc(pattern, handler)
-		
+
 		// Assign same router to all domains
 		for _, domain := range tenant.Domains {
 			gw.hostRouter[domain] = subrouter
@@ -186,6 +186,9 @@ func (gw *Gateway) createTenantHandler(tenantName string) http.HandlerFunc {
 
 // selectHealthyBackend picks the first healthy backend (simple strategy)
 func (gw *Gateway) selectHealthyBackend(backends []*Backend) *Backend {
+	gw.mu.RLock()
+	defer gw.mu.RUnlock()
+
 	for _, backend := range backends {
 		if backend.Healthy {
 			return backend
@@ -276,8 +279,11 @@ func (gw *Gateway) checkBackendHealth(tenantName string, backend *Backend) {
 		resp.Body.Close()
 	}
 
+	// Lock before modifying backend state to prevent race conditions
+	gw.mu.Lock()
 	wasHealthy := backend.Healthy
 	backend.Healthy = healthy
+	gw.mu.Unlock()
 
 	if !healthy && wasHealthy {
 		slog.Error("health_check_failed",

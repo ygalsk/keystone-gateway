@@ -105,11 +105,7 @@ type LuaHandler struct {
 	tenantName   string
 	scriptTag    string
 	pool         *LuaStatePool
-	engine       interface {
-		SetupChiBindings(*lua.LState, string, string)
-		CompileScript(string, string) error
-		ExecuteScriptHandler(string, string, http.ResponseWriter, *http.Request) error
-	}
+	engine       *Engine
 }
 
 // Constants to avoid magic numbers/strings
@@ -118,11 +114,7 @@ const (
 )
 
 // NewLuaHandler creates a new thread-safe Lua handler that delegates to Engine
-func NewLuaHandler(scriptContent, functionName, tenantName, scriptTag string, pool *LuaStatePool, engine interface {
-	SetupChiBindings(*lua.LState, string, string)
-	CompileScript(string, string) error
-	ExecuteScriptHandler(string, string, http.ResponseWriter, *http.Request) error
-}) *LuaHandler {
+func NewLuaHandler(scriptContent, functionName, tenantName, scriptTag string, pool *LuaStatePool, engine *Engine) *LuaHandler {
 	scriptKey := fmt.Sprintf("%s_%s", tenantName, functionName)
 
 	// Pre-compile script using Engine (single responsibility)
@@ -142,7 +134,7 @@ func NewLuaHandler(scriptContent, functionName, tenantName, scriptTag string, po
 
 // ServeHTTP implements http.Handler by delegating to Engine (single responsibility)
 func (h *LuaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultHandlerTimeout)
+	ctx, cancel := context.WithTimeout(r.Context(), defaultHandlerTimeout)
 	defer cancel()
 
 	done := make(chan error, 1)

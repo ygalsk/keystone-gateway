@@ -199,8 +199,15 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			return 0
 		}
 		cache := getLuaCache(req.Context())
-		cache[key] = value
-		*req = *req.WithContext(setLuaCache(req.Context(), cache))
+		newCache := make(map[string]string)
+		for k, v := range cache {
+			newCache[k] = v
+		}
+		newCache[key] = value
+
+		// Create new request with updated context instead of mutating original
+		newReq := req.WithContext(setLuaCache(req.Context(), newCache))
+		reqUD.Value = newReq
 		return 0
 	}))
 
@@ -298,9 +305,9 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			requestLimits := e.config.GetRequestLimits()
 			limitedReader := &io.LimitedReader{
 				R: req.Body,
-				N: requestLimits.MaxBodySize,
+				N: requestLimits.MaxBodySize + 1, // Read one extra byte to detect oversized requests
 			}
-			
+
 			body, err := io.ReadAll(limitedReader)
 			req.Body.Close()
 			if err != nil {
@@ -308,18 +315,24 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 				return 1
 			}
 
-			// Check if we hit the limit
-			if limitedReader.N == 0 && len(body) == int(requestLimits.MaxBodySize) {
-				L.RaiseError("request body too large")
+			// Check if body exceeds size limit
+			if int64(len(body)) > requestLimits.MaxBodySize {
+				L.RaiseError("request body exceeds maximum size limit of %d bytes", requestLimits.MaxBodySize)
 				return 0
 			}
 
 			bodyStr := string(body)
-			cache["_request_body"] = bodyStr
-			*req = *req.WithContext(setLuaCache(req.Context(), cache))
+			newCache := make(map[string]string)
+			for k, v := range cache {
+				newCache[k] = v
+			}
+			newCache["_request_body"] = bodyStr
 
+			// Create new request with updated context instead of mutating original
+			newReq := req.WithContext(setLuaCache(req.Context(), newCache))
 			// Restore body for other consumers
-			req.Body = io.NopCloser(strings.NewReader(bodyStr))
+			newReq.Body = io.NopCloser(strings.NewReader(bodyStr))
+			reqUD.Value = newReq
 			L.Push(lua.LString(bodyStr))
 			return 1
 		}
@@ -392,11 +405,25 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 	L.SetGlobal("http_get", L.NewFunction(func(L *lua.LState) int {
 		url := L.CheckString(1)
 
-		// Optional headers table
+		// Optional headers table (can be arg 2 or 3 depending on whether request context is provided)
 		var headers map[string]string
-		if L.GetTop() >= 2 && L.Get(2).Type() == lua.LTTable {
+		var baseCtx context.Context = context.Background()
+
+		// Check if first optional arg is a request UserData (for context propagation)
+		startArg := 2
+		if L.GetTop() >= 2 {
+			if reqUD := L.Get(2); reqUD.Type() == lua.LTUserData {
+				if req, ok := reqUD.(*lua.LUserData).Value.(*http.Request); ok {
+					baseCtx = req.Context()
+					startArg = 3 // Headers would be in arg 3 if request context is provided
+				}
+			}
+		}
+
+		// Parse headers table if provided
+		if L.GetTop() >= startArg && L.Get(startArg).Type() == lua.LTTable {
 			headers = make(map[string]string)
-			L.Get(2).(*lua.LTable).ForEach(func(k, v lua.LValue) {
+			L.Get(startArg).(*lua.LTable).ForEach(func(k, v lua.LValue) {
 				if key, ok := k.(lua.LString); ok {
 					if val, ok := v.(lua.LString); ok {
 						headers[string(key)] = string(val)
@@ -405,7 +432,11 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			})
 		}
 
-		req, err := http.NewRequest("GET", url, nil)
+		// Create request with timeout context, propagating request context if available
+		ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			L.Push(lua.LString(""))
 			L.Push(lua.LNumber(0))
@@ -427,7 +458,15 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 		}
 		defer resp.Body.Close()
 
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			// Ensure response body is closed even on read error
+			resp.Body.Close()
+			L.Push(lua.LString(""))
+			L.Push(lua.LNumber(0))
+			L.Push(L.NewTable()) // empty headers table
+			return 3
+		}
 
 		// Create response headers table
 		respHeaders := L.NewTable()
@@ -447,11 +486,25 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 		url := L.CheckString(1)
 		postBody := L.CheckString(2)
 
-		// Optional headers table
+		// Optional headers table (can be arg 3 or 4 depending on whether request context is provided)
 		var headers map[string]string
-		if L.GetTop() >= 3 && L.Get(3).Type() == lua.LTTable {
+		var baseCtx context.Context = context.Background()
+
+		// Check if third arg is a request UserData (for context propagation)
+		startArg := 3
+		if L.GetTop() >= 3 {
+			if reqUD := L.Get(3); reqUD.Type() == lua.LTUserData {
+				if req, ok := reqUD.(*lua.LUserData).Value.(*http.Request); ok {
+					baseCtx = req.Context()
+					startArg = 4 // Headers would be in arg 4 if request context is provided
+				}
+			}
+		}
+
+		// Parse headers table if provided
+		if L.GetTop() >= startArg && L.Get(startArg).Type() == lua.LTTable {
 			headers = make(map[string]string)
-			L.Get(3).(*lua.LTable).ForEach(func(k, v lua.LValue) {
+			L.Get(startArg).(*lua.LTable).ForEach(func(k, v lua.LValue) {
 				if key, ok := k.(lua.LString); ok {
 					if val, ok := v.(lua.LString); ok {
 						headers[string(key)] = string(val)
@@ -460,7 +513,11 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			})
 		}
 
-		req, err := http.NewRequest("POST", url, strings.NewReader(postBody))
+		// Create request with timeout context, propagating request context if available
+		ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(postBody))
 		if err != nil {
 			L.Push(lua.LString(""))
 			L.Push(lua.LNumber(0))
@@ -482,7 +539,15 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 		}
 		defer resp.Body.Close()
 
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			// Ensure response body is closed even on read error
+			resp.Body.Close()
+			L.Push(lua.LString(""))
+			L.Push(lua.LNumber(0))
+			L.Push(L.NewTable()) // empty headers table
+			return 3
+		}
 
 		// Create response headers table
 		respHeaders := L.NewTable()
