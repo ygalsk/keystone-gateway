@@ -3,418 +3,687 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Keystone Gateway - Multi-tenant routing without the complexity</title>
-    <meta name="description" content="High-performance reverse proxy with embedded Lua scripting. One binary, YAML config, Lua scripts. That's it.">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'federal_blue': {
-                            DEFAULT: '#03045e',
-                            100: '#010113',
-                            200: '#010226',
-                            300: '#020338',
-                            400: '#02044b',
-                            500: '#03045e',
-                            600: '#0508ae',
-                            700: '#0f12f8',
-                            800: '#5f61fa',
-                            900: '#afb0fd'
-                        },
-                        'marian_blue': {
-                            DEFAULT: '#023e8a',
-                            100: '#000c1b',
-                            200: '#011836',
-                            300: '#012451',
-                            400: '#02306d',
-                            500: '#023e8a',
-                            600: '#035cd1',
-                            700: '#2381fc',
-                            800: '#6cabfd',
-                            900: '#b6d5fe'
-                        },
-                        'honolulu_blue': {
-                            DEFAULT: '#0077b6',
-                            100: '#001825',
-                            200: '#003049',
-                            300: '#00486e',
-                            400: '#005f93',
-                            500: '#0077b6',
-                            600: '#00a2f9',
-                            700: '#3bbaff',
-                            800: '#7cd1ff',
-                            900: '#bee8ff'
-                        },
-                        'blue_green': {
-                            DEFAULT: '#0096c7',
-                            100: '#001e28',
-                            200: '#003c50',
-                            300: '#005a77',
-                            400: '#00779f',
-                            500: '#0096c7',
-                            600: '#06c1ff',
-                            700: '#44d0ff',
-                            800: '#83e0ff',
-                            900: '#c1efff'
-                        },
-                        'pacific_cyan': {
-                            DEFAULT: '#00b4d8',
-                            100: '#00242b',
-                            200: '#004756',
-                            300: '#006b81',
-                            400: '#008fab',
-                            500: '#00b4d8',
-                            600: '#12d8ff',
-                            700: '#4ee1ff',
-                            800: '#89ebff',
-                            900: '#c4f5ff'
-                        },
-                        'vivid_sky_blue': {
-                            DEFAULT: '#48cae4',
-                            100: '#082d34',
-                            200: '#105a69',
-                            300: '#17879d',
-                            400: '#1fb4d1',
-                            500: '#48cae4',
-                            600: '#6dd5e9',
-                            700: '#92dfef',
-                            800: '#b6eaf4',
-                            900: '#dbf4fa'
-                        },
-                        'non_photo_blue': {
-                            DEFAULT: '#90e0ef',
-                            100: '#0a3a43',
-                            200: '#137586',
-                            300: '#1dafc9',
-                            400: '#4ccfe6',
-                            500: '#90e0ef',
-                            600: '#a6e7f2',
-                            700: '#bcedf5',
-                            800: '#d2f3f9',
-                            900: '#e9f9fc'
-                        },
-                        'light_cyan': {
-                            DEFAULT: '#caf0f8',
-                            100: '#0a444f',
-                            200: '#15889f',
-                            300: '#2ac4e3',
-                            400: '#79daee',
-                            500: '#caf0f8',
-                            600: '#d4f3f9',
-                            700: '#dff6fb',
-                            800: '#e9f9fc',
-                            900: '#f4fcfe'
-                        }
-                    }
-                }
+    <title>Keystone Gateway</title>
+    <meta name="description" content="One binary. Zero complexity. Route everything.">
+    <style>
+        /* Typography */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+        :root {
+            --text-primary: #0f0f23;
+            --text-secondary: #666666;
+            --text-tertiary: #999999;
+            --accent: #ff6b35;
+            --accent-hover: #e55a2b;
+            --accent-light: #fff5f2;
+            --border: #e0e0e0;
+            --bg: #ffffff;
+            --bg-subtle: #f8f8f8;
+            --code-bg: #1a1a2e;
+            --code-text: #eee;
+            --code-comment: #888;
+            --code-keyword: #ff6b35;
+            --code-string: #4ecdc4;
+            --code-function: #ffe66d;
+            --mono: 'JetBrains Mono', monospace;
+        }
+
+        [data-theme="dark"] {
+            --text-primary: #f1f1f1;
+            --text-secondary: #a3a3a3;
+            --text-tertiary: #737373;
+            --accent: #ff6b35;
+            --accent-hover: #e55a2b;
+            --accent-light: #2a1a17;
+            --border: #2a2a2a;
+            --bg: #0a0a0a;
+            --bg-subtle: #111111;
+            --code-bg: #1a1a2e;
+            --code-text: #eee;
+            --code-comment: #888;
+            --code-keyword: #ff6b35;
+            --code-string: #4ecdc4;
+            --code-function: #ffe66d;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg);
+            font-feature-settings: 'kern' 1, 'liga' 1, 'ss01' 1;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Layout - Mobile First */
+        .container {
+            max-width: 64rem;
+            margin: 0 auto;
+            padding: 0 1rem;
+        }
+
+        /* Typography Scale - Mobile First */
+        .h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 0.9;
+            letter-spacing: -0.03em;
+        }
+
+        .h2 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+        }
+
+        .h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            line-height: 1.2;
+        }
+
+        .body-large {
+            font-size: 1.125rem;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        .body {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .caption {
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+        }
+
+        /* Components */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            border-radius: 0.375rem;
+            transition: all 0.15s ease;
+            border: 1px solid;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border-color: var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-subtle);
+        }
+
+        /* Code */
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg);
+        }
+
+        .code-title {
+            font-family: var(--mono);
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            font-weight: 500;
+        }
+
+        .code-content {
+            padding: 1rem;
+            font-family: var(--mono);
+            font-size: 0.875rem;
+            line-height: 1.5;
+            color: var(--code-text);
+            white-space: pre;
+            max-width: 100%;
+            word-break: break-all;
+        }
+
+        .code-comment { color: var(--code-comment); }
+        .code-keyword { color: var(--code-keyword); font-weight: 500; }
+        .code-string { color: var(--code-string); }
+        .code-function { color: var(--code-function); }
+
+        /* Navigation */
+        nav {
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+        }
+
+        [data-theme="dark"] nav {
+            background: rgba(10, 10, 10, 0.95);
+        }
+
+        .nav-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 4rem;
+        }
+
+        .logo {
+            font-weight: 700;
+            font-size: 1.125rem;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.15s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--text-primary);
+        }
+
+        /* Sections */
+        section {
+            padding: 6rem 0;
+        }
+
+        .hero {
+            padding: 8rem 0 6rem;
+            text-align: center;
+        }
+
+        .hero .h1 {
+            margin-bottom: 1.5rem;
+        }
+
+        .hero .body-large {
+            margin-bottom: 3rem;
+            max-width: 36rem;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 4rem;
+        }
+
+        /* Grid */
+        .grid {
+            display: grid;
+            gap: 2rem;
+        }
+
+        .grid-2 {
+            grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+        }
+
+        .grid-3 {
+            grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+        }
+
+        /* Feature Cards */
+        .feature {
+            padding: 2rem 0;
+        }
+
+        .feature .h3 {
+            margin-bottom: 0.75rem;
+            color: var(--text-primary);
+        }
+
+        /* Accent the important parts */
+        .nav-links a:hover {
+            color: var(--accent);
+        }
+
+        .caption a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .caption a:hover {
+            color: var(--accent-hover);
+        }
+
+        /* Dark mode toggle */
+        .theme-toggle {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .theme-toggle:hover {
+            color: var(--text-primary);
+            background: var(--bg-subtle);
+        }
+
+        /* Utilities */
+        .text-center { text-align: center; }
+        .mb-8 { margin-bottom: 2rem; }
+        .mb-12 { margin-bottom: 3rem; }
+        .mt-16 { margin-top: 4rem; }
+
+        /* Mobile First Layout */
+        .nav-links {
+            display: none;
+        }
+
+        .hero-actions {
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hero {
+            padding: 4rem 0 3rem;
+        }
+
+        section {
+            padding: 3rem 0;
+        }
+
+        .grid-2,
+        .grid-3 {
+            grid-template-columns: 1fr;
+        }
+
+        .feature {
+            padding: 1.5rem 0;
+        }
+
+        .code-content {
+            font-size: 0.8rem;
+            padding: 0.75rem;
+        }
+
+        /* Tablet and Desktop */
+        @media (min-width: 768px) {
+            .container {
+                padding: 0 1.5rem;
+            }
+
+            .nav-links {
+                display: flex;
+            }
+
+            .hero {
+                padding: 8rem 0 6rem;
+            }
+
+            section {
+                padding: 6rem 0;
+            }
+
+            .hero-actions {
+                flex-direction: row;
+            }
+
+            .grid-2 {
+                grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+            }
+
+            .grid-3 {
+                grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+            }
+
+            .feature {
+                padding: 2rem 0;
+            }
+
+            .code-content {
+                font-size: 0.875rem;
+                padding: 1rem;
+            }
+
+            .h1 {
+                font-size: 3.5rem;
+                letter-spacing: -0.05em;
+            }
+
+            .h2 {
+                font-size: 2.5rem;
+                letter-spacing: -0.03em;
+            }
+
+            .h3 {
+                font-size: 1.5rem;
+            }
+
+            .body-large {
+                font-size: 1.25rem;
+            }
+
+            .body {
+                font-size: 1rem;
+            }
+
+            .caption {
+                font-size: 0.875rem;
             }
         }
-    </script>
+    </style>
 </head>
-<body class="bg-gray-900 text-white">
-    <!-- Header -->
-    <header class="bg-black border-b border-gray-800 shadow-lg">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between items-center py-4">
-                <div class="flex items-center space-x-3">
-                    <div class="w-8 h-8 bg-gradient-to-br from-pacific_cyan-500 to-vivid_sky_blue-500 rounded-md flex items-center justify-center shadow-lg">
-                        <span class="text-white font-bold text-sm">K</span>
-                    </div>
-                    <h1 class="text-xl font-semibold text-white">Keystone Gateway</h1>
-                </div>
-                <div class="hidden sm:flex space-x-6">
-                    <a href="#features" class="text-gray-300 hover:text-pacific_cyan-400 transition-colors">Features</a>
-                    <a href="#quickstart" class="text-gray-300 hover:text-pacific_cyan-400 transition-colors">Quick Start</a>
-                    <a href="#examples" class="text-gray-300 hover:text-pacific_cyan-400 transition-colors">Examples</a>
-                    <a href="docs/" class="text-gray-300 hover:text-pacific_cyan-400 transition-colors">Docs</a>
+<body>
+    <nav>
+        <div class="container">
+            <div class="nav-content">
+                <a href="#" class="logo">Keystone</a>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <ul class="nav-links">
+                        <li><a href="#start">Start</a></li>
+                        <li><a href="#examples">Examples</a></li>
+                        <li><a href="docs/">Docs</a></li>
+                        <li><a href="https://github.com/ygalsk/keystone-gateway">GitHub</a></li>
+                    </ul>
+                    <button class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode">
+                        <span id="theme-icon">🌙</span>
+                    </button>
                 </div>
             </div>
         </div>
-    </header>
+    </nav>
 
-    <!-- Hero Section -->
-    <section class="bg-gradient-to-b from-black to-gray-900 py-12 sm:py-20">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="text-center">
-                <h2 class="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-6">
-                    Multi-tenant routing<br>
-                    <span class="text-transparent bg-clip-text bg-gradient-to-r from-pacific_cyan-400 to-vivid_sky_blue-400">without the complexity</span>
-                </h2>
-                <p class="text-lg sm:text-xl text-gray-300 mb-8 max-w-3xl mx-auto">
-                    High-performance reverse proxy with embedded Lua scripting.
-                    One binary, YAML config, Lua scripts. That's it.
+    <main>
+        <section class="hero">
+            <div class="container">
+                <h1 class="h1">Finally, a gateway that<br>doesn't hate you back.</h1>
+                <p class="body-large">
+                    Download one binary. Write some Lua. Route everything.
+                    No YAML archaeology. No service mesh therapy sessions. No explaining to your manager why the load balancer needs a load balancer.
                 </p>
 
-                <!-- Code Preview -->
-                <div class="bg-gray-800 border border-gray-700 rounded-lg p-4 sm:p-6 text-left max-w-2xl mx-auto mb-8 shadow-2xl">
-                    <div class="flex items-center justify-between mb-4">
-                        <span class="text-gray-400 text-sm font-mono">Quick Start</span>
-                        <div class="flex space-x-2">
-                            <div class="w-3 h-3 bg-red-500 rounded-full"></div>
-                            <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                            <div class="w-3 h-3 bg-green-500 rounded-full"></div>
-                        </div>
+                <div class="hero-actions">
+                    <a href="#start" class="btn btn-primary">Get Started</a>
+                    <a href="https://github.com/ygalsk/keystone-gateway" class="btn btn-secondary">
+                        View Source
+                        <span>↗</span>
+                    </a>
+                </div>
+
+                <div class="code-block" style="max-width: 500px; margin: 0 auto;">
+                    <div class="code-header">
+                        <span class="code-title">Terminal</span>
                     </div>
-                    <pre class="text-green-400 text-sm font-mono overflow-x-auto">
-<span class="text-gray-500"># Get it running</span>
+                    <div class="code-content"><span class="code-comment"># Download and run</span>
 git clone https://github.com/ygalsk/keystone-gateway.git
 cd keystone-gateway
 make dev
 
-<span class="text-gray-500"># Gateway runs on :8080</span>
-curl localhost:8080/admin/health</pre>
-                </div>
-
-                <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                    <a href="#quickstart" class="bg-gradient-to-r from-pacific_cyan-500 to-vivid_sky_blue-500 text-white px-6 py-3 rounded-lg font-medium hover:from-pacific_cyan-600 hover:to-vivid_sky_blue-600 transition-all shadow-lg">
-                        Get Started
-                    </a>
-                    <a href="https://github.com/ygalsk/keystone-gateway" class="border border-gray-700 bg-gray-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-gray-700 hover:border-gray-600 transition-all">
-                        View on GitHub
-                    </a>
+<span class="code-comment"># Test the gateway</span>
+curl localhost:8080/admin/health</div>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- Features -->
-    <section id="features" class="py-16 bg-white">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h3 class="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-12">
-                Why Keystone Gateway?
-            </h3>
+        <section id="features">
+            <div class="container">
+                <h2 class="h2 text-center mb-12">
+                    Built for engineers who value their time
+                </h2>
 
-            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <div class="text-center bg-white p-6 rounded-lg border border-gray-200 shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-12 h-12 bg-gradient-to-br from-pacific_cyan-500 to-vivid_sky_blue-500 rounded-lg flex items-center justify-center mx-auto mb-4 shadow-lg">
-                        <span class="text-white text-xl">⚡</span>
+                <div class="grid grid-3">
+                    <div class="feature">
+                        <h3 class="h3">One Binary</h3>
+                        <p class="body">
+                            Download. Run. Done. No containers, orchestrators, or explaining to your team
+                            why you need 47 microservices just to route HTTP requests.
+                        </p>
                     </div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Embedded Lua</h4>
-                    <p class="text-gray-600 text-sm">Define routes in Lua scripts, no recompilation needed</p>
-                </div>
 
-                <div class="text-center bg-white p-6 rounded-lg border border-gray-200 shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-12 h-12 bg-gradient-to-br from-pacific_cyan-500 to-vivid_sky_blue-500 rounded-lg flex items-center justify-center mx-auto mb-4 shadow-lg">
-                        <span class="text-white text-xl">🏢</span>
+                    <div class="feature">
+                        <h3 class="h3">Lua Scripts</h3>
+                        <p class="body">
+                            Write routing logic in actual code instead of YAML. Change routes without
+                            recompiling, restarting, or filing a DevOps ticket and waiting three sprints.
+                        </p>
                     </div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Multi-tenant</h4>
-                    <p class="text-gray-600 text-sm">Route by domain, path, or both</p>
-                </div>
 
-                <div class="text-center bg-white p-6 rounded-lg border border-gray-200 shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-12 h-12 bg-gradient-to-br from-pacific_cyan-500 to-vivid_sky_blue-500 rounded-lg flex items-center justify-center mx-auto mb-4 shadow-lg">
-                        <span class="text-white text-xl">🚀</span>
+                    <div class="feature">
+                        <h3 class="h3">Multi-tenant</h3>
+                        <p class="body">
+                            Route by domain, path, headers, moon phase, whatever. One gateway can handle
+                            hundreds of tenants without breaking your sanity.
+                        </p>
                     </div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Performance</h4>
-                    <p class="text-gray-600 text-sm">Thread-safe Lua pools, HTTP/2, connection pooling</p>
-                </div>
 
-                <div class="text-center bg-white p-6 rounded-lg border border-gray-200 shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-12 h-12 bg-gradient-to-br from-pacific_cyan-500 to-vivid_sky_blue-500 rounded-lg flex items-center justify-center mx-auto mb-4 shadow-lg">
-                        <span class="text-white text-xl">💎</span>
+                    <div class="feature">
+                        <h3 class="h3">HTTP Client</h3>
+                        <p class="body">
+                            Make upstream requests, transform responses, cache results, proxy everything.
+                            Full HTTP client built right into your Lua scripts.
+                        </p>
                     </div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Simple</h4>
-                    <p class="text-gray-600 text-sm">One binary, YAML config, Lua scripts</p>
-                </div>
-            </div>
-        </div>
-    </section>
 
-    <!-- How It Works -->
-    <section class="py-16 bg-gray-50">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h3 class="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-12">
-                How It Works
-            </h3>
-
-            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-8 h-8 bg-gradient-to-r from-pacific_cyan-500 to-vivid_sky_blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold mb-4 shadow-lg">1</div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Configure tenants</h4>
-                    <p class="text-gray-600 text-sm">Define who gets routed where</p>
-                </div>
-
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-8 h-8 bg-gradient-to-r from-pacific_cyan-500 to-vivid_sky_blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold mb-4 shadow-lg">2</div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Write Lua scripts</h4>
-                    <p class="text-gray-600 text-sm">Define routes and middleware</p>
-                </div>
-
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-8 h-8 bg-gradient-to-r from-pacific_cyan-500 to-vivid_sky_blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold mb-4 shadow-lg">3</div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Start gateway</h4>
-                    <p class="text-gray-600 text-sm">Routes traffic based on domain/path</p>
-                </div>
-
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <div class="w-8 h-8 bg-gradient-to-r from-pacific_cyan-500 to-vivid_sky_blue-500 text-white rounded-full flex items-center justify-center text-sm font-bold mb-4 shadow-lg">4</div>
-                    <h4 class="font-semibold text-gray-900 mb-2">Monitor</h4>
-                    <p class="text-gray-600 text-sm">Check /admin/health for status</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Quick Start -->
-    <section id="quickstart" class="py-16 bg-gray-900">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h3 class="text-2xl sm:text-3xl font-bold text-center text-white mb-12">
-                Quick Start
-            </h3>
-
-            <div class="grid lg:grid-cols-2 gap-8">
-                <div>
-                    <h4 class="text-lg font-semibold text-white mb-4">Configuration</h4>
-                    <div class="bg-black border border-gray-700 rounded-lg p-4 text-sm font-mono overflow-x-auto">
-<pre class="text-gray-300"><span class="text-pacific_cyan-400"># config.yaml</span>
-<span class="text-yellow-300">tenants:</span>
-  - <span class="text-yellow-300">name:</span> <span class="text-green-400">"api"</span>
-    <span class="text-yellow-300">domains:</span> [<span class="text-green-400">"localhost"</span>]
-    <span class="text-yellow-300">lua_routes:</span> <span class="text-green-400">"api"</span>
-    <span class="text-yellow-300">services:</span>
-      - <span class="text-yellow-300">name:</span> <span class="text-green-400">"backend"</span>
-        <span class="text-yellow-300">url:</span> <span class="text-green-400">"http://localhost:3001"</span></pre>
+                    <div class="feature">
+                        <h3 class="h3">Load Balancing</h3>
+                        <p class="body">
+                            Round-robin, health checks, automatic failover. Because your users shouldn't
+                            notice when your backend decides to take a coffee break.
+                        </p>
                     </div>
-                </div>
 
-                <div>
-                    <h4 class="text-lg font-semibold text-white mb-4">Lua Script</h4>
-                    <div class="bg-black border border-gray-700 rounded-lg p-4 text-sm font-mono overflow-x-auto">
-<pre class="text-gray-300"><span class="text-pacific_cyan-400">-- scripts/api.lua</span>
-<span class="text-purple-400">chi_route</span>(<span class="text-green-400">"GET"</span>, <span class="text-green-400">"/hello"</span>, <span class="text-purple-400">function</span>(request, response)
-    response:<span class="text-yellow-300">write</span>(<span class="text-green-400">"Hello World"</span>)
-<span class="text-purple-400">end</span>)</pre>
+                    <div class="feature">
+                        <h3 class="h3">Production Ready</h3>
+                        <p class="body">
+                            HTTP/2, connection pooling, request limits, health monitoring. All the boring
+                            stuff that keeps you from getting paged at 3 AM.
+                        </p>
                     </div>
                 </div>
             </div>
+        </section>
 
-            <div class="mt-8 text-center">
-                <p class="text-gray-300 mb-4">Start: <code class="bg-gray-800 border border-gray-700 px-3 py-1 rounded text-sm font-mono text-pacific_cyan-400">./keystone-gateway -config config.yaml</code></p>
-                <a href="docs/quick-start.md" class="inline-flex items-center text-pacific_cyan-400 font-medium hover:text-pacific_cyan-300 transition-colors">
-                    Full Quick Start Guide
-                    <span class="ml-2">→</span>
-                </a>
-            </div>
-        </div>
-    </section>
+        <section id="start">
+            <div class="container">
+                <h2 class="h2 text-center mb-8">
+                    From zero to routing in 60 seconds
+                </h2>
 
-    <!-- Examples -->
-    <section id="examples" class="py-16 bg-gray-50">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h3 class="text-2xl sm:text-3xl font-bold text-center text-gray-900 mb-12">
-                Real-world Examples
-            </h3>
-
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <h4 class="font-semibold text-gray-900 mb-3">Microservices Gateway</h4>
-                    <p class="text-gray-600 text-sm mb-4">Route /users/ to user service, /orders/ to order service</p>
-                    <a href="docs/examples.md#microservices-by-path" class="text-pacific_cyan-500 text-sm font-medium hover:text-pacific_cyan-600 transition-colors">
-                        View Example →
-                    </a>
-                </div>
-
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <h4 class="font-semibold text-gray-900 mb-3">Load Balancing</h4>
-                    <p class="text-gray-600 text-sm mb-4">Automatic round-robin across multiple backend services</p>
-                    <a href="docs/examples.md#load-balancing" class="text-pacific_cyan-500 text-sm font-medium hover:text-pacific_cyan-600 transition-colors">
-                        View Example →
-                    </a>
-                </div>
-
-                <div class="bg-white border border-gray-200 p-6 rounded-lg shadow-lg hover:shadow-xl transition-all">
-                    <h4 class="font-semibold text-gray-900 mb-3">Authentication</h4>
-                    <p class="text-gray-600 text-sm mb-4">JWT middleware for API protection</p>
-                    <a href="docs/examples.md#authentication-middleware" class="text-pacific_cyan-500 text-sm font-medium hover:text-pacific_cyan-600 transition-colors">
-                        View Example →
-                    </a>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Philosophy -->
-    <section class="py-16 bg-black text-white">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-            <h3 class="text-2xl sm:text-3xl font-bold mb-6 text-white">Philosophy</h3>
-            <p class="text-xl mb-6 text-pacific_cyan-400 font-semibold">Keep it simple. Get it working. Make it fast.</p>
-            <p class="text-gray-300 max-w-2xl mx-auto">
-                Keystone Gateway is a reverse proxy with embedded Lua scripting.
-                One binary, YAML config, Lua scripts. No external dependencies,
-                no complex setup, no microservice hell.
-            </p>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="bg-gray-900 border-t border-gray-800 py-8">
-        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="grid md:grid-cols-4 gap-8">
-                <div>
-                    <div class="flex items-center space-x-3 mb-4">
-                        <div class="w-6 h-6 bg-gradient-to-br from-pacific_cyan-500 to-vivid_sky_blue-500 rounded flex items-center justify-center shadow-lg">
-                            <span class="text-white font-bold text-xs">K</span>
+                <div class="grid grid-2">
+                    <div>
+                        <h3 class="h3 mb-8">1. Configure tenants</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">config.yaml</span>
+                            </div>
+                            <div class="code-content"><span class="code-keyword">tenants</span>:
+  - <span class="code-keyword">name</span>: <span class="code-string">"api"</span>
+    <span class="code-keyword">domains</span>:
+      - <span class="code-string">"api.company.com"</span>
+    <span class="code-keyword">lua_routes</span>: <span class="code-string">"api"</span>
+    <span class="code-keyword">services</span>:
+      - <span class="code-keyword">name</span>: <span class="code-string">"backend"</span>
+        <span class="code-keyword">url</span>: <span class="code-string">"http://api-server:3000"</span></div>
                         </div>
-                        <span class="font-semibold text-white">Keystone Gateway</span>
                     </div>
-                    <p class="text-gray-400 text-sm">Multi-tenant routing without the complexity</p>
+
+                    <div>
+                        <h3 class="h3 mb-8">2. Write Lua routes</h3>
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">scripts/api.lua</span>
+                            </div>
+                            <div class="code-content"><span class="code-comment">-- Route with auth middleware</span>
+<span class="code-function">chi_middleware</span>(<span class="code-keyword">function</span>(req, res, next)
+    <span class="code-keyword">if</span> <span class="code-function">request_header</span>(req, <span class="code-string">"Authorization"</span>) <span class="code-keyword">then</span>
+        <span class="code-function">next</span>()
+    <span class="code-keyword">else</span>
+        <span class="code-function">response_status</span>(res, <span class="code-string">401</span>)
+    <span class="code-keyword">end</span>
+<span class="code-keyword">end</span>)
+
+<span class="code-function">chi_route</span>(<span class="code-string">"GET"</span>, <span class="code-string">"/users"</span>, <span class="code-keyword">function</span>(req, res)
+    <span class="code-function">response_write</span>(res, <span class="code-string">"User data"</span>)
+<span class="code-keyword">end</span>)</div>
+                        </div>
+                    </div>
                 </div>
 
-                <div>
-                    <h5 class="font-semibold text-white mb-3">Documentation</h5>
-                    <ul class="space-y-2 text-sm">
-                        <li><a href="docs/quick-start.md" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Quick Start</a></li>
-                        <li><a href="docs/config.md" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Configuration</a></li>
-                        <li><a href="docs/lua.md" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Lua Scripting</a></li>
-                        <li><a href="docs/examples.md" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Examples</a></li>
-                    </ul>
-                </div>
-
-                <div>
-                    <h5 class="font-semibold text-white mb-3">Resources</h5>
-                    <ul class="space-y-2 text-sm">
-                        <li><a href="configs/examples/" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Config Examples</a></li>
-                        <li><a href="scripts/lua/examples/" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Lua Examples</a></li>
-                        <li><a href="docs/development.md" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Contributing</a></li>
-                        <li><a href="docs/api.md" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">API Reference</a></li>
-                    </ul>
-                </div>
-
-                <div>
-                    <h5 class="font-semibold text-white mb-3">Project</h5>
-                    <ul class="space-y-2 text-sm">
-                        <li><a href="https://github.com/ygalsk/keystone-gateway" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">GitHub</a></li>
-                        <li><a href="https://github.com/ygalsk/keystone-gateway/issues" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Issues</a></li>
-                        <li><a href="https://github.com/ygalsk/keystone-gateway/releases" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">Releases</a></li>
-                        <li><a href="LICENSE" class="text-gray-400 hover:text-pacific_cyan-400 transition-colors">License (MIT)</a></li>
-                    </ul>
+                <div class="text-center mt-16">
+                    <div class="code-block" style="display: inline-block; text-align: left;">
+                        <div class="code-content"><span class="code-comment"># Start the gateway</span>
+./keystone-gateway -config config.yaml</div>
+                    </div>
+                    <p class="caption" style="margin-top: 1rem;">
+                        <a href="docs/quick-start.md">Complete quick start guide →</a>
+                    </p>
                 </div>
             </div>
+        </section>
 
-            <div class="border-t border-gray-800 mt-8 pt-8 text-center text-sm text-gray-500">
-                <p>&copy; 2024 Keystone Gateway. MIT Licensed. Keep it simple.</p>
+        <section id="examples">
+            <div class="container">
+                <h2 class="h2 text-center mb-8">
+                    Real problems. Real solutions.
+                </h2>
+
+                <div class="grid grid-3">
+                    <div class="feature">
+                        <h3 class="h3">API Gateway</h3>
+                        <p class="body">
+                            Replace AWS API Gateway with something you can actually debug.
+                            Route /users to user service, /orders to order service.
+                        </p>
+                        <p class="caption">
+                            <a href="docs/examples.md#microservices-by-path">View example →</a>
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3 class="h3">Auth Proxy</h3>
+                        <p class="body">
+                            Add authentication to any service without touching its code.
+                            JWT validation, OAuth flows, custom auth logic.
+                        </p>
+                        <p class="caption">
+                            <a href="docs/examples.md#authentication-middleware">View example →</a>
+                        </p>
+                    </div>
+
+                    <div class="feature">
+                        <h3 class="h3">Load Balancer</h3>
+                        <p class="body">
+                            Distribute traffic across multiple backends.
+                            Health checks, automatic failover, custom routing logic.
+                        </p>
+                        <p class="caption">
+                            <a href="docs/examples.md#load-balancing">View example →</a>
+                        </p>
+                    </div>
+                </div>
             </div>
+        </section>
+    </main>
+
+    <footer style="border-top: 1px solid var(--border); padding: 3rem 0; background: var(--bg-subtle);">
+        <div class="container text-center">
+            <p class="caption">
+                <strong>Keep it simple. Get it working. Make it fast.</strong>
+            </p>
+            <p class="caption" style="margin-top: 0.5rem;">
+                MIT Licensed •
+                <a href="https://github.com/ygalsk/keystone-gateway">Source</a> •
+                <a href="docs/">Documentation</a>
+            </p>
         </div>
     </footer>
 
-    <!-- Mobile menu toggle script -->
     <script>
-        // Simple mobile menu toggle (if needed in future)
-        document.addEventListener('DOMContentLoaded', function() {
-            // Smooth scrolling for anchor links
-            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-                anchor.addEventListener('click', function (e) {
-                    e.preventDefault();
-                    const target = document.querySelector(this.getAttribute('href'));
-                    if (target) {
-                        target.scrollIntoView({
-                            behavior: 'smooth',
-                            block: 'start'
-                        });
-                    }
-                });
+        // Dark mode functionality
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const body = document.body;
+
+        // Check for saved theme preference or default to 'dark'
+        const currentTheme = localStorage.getItem('theme') || 'dark';
+
+        if (currentTheme === 'dark') {
+            body.setAttribute('data-theme', 'dark');
+            themeIcon.textContent = '☀️';
+        } else {
+            themeIcon.textContent = '🌙';
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = body.getAttribute('data-theme');
+
+            if (currentTheme === 'dark') {
+                body.removeAttribute('data-theme');
+                themeIcon.textContent = '🌙';
+                localStorage.setItem('theme', 'light');
+            } else {
+                body.setAttribute('data-theme', 'dark');
+                themeIcon.textContent = '☀️';
+                localStorage.setItem('theme', 'dark');
+            }
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
             });
         });
     </script>
