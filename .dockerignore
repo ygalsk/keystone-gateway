@@ -1,0 +1,54 @@
+# Version control
+.git/
+.gitignore
+.github/
+
+# Build artifacts (pre-built binaries)
+keystone-gateway
+main
+/dist/
+/build/
+
+# Documentation
+*.md
+docs/
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+
+# Development and CI/CD files
+Makefile
+.pre-commit-config.yaml
+.claude/
+.mcp.json
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test files
+tests/
+
+# Temporary and log files
+*.tmp
+*.log
+/tmp/
+/temp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Configuration examples and local overrides
+*.local.yaml
+*.local.yml
+
+# Coverage and test results
+coverage.html
+coverage.out
+
+# Landing page (if not needed for the app)
+index.html
+CNAME

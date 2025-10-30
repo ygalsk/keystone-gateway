@@ -1,38 +1,29 @@
-# Binaries for programs and plugins
+# Build artifacts
+/keystone-gateway
+/dist/
+/build/
+
+# Go standard ignores
 *.exe
-*.exe~
 *.dll
 *.so
 *.dylib
-
-# Test binary, built with `go test -c`
 *.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
 *.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
-
-# Go workspace file
 go.work
-
-# Build artifacts
-/keystone-gateway
-/chi-stone
-/lua-stone
-/gateway
-/lua-engine/lua-engine
-/dist/
-/build/
-/test-build
-*.backup
 
 # Configuration files with sensitive data
 *.env
 *.env.local
 *.env.production
 .env*
+
+# Secrets and certificates
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
 
 # Log files
 *.log
@@ -47,34 +38,24 @@ logs/
 
 # OS files
 .DS_Store
-.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
-ehthumbs.db
 Thumbs.db
 
 # Temporary files
 *.tmp
 *.temp
-
-# Docker
-.dockerignore
-
-# Local development
 /tmp/
 /temp/
-main
-curl
-response.html
-log
 
 # Coverage reports
 coverage.html
 coverage.out
 
-# Archive directory
-.archive/
+# Local development files
+main
+response.html
 
 # Local configuration overrides
 Makefile.local
@@ -84,21 +65,3 @@ Makefile.local
 # Backup files
 *.bak
 *.backup
-backups/
-
-# Test artifacts
-test-results/
-junit.xml
-
-# Performance test results
-*.bench
-benchmarks/
-
-# Certificate files
-*.pem
-*.key
-*.crt
-*.csr
-*.p12
-ssl/
-certificates/
