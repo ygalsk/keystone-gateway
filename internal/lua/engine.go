@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MaxScriptExecutionTime = 5 * time.Second
+	MaxScriptExecutionTime = 10 * time.Second
 	DefaultStatePoolSize   = 10
 	LuaCallStackSize       = 120
 	LuaRegistrySize        = 120 * 20

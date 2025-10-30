@@ -35,7 +35,7 @@ func New(cfg *config.Config, version string) (*Application, error) {
 
 	// Initialize Lua engine if enabled
 	var luaEngine *lua.Engine
-	if cfg.LuaRouting != nil && cfg.LuaRouting.Enabled {
+	if cfg.LuaRouting.Enabled {
 		scriptsDir := cfg.LuaRouting.ScriptsDir
 		if scriptsDir == "" {
 			scriptsDir = "./scripts"
@@ -77,12 +77,10 @@ func setupMiddleware(r *chi.Mux, cfg *config.Config) {
 	r.Use(middleware.Timeout(DefaultRequestTimeout))
 	r.Use(middleware.Throttle(100))
 	// Request size limits
-	requestLimits := cfg.GetRequestLimits()
-	r.Use(middleware.RequestSize(requestLimits.MaxBodySize))
+	r.Use(middleware.RequestSize(cfg.RequestLimits.MaxBodySize))
 
-	compressionConfig := cfg.GetCompressionConfig()
-	if compressionConfig.Enabled {
-		r.Use(middleware.Compress(compressionConfig.Level, compressionConfig.ContentTypes...))
+	if cfg.Compression.Enabled {
+		r.Use(middleware.Compress(cfg.Compression.Level, cfg.Compression.ContentTypes...))
 	}
 	r.Use(middleware.CleanPath)
 	r.Use(middleware.StripSlashes)

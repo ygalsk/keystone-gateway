@@ -269,7 +269,7 @@ func (gw *Gateway) checkBackendHealth(tenantName string, backend *Backend) {
 
 	client := &http.Client{
 		Transport: gw.transport,
-		Timeout:   5 * time.Second,
+		Timeout:   10 * time.Second,
 	}
 	resp, err := client.Get(healthURL)
 

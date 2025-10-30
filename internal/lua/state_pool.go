@@ -110,7 +110,7 @@ type LuaHandler struct {
 
 // Constants to avoid magic numbers/strings
 const (
-	defaultHandlerTimeout = 5 * time.Second
+	defaultHandlerTimeout = 10 * time.Second
 )
 
 // NewLuaHandler creates a new thread-safe Lua handler that delegates to Engine

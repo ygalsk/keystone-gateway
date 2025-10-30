@@ -17,7 +17,7 @@ import (
 
 // httpClient is a shared HTTP client for all Lua bindings
 var httpClient = &http.Client{
-	Timeout:   5 * time.Second,
+	Timeout:   10 * time.Second,
 	Transport: httputil.CreateTransport(),
 }
 
@@ -302,10 +302,9 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 		// Read body once and cache it with size limit
 		if req.Body != nil {
 			// Use configured body size limit
-			requestLimits := e.config.GetRequestLimits()
 			limitedReader := &io.LimitedReader{
 				R: req.Body,
-				N: requestLimits.MaxBodySize + 1, // Read one extra byte to detect oversized requests
+				N: e.config.RequestLimits.MaxBodySize + 1, // Read one extra byte to detect oversized requests
 			}
 
 			body, err := io.ReadAll(limitedReader)
@@ -316,8 +315,8 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			}
 
 			// Check if body exceeds size limit
-			if int64(len(body)) > requestLimits.MaxBodySize {
-				L.RaiseError("request body exceeds maximum size limit of %d bytes", requestLimits.MaxBodySize)
+			if int64(len(body)) > e.config.RequestLimits.MaxBodySize {
+				L.RaiseError("request body exceeds maximum size limit of %d bytes", e.config.RequestLimits.MaxBodySize)
 				return 0
 			}
 
@@ -433,7 +432,7 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 		}
 
 		// Create request with timeout context, propagating request context if available
-		ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+		ctx, cancel := context.WithTimeout(baseCtx, 10*time.Second)
 		defer cancel()
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -514,7 +513,7 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 		}
 
 		// Create request with timeout context, propagating request context if available
-		ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
+		ctx, cancel := context.WithTimeout(baseCtx, 10*time.Second)
 		defer cancel()
 
 		req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(postBody))

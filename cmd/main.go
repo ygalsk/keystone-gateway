@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sync/errgroup"
 	"keystone-gateway/internal/app"
 	"keystone-gateway/internal/config"
 )
@@ -71,39 +72,73 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Run server with graceful shutdown
+	if err := runServer(application, *addr); err != nil {
+		slog.Error("server_run_failed", "error", err)
+		os.Exit(1)
+	}
+}
+
+// runServer runs the server with proper context cancellation and graceful shutdown
+func runServer(application *app.Application, addr string) error {
 	// Create HTTP server
 	server := &http.Server{
-		Addr:              *addr,
+		Addr:              addr,
 		Handler:           application.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	// Setup graceful shutdown
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	// Start server
-	go func() {
-		slog.Info("server_starting", "version", Version, "address", *addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("server_failed", "error", err)
-			os.Exit(1)
-		}
-	}()
-
-	// Wait for shutdown signal
-	<-stop
-	slog.Info("shutdown_initiated")
-
-	// Graceful shutdown
-	application.Stop()
-
-	ctx, cancel := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
+	// Create context that cancels on signal
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		slog.Error("server_shutdown_forced", "error", err)
-	} else {
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Use errgroup for coordinated startup/shutdown
+	g, _ := errgroup.WithContext(ctx)
+
+	// Start server
+	g.Go(func() error {
+		slog.Info("server_starting", "version", Version, "address", addr)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			return err
+		}
+		return nil
+	})
+
+	// Wait for shutdown signal
+	g.Go(func() error {
+		select {
+		case sig := <-sigChan:
+			slog.Info("shutdown_signal_received", "signal", sig.String())
+			cancel() // Cancel context to trigger shutdown
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	})
+
+	// Shutdown handler
+	g.Go(func() error {
+		<-ctx.Done() // Wait for cancellation
+		slog.Info("shutdown_initiated")
+
+		// Stop application components
+		application.Stop()
+
+		// Create shutdown context with timeout
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), DefaultShutdownTimeout)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			slog.Error("server_shutdown_forced", "error", err)
+			return err
+		}
 		slog.Info("server_shutdown_graceful")
-	}
+		return nil
+	})
+
+	return g.Wait()
 }

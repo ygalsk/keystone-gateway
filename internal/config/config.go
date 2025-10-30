@@ -33,44 +33,13 @@ type CompressionConfig struct {
 	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
 }
 
-// RequestLimitsConfig represents request size and header limits
-type RequestLimitsConfig struct {
-	MaxBodySize   int64 `yaml:"max_body_size,omitempty"`   // Max request body size in bytes (default: 10MB)
-	MaxHeaderSize int64 `yaml:"max_header_size,omitempty"` // Max header size in bytes (default: 1MB)
-	MaxURLSize    int64 `yaml:"max_url_size,omitempty"`    // Max URL length in bytes (default: 8KB)
-}
-
-// ServerConfig represents server configuration
-type ServerConfig struct {
-	Port string `yaml:"port,omitempty"` // Server port (default: 8080)
-}
-
-// GetCompressionConfig returns compression configuration with defaults
-func (c *Config) GetCompressionConfig() CompressionConfig {
-	if c.Compression == nil {
-		// Return default compression settings when not configured
-		return CompressionConfig{
-			Enabled: true, // Enable compression by default
-			Level:   5,    // Balanced compression level
-			ContentTypes: []string{
-				"text/html",
-				"text/css",
-				"text/javascript",
-				"application/json",
-				"application/xml",
-				"text/plain",
-			},
-		}
+// ApplyDefaults applies sensible defaults to compression config
+func (c *CompressionConfig) ApplyDefaults() {
+	if c.Level == 0 {
+		c.Level = 5 // Balanced compression level
 	}
-
-	config := *c.Compression
-
-	// Apply defaults for missing values
-	if config.Level == 0 {
-		config.Level = 5 // Default to balanced compression
-	}
-	if len(config.ContentTypes) == 0 {
-		config.ContentTypes = []string{
+	if len(c.ContentTypes) == 0 {
+		c.ContentTypes = []string{
 			"text/html",
 			"text/css",
 			"text/javascript",
@@ -79,55 +48,59 @@ func (c *Config) GetCompressionConfig() CompressionConfig {
 			"text/plain",
 		}
 	}
-
-	return config
 }
 
-// GetPort returns the configured port or default port (8080)
-func (c *Config) GetPort() string {
-	if c.Server != nil && c.Server.Port != "" {
-		return c.Server.Port
+// RequestLimitsConfig represents request size and header limits
+type RequestLimitsConfig struct {
+	MaxBodySize   int64 `yaml:"max_body_size,omitempty"`   // Max request body size in bytes (default: 10MB)
+	MaxHeaderSize int64 `yaml:"max_header_size,omitempty"` // Max header size in bytes (default: 1MB)
+	MaxURLSize    int64 `yaml:"max_url_size,omitempty"`    // Max URL length in bytes (default: 8KB)
+}
+
+// ApplyDefaults applies secure default limits
+func (r *RequestLimitsConfig) ApplyDefaults() {
+	if r.MaxBodySize <= 0 {
+		r.MaxBodySize = 10 << 20 // 10MB
+	}
+	if r.MaxHeaderSize <= 0 {
+		r.MaxHeaderSize = 1 << 20 // 1MB
+	}
+	if r.MaxURLSize <= 0 {
+		r.MaxURLSize = 8 << 10 // 8KB
+	}
+}
+
+// ServerConfig represents server configuration
+type ServerConfig struct {
+	Port string `yaml:"port,omitempty"` // Server port (default: 8080)
+}
+
+// GetPort returns the configured port or default (8080)
+func (s ServerConfig) GetPort() string {
+	if s.Port != "" {
+		return s.Port
 	}
 	return "8080"
 }
 
-// GetRequestLimits returns request limits configuration with defaults
-func (c *Config) GetRequestLimits() RequestLimitsConfig {
-	if c.RequestLimits == nil {
-		// Return secure default limits
-		return RequestLimitsConfig{
-			MaxBodySize:   10 << 20, // 10MB
-			MaxHeaderSize: 1 << 20,  // 1MB
-			MaxURLSize:    8 << 10,  // 8KB
-		}
-	}
-
-	config := *c.RequestLimits
-
-	// Apply defaults for missing values
-	if config.MaxBodySize <= 0 {
-		config.MaxBodySize = 10 << 20 // 10MB
-	}
-	if config.MaxHeaderSize <= 0 {
-		config.MaxHeaderSize = 1 << 20 // 1MB
-	}
-	if config.MaxURLSize <= 0 {
-		config.MaxURLSize = 8 << 10 // 8KB
-	}
-
-	return config
+// ApplyDefaults applies sensible defaults to all configuration sections
+func (c *Config) ApplyDefaults() {
+	c.Compression.ApplyDefaults()
+	c.RequestLimits.ApplyDefaults()
 }
+
+
 
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
-	Tenants       []Tenant             `yaml:"tenants"`
-	AdminBasePath string               `yaml:"admin_base_path,omitempty"`
-	Server        *ServerConfig        `yaml:"server,omitempty"`
-	LuaRouting    *LuaRoutingConfig    `yaml:"lua_routing,omitempty"` // Embedded Lua routing only
-	TLS           *TLSConfig           `yaml:"tls,omitempty"`
-	Compression   *CompressionConfig   `yaml:"compression,omitempty"`
-	RequestLimits *RequestLimitsConfig `yaml:"request_limits,omitempty"`
+	Tenants       []Tenant          `yaml:"tenants"`
+	AdminBasePath string            `yaml:"admin_base_path,omitempty"`
+	Server        ServerConfig      `yaml:"server"`
+	LuaRouting    LuaRoutingConfig  `yaml:"lua_routing"` // Embedded Lua routing only
+	TLS           TLSConfig         `yaml:"tls"`
+	Compression   CompressionConfig `yaml:"compression"`
+	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
 }
 
 // Tenant represents a routing configuration for a specific application or service,
@@ -172,6 +145,9 @@ func LoadConfig(path string) (*Config, error) {
 			return nil, fmt.Errorf("invalid tenant %s: %w", tenant.Name, err)
 		}
 	}
+
+	// Apply defaults after loading and validation
+	cfg.ApplyDefaults()
 
 	return &cfg, nil
 }
