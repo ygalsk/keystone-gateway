@@ -404,9 +404,9 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 	L.SetGlobal("http_get", L.NewFunction(func(L *lua.LState) int {
 		url := L.CheckString(1)
 
-		// Optional headers table (can be arg 2 or 3 depending on whether request context is provided)
 		var headers map[string]string
 		var baseCtx context.Context = context.Background()
+		followRedirects := true // default to following redirects
 
 		// Check if first optional arg is a request UserData (for context propagation)
 		startArg := 2
@@ -414,32 +414,59 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			if reqUD := L.Get(2); reqUD.Type() == lua.LTUserData {
 				if req, ok := reqUD.(*lua.LUserData).Value.(*http.Request); ok {
 					baseCtx = req.Context()
-					startArg = 3 // Headers would be in arg 3 if request context is provided
+					startArg = 3
 				}
 			}
 		}
 
-		// Parse headers table if provided
+		// Parse options/headers table if provided
 		if L.GetTop() >= startArg && L.Get(startArg).Type() == lua.LTTable {
-			headers = make(map[string]string)
-			L.Get(startArg).(*lua.LTable).ForEach(func(k, v lua.LValue) {
-				if key, ok := k.(lua.LString); ok {
-					if val, ok := v.(lua.LString); ok {
-						headers[string(key)] = string(val)
+			table := L.Get(startArg).(*lua.LTable)
+
+			// Check if this is new-style options table (has "headers" or "follow_redirects" keys)
+			hasHeaders := table.RawGetString("headers").Type() != lua.LTNil
+			hasFollowRedirects := table.RawGetString("follow_redirects").Type() != lua.LTNil
+
+			if hasHeaders || hasFollowRedirects {
+				// New style: {headers={...}, follow_redirects=true/false}
+				if hasFollowRedirects {
+					followRedirects = lua.LVAsBool(table.RawGetString("follow_redirects"))
+				}
+				if hasHeaders {
+					headersTable := table.RawGetString("headers")
+					if headersTable.Type() == lua.LTTable {
+						headers = make(map[string]string)
+						headersTable.(*lua.LTable).ForEach(func(k, v lua.LValue) {
+							if key, ok := k.(lua.LString); ok {
+								if val, ok := v.(lua.LString); ok {
+									headers[string(key)] = string(val)
+								}
+							}
+						})
 					}
 				}
-			})
+			} else {
+				// Old style: direct headers table for backward compatibility
+				headers = make(map[string]string)
+				table.ForEach(func(k, v lua.LValue) {
+					if key, ok := k.(lua.LString); ok {
+						if val, ok := v.(lua.LString); ok {
+							headers[string(key)] = string(val)
+						}
+					}
+				})
+			}
 		}
 
-		// Create request with timeout context, propagating request context if available
-		ctx, cancel := context.WithTimeout(baseCtx, 10*time.Second)
+		// Create request with timeout context
+		ctx, cancel := context.WithTimeout(baseCtx, 5*time.Second)
 		defer cancel()
 
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
 			L.Push(lua.LString(""))
 			L.Push(lua.LNumber(0))
-			L.Push(L.NewTable()) // empty headers table
+			L.Push(L.NewTable())
 			return 3
 		}
 
@@ -448,22 +475,33 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			req.Header.Set(k, v)
 		}
 
-		resp, err := httpClient.Do(req)
+		// Select client based on redirect preference
+		client := httpClient
+		if !followRedirects {
+			client = &http.Client{
+				Timeout:   httpClient.Timeout,
+				Transport: httpClient.Transport,
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+			}
+		}
+
+		resp, err := client.Do(req)
 		if err != nil {
 			L.Push(lua.LString(""))
 			L.Push(lua.LNumber(0))
-			L.Push(L.NewTable()) // empty headers table
+			L.Push(L.NewTable())
 			return 3
 		}
 		defer resp.Body.Close()
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			// Ensure response body is closed even on read error
 			resp.Body.Close()
 			L.Push(lua.LString(""))
 			L.Push(lua.LNumber(0))
-			L.Push(L.NewTable()) // empty headers table
+			L.Push(L.NewTable())
 			return 3
 		}
 
