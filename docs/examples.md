@@ -15,8 +15,8 @@ tenants:
 
 ```lua
 -- scripts/api.lua
-chi_route("GET", "/users", function(request, response)
-    response_write(response, "Users endpoint")
+chi_route("GET", "/users", function(req, res)
+    res:Write("Users endpoint")
     -- Backend forwarding handled by gateway automatically
 end)
 ```
@@ -62,16 +62,15 @@ Round-robin happens automatically.
 
 ```lua
 -- scripts/auth.lua
-chi_middleware(function(request, response, next)
-    local url = request_url(request)
-
+-- Middleware MUST be defined BEFORE routes!
+chi_middleware(function(req, res, next)
     -- Only authenticate /api/* paths
-    if url:match("/api/") then
-        local token = request_header(request, "Authorization")
+    if req.Path:match("^/api/") then
+        local token = req:Header("Authorization")
         if not token or not validate_token(token) then
-            response_status(response, 401)
-            response_header(response, "Content-Type", "application/json")
-            response_write(response, '{"error": "Unauthorized"}')
+            res:Status(401)
+            res:Header("Content-Type", "application/json")
+            res:Write('{"error": "Unauthorized"}')
             return
         end
     end

@@ -29,8 +29,8 @@ tenants:
 Create `scripts/routes.lua`:
 
 ```lua
-chi_route("GET", "/hello", function(request, response)
-    response_write(response, "Hello World")
+chi_route("GET", "/hello", function(req, res)
+    res:Write("Hello World")
 end)
 ```
 
