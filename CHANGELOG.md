@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2025-12-14
+
+**BREAKING CHANGES**
+
+### Removed
+- **Health checking functionality** - Gateway no longer performs health checks or manages backend state
+  - Removed `Backend.Healthy` field
+  - Removed health check goroutines and orchestration code (~150 lines)
+  - Removed `HasHealthyBackends()` method
+  - Removed health check workers, context management, and state synchronization
+- **Load balancing across multiple backends** - Each tenant now routes to a single backend URL
+  - Changed from multiple backends per tenant to single backend
+  - Removed round-robin backend selection
+  - Removed backend pool management
+
+### Changed
+- **Gateway is now fully stateless** - No backend state tracking
+- `/health` endpoint simplified to basic liveness check (no longer aggregates backend health)
+- Gateway constructor simplified to single pattern: `NewGateway(cfg, router)`
+- Tenants should configure backend URLs to point to external load balancers
+
+### Migration Guide
+
+**For users relying on built-in health checking:**
+
+Before (v3.x):
+```yaml
+tenants:
+  - name: "api"
+    services:
+      - name: "backend-1"
+        url: "http://backend1:3000"
+      - name: "backend-2"
+        url: "http://backend2:3000"
+```
+
+After (v4.0):
+```yaml
+tenants:
+  - name: "api"
+    services:
+      - name: "backend"
+        url: "http://load-balancer:3000"  # Point to external LB
+```
+
+**Recommended approach:**
+1. Deploy an external load balancer (HAProxy, Nginx, AWS ELB, K8s Ingress)
+2. Configure health checks in the load balancer
+3. Point gateway tenant backends to the load balancer URL
+4. Deploy multiple gateway instances for high availability
+
+**Alternative for simple deployments:**
+- Implement custom health checking in Lua scripts if needed
+- Use DNS-based load balancing with health checks
+
+### Rationale
+
+This change aligns the gateway with cloud-native principles:
+- **Stateless design**: Gateway can scale horizontally without state synchronization
+- **Separation of concerns**: Infrastructure layer (LB) handles reliability, gateway handles routing
+- **Simplification**: Removed ~150 lines of complex health checking code
+- **Cloud-native**: Leverages platform capabilities (K8s, cloud providers)
+
+See DESIGN.md "Design Decisions Record" section for full architectural rationale.
+
+---
+
 ## [3.0.0] - 2025-12-14
 
 ### Added

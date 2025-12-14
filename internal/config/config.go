@@ -89,17 +89,15 @@ func (c *Config) ApplyDefaults() {
 	c.RequestLimits.ApplyDefaults()
 }
 
-
-
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and admin settings.
 type Config struct {
-	Tenants       []Tenant          `yaml:"tenants"`
-	AdminBasePath string            `yaml:"admin_base_path,omitempty"`
-	Server        ServerConfig      `yaml:"server"`
-	LuaRouting    LuaRoutingConfig  `yaml:"lua_routing"` // Embedded Lua routing only
-	TLS           TLSConfig         `yaml:"tls"`
-	Compression   CompressionConfig `yaml:"compression"`
+	Tenants       []Tenant            `yaml:"tenants"`
+	AdminBasePath string              `yaml:"admin_base_path,omitempty"`
+	Server        ServerConfig        `yaml:"server"`
+	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"` // Embedded Lua routing only
+	TLS           TLSConfig           `yaml:"tls"`
+	Compression   CompressionConfig   `yaml:"compression"`
 	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
 }
 

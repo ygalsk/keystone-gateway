@@ -19,7 +19,7 @@ type HTTPClient struct {
 // gopher-luar automatically converts Lua tables to this struct.
 type HTTPOptions struct {
 	Headers         map[string]string
-	FollowRedirects *bool         // nil = default (true), false = explicit no-redirect, true = explicit redirect
+	FollowRedirects *bool // nil = default (true), false = explicit no-redirect, true = explicit redirect
 	Timeout         time.Duration
 }
 

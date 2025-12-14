@@ -29,7 +29,7 @@ func New(cfg *config.Config, version string) (*Application, error) {
 	setupMiddleware(router, cfg)
 
 	// Create Gateway WITHOUT setting up routes yet
-	gateway := routing.NewGatewayWithRouter(cfg, router)
+	gateway := routing.NewGateway(cfg, router)
 
 	// Initialize Lua engine if enabled
 	var luaEngine *lua.Engine
@@ -53,15 +53,10 @@ func New(cfg *config.Config, version string) (*Application, error) {
 		app.setupLuaRouting()
 	}
 
-	// Simple health check for load balancers
+	// Simple health check endpoint (for load balancers to check if gateway is running)
 	app.router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		if app.gateway.HasHealthyBackends() {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("OK"))
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("NO_HEALTHY_BACKENDS"))
-		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
 	})
 
 	// Finally, setup Gateway routes (these are the tenant proxy routes)
@@ -94,7 +89,7 @@ func (app *Application) Handler() http.Handler {
 }
 
 func (app *Application) Stop() {
-	app.gateway.StopHealthChecks()
+	app.gateway.Stop()
 }
 
 func (app *Application) setupLuaRouting() {

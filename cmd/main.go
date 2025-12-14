@@ -21,7 +21,7 @@ import (
 
 // Constants for the application
 const (
-	Version                = "1.2.1"
+	Version                = "4.0.0"
 	DefaultListenAddress   = ":8080"
 	DefaultShutdownTimeout = 10 * time.Second
 )

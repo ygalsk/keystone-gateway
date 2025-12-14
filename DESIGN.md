@@ -29,8 +29,7 @@
 Keystone Gateway is a high-performance reverse proxy that provides:
 - Multi-tenant HTTP routing (by domain, path, or both)
 - Embedded Lua scripting for route definition
-- Load balancing across backend services
-- Health checking and automatic failover
+- Stateless request forwarding to backend services
 
 ### What Keystone Gateway IS NOT
 
@@ -68,13 +67,13 @@ The gateway provides **powerful, general-purpose primitives**. Tenants compose t
 **Deep modules in Keystone:**
 ```
 ┌─────────────────────────────────────┐
-│      Simple Interface (small)        │
+│      Simple Interface (small)       │
 ├─────────────────────────────────────┤
-│                                      │
-│                                      │
-│    Complex Implementation (large)    │
-│                                      │
-│                                      │
+│                                     │
+│                                     │
+│    Complex Implementation (large)   │
+│                                     │
+│                                     │
 └─────────────────────────────────────┘
 ```
 
@@ -92,7 +91,6 @@ The gateway provides **powerful, general-purpose primitives**. Tenants compose t
 - Lua state pool implementation
 - Bytecode compilation strategy
 - HTTP connection pooling details
-- Health check scheduling
 - Request body caching mechanism
 
 **What we expose:**
@@ -157,9 +155,7 @@ graph TD
         end
 
         subgraph "Static Proxy (internal/routing)"
-            D --> J{Backend Health Checker};
-            J --> K[Healthy Backend Pool];
-            K --> L[Reverse Proxy];
+            D --> L[Reverse Proxy];
         end
 
         subgraph "Configuration (internal/config)"
@@ -188,7 +184,7 @@ graph TD
 
 *   **`internal/app`**: The central coordinator. `application.go` wires everything together. It creates the master `chi` router, initializes the Lua engine, and sets up the static routing gateway. It orchestrates the startup sequence, ensuring Lua routes are registered before the static routes.
 
-*   **`internal/routing`**: Manages static, proxy-based routing. The `Gateway` (`gateway.go`) sets up `httputil.ReverseProxy` handlers for tenants configured with backend `services`. **Note:** Health checking logic is currently embedded here but should be extracted to a separate module (see **Current Technical Debt** section).
+*   **`internal/routing`**: Manages static, proxy-based routing. The `Gateway` (`gateway.go`) sets up `httputil.ReverseProxy` handlers for tenants configured with backend `services`. Each tenant routes to a single backend URL (which may be an external load balancer).
 
 *   **`internal/lua`**: The dynamic scripting engine. This is a deep and powerful module with several key components:
     *   **`engine.go`**: The public API for the Lua subsystem. It manages script execution and state pool coordination.
@@ -399,53 +395,39 @@ end
 
 ---
 
-### 4. Gateway Routing (Currently Being Refactored)
+### 4. Gateway Routing (Stateless Design)
 
-**Current Interface (Needs Simplification):**
+**Interface (Deep Module):**
 ```go
 type Gateway struct {}
 
-func NewGateway(cfg *Config) *Gateway
-func NewGatewayWithRouter(cfg *Config, router *chi.Mux) *Gateway  // Confusing - should remove
-func (gw *Gateway) SetupRoutes()  // Shallow wrapper
+func NewGateway(cfg *Config, router *chi.Mux) *Gateway
+func (gw *Gateway) SetupRoutes()
 func (gw *Gateway) Handler() http.Handler
 func (gw *Gateway) Stop()
-func (gw *Gateway) HasHealthyBackends() bool
-func (gw *Gateway) GetConfig() *config.Config  // Information leakage?
 ```
 
-**Current Complexity (Some Hidden, Some Leaked):**
+**Design Philosophy:**
+The Gateway is intentionally stateless and delegates infrastructure concerns to external systems:
+
+- **No health checking**: Health checks are performed by external load balancers (HAProxy, Nginx, AWS ELB, K8s Ingress)
+- **No load balancing**: Each tenant routes to a single backend URL (which can be a load balancer)
+- **Stateless operation**: No backend state tracking, connection pooling managed by stdlib
+
+**Complexity (Hidden):**
 - Host-based routing with hostrouter
 - Path-based routing with Chi
 - Hybrid routing (host + path)
-- Backend pool management
-- Round-robin load balancing
-- Health check orchestration (mixed in - should be extracted)
-- Graceful shutdown coordination
+- Reverse proxy configuration
+- Transport optimization
 
-**Known Issues (See `internal/routing/gateway.go` comments):**
-- ❌ **Health checking logic embedded** (lines 234-304) - violates single responsibility
-- ❌ **Two constructors** create confusion about usage
-- ❌ **Shallow wrappers** like `SetupRoutes()` add indirection without value
-- ❌ **setupTenantRoutes()** does too much (line 99) - initialization, validation, routing setup
-- ❌ **Information leakage** via `GetConfig()` - exposes internal config
+**Why This Design:**
+✅ **Gateway is dumb**: Infrastructure concerns handled externally
+✅ **Horizontally scalable**: No state to synchronize
+✅ **Cloud-native**: Leverages platform load balancing
+✅ **Simple**: Fewer moving parts, less to break
 
-**Goal State (Deep Module):**
-```go
-type Gateway struct {}
-
-func NewGateway(cfg *Config, router *chi.Mux) *Gateway  // Single constructor
-func (gw *Gateway) Handler() http.Handler
-func (gw *Gateway) Stop()
-```
-
-**Path Forward:**
-1. Extract health checking to `internal/healthcheck` module
-2. Remove `NewGatewayWithRouter` - keep single constructor
-3. Consolidate shallow wrappers
-4. Remove `GetConfig()` - no information leakage
-
-See **Current Technical Debt** and **Refactoring Roadmap** sections below.
+This aligns with the core principle: "The gateway provides primitives, infrastructure provides reliability."
 
 ---
 
@@ -813,146 +795,92 @@ end
 
 ---
 
+## Design Decisions Record
+
+This section documents major architectural decisions and their rationale.
+
+### Decision: Delegate Health Checking to External Infrastructure (Dec 2025)
+
+**Context:**
+The gateway previously included built-in health checking and automatic backend failover. This added complexity and state management to the core routing logic.
+
+**Decision:**
+Remove health checking from the gateway entirely. Delegate this responsibility to external load balancers (HAProxy, Nginx, AWS ELB, K8s Ingress, etc.).
+
+**Rationale:**
+1. **Stateless is simpler**: No backend state to track, no health check workers to manage
+2. **Cloud-native alignment**: Modern platforms provide superior load balancing with health checks
+3. **"Gateway is dumb" principle**: Infrastructure concerns belong in infrastructure layer
+4. **Horizontal scalability**: No state synchronization needed across gateway instances
+5. **Single responsibility**: Gateway focuses purely on HTTP routing and Lua scripting
+
+**Implementation:**
+- Each tenant now routes to a single backend URL (which can be an external load balancer)
+- Removed `Backend.Healthy` field and all health check orchestration code
+- Simplified `/health` endpoint to basic liveness check (not backend health aggregation)
+- Removed ~150 lines of health checking code from `internal/routing/gateway.go`
+- Eliminated health check goroutines, context management, and state synchronization
+
+**Migration Path:**
+Users who relied on built-in health checking should:
+1. **Recommended**: Use an external load balancer in front of backend services
+   - HAProxy, Nginx, AWS ELB, K8s Ingress all provide robust health checking
+   - Configure tenant backend URLs to point to the load balancer
+2. **Alternative**: Implement custom health checking in Lua scripts if needed
+3. **For development**: Use a simple reverse proxy like Nginx locally
+
+**Trade-offs:**
+- ✅ **Gains**: Simpler code, stateless operation, better scalability, cloud-native alignment
+- ⚠️ **Loses**: Built-in health checking for simple deployments without external LB
+- **Verdict**: The simplification and cloud-native alignment outweigh the loss
+
+This is a **breaking change** requiring a major version bump (v4.0.0).
+
+---
+
 ## Current Technical Debt
 
-This section documents known architectural debt and the plan to address it. This is normal in software evolution - the key is acknowledging it and having a path forward.
+This section documents known areas for potential improvement.
 
-### Priority 1: Extract Health Checking from Gateway
-
-**Problem:**
-Health checking logic is embedded in `internal/routing/gateway.go` (lines 234-304). This violates the single responsibility principle - Gateway should route requests, not manage health checks.
+### Opportunity 1: Simplify SetupRoutes Method
 
 **Current State:**
-```go
-// In Gateway struct (mixed concerns)
-healthCtx  context.Context
-healthStop context.CancelFunc
-healthWG   sync.WaitGroup
+`SetupRoutes()` is a dedicated method that configures tenant routes during initialization.
 
-// Health check methods in gateway.go
-func (gw *Gateway) startHealthChecks()
-func (gw *Gateway) healthCheckWorker(...)
-func (gw *Gateway) checkBackendHealth(...)
-```
+**Consideration:**
+Could potentially be merged into the constructor or caller, but keeping it provides:
+- Clear separation between construction and initialization
+- Easier testing (can create Gateway without setting up routes)
+- Explicit initialization step in application flow
 
-**Solution:**
-Create `internal/healthcheck` module:
-```go
-type HealthChecker interface {
-    Start(backends []*Backend) error
-    Stop()
-    IsHealthy(backend *Backend) bool
-    GetHealthyBackends(backends []*Backend) []*Backend
-}
-```
-
-**Benefits:**
-- Gateway focuses solely on routing (single responsibility)
-- Health checking can be tested independently
-- Can be reused for other health monitoring needs (databases, external APIs)
-- Clear module boundaries
-
-**Files to modify:**
-- `internal/routing/gateway.go` - remove health check code (lines 234-304)
-- `internal/healthcheck/checker.go` - new deep module
-- `internal/app/application.go` - wire health checker to gateway
-
----
-
-### Priority 2: Simplify Gateway Constructors
-
-**Problem:**
-Two constructors (`NewGateway` and `NewGatewayWithRouter`) create confusion about responsibilities and usage (gateway.go:42-72). Which one should I use? What's the difference?
-
-**Current State:**
-```go
-func NewGateway(cfg *Config) *Gateway {
-    // Creates own router internally - hidden dependency
-    router := chi.NewRouter()
-    ...
-}
-
-func NewGatewayWithRouter(cfg *Config, router *chi.Mux) *Gateway {
-    // Takes router as parameter - explicit dependency
-    ...
-}
-```
-
-**Issue:**  Line 56 comment says: *"do we need these to sperate ones, this obfuscates the flow and responsiblilites of the module"*
-
-**Solution:**
-Keep only one constructor with explicit dependencies:
-```go
-func NewGateway(cfg *Config, router *chi.Mux) *Gateway {
-    // Single, obvious way to create Gateway
-    // Caller creates router if they need control
-    ...
-}
-```
-
-**Benefits:**
-- Clear, single way to create Gateway (follows "obvious code" principle)
-- Explicit dependencies (no hidden router creation)
-- Less code to maintain
-- No confusion about which constructor to use
-
-**Files to modify:**
-- `internal/routing/gateway.go` - remove `NewGateway`, keep only `NewGatewayWithRouter` (rename to `NewGateway`)
-- `internal/app/application.go` - update to always create router first
-
----
-
-### Priority 3: Consolidate Shallow Wrappers
-
-**Problem:**
-Functions like `SetupRoutes()` (line 75) just call `setupRoutes()` + `startHealthChecks()`. This is temporal decomposition (grouping by when code runs), not deep modules.
-
-**Current State:**
-```go
-// Line 73 comment: "just a wrapper with helatch cheks, TOO SHALLOW"
-func (gw *Gateway) SetupRoutes() {
-    gw.setupRoutes()        // Private wrapper
-    gw.startHealthChecks()  // Should be in separate module
-}
-
-// Line 79 comment: "just error wrapper for a fucntion that needs refactoring"
-func (gw *Gateway) setupRoutes() {
-    for _, tenant := range gw.config.Tenants {
-        if err := gw.setupTenantRoutes(tenant); err != nil {
-            // Error handling
-        }
-    }
-}
-```
-
-**Solution:**
-- Extract health checks to separate module (see Priority 1)
-- Merge shallow wrappers into their callers
-- OR make wrappers do meaningful work (validation, logging, recovery)
-
-**Benefits:**
-- Less code to navigate (fewer indirection layers)
-- Clearer execution flow
-- Follows deep module pattern
+**Decision:** Keep as-is. The explicit initialization step has value.
 
 ---
 
 ### What's Going Well
 
-✅ **Lua Module Refactoring** - Successfully implemented deep modules:
+✅ **Health Checking Removal** (Dec 2025) - Achieved stateless design:
+- Removed ~150 lines of health checking code from Gateway
+- Eliminated health check goroutines, state synchronization, context management
+- Gateway is now fully stateless (no backend state tracking)
+- Aligned with cloud-native infrastructure patterns
+- Simplified constructor (single backend per tenant)
+- See **Design Decisions Record** above for full rationale
+
+✅ **Lua Module Refactoring** (Dec 2025) - Successfully implemented deep modules:
 - `internal/lua/modules/request.go` - Simple interface (properties + 5 methods), complex caching implementation
 - `internal/lua/modules/response.go` - Simple HTTP response writing with proper content-type handling
 - `internal/lua/modules/http.go` - Deep HTTP client with connection pooling, timeouts, HTTP/2
 - Reduced `chi_bindings.go` from 598 lines to ~50 lines (90% reduction via gopher-luar)
 - Lua API is now discoverable and natural (`req.Method`, `req:Header("X-Foo")`)
 
-✅ **Handlers Removal** - Simplified admin routes:
+✅ **Handlers Removal** (Dec 2025) - Simplified admin routes:
 - Removed `internal/handlers/handlers.go` (71 lines of unnecessary abstraction)
 - Moved health check endpoint directly into `application.go`
 - Removed route group complexity
 - More direct, easier to understand
 
-✅ **Script Compilation** - Unified compiler cache:
+✅ **Script Compilation** (Earlier) - Unified compiler cache:
 - Single `ScriptCompiler` handles all Lua bytecode caching
 - No duplicate compilation logic
 - Proper memory management
@@ -993,68 +921,54 @@ func (gw *Gateway) setupRoutes() {
 
 **Result:** Simpler, more direct code path. Easier to understand application flow.
 
+#### Dec 2025: Health Checking Removal
+**Goal:** Simplify Gateway to be fully stateless, delegate health checking to infrastructure
+
+**Commit:** TBD (current changes)
+
+**Original Plan:**
+Initially planned to extract health checking to `internal/healthcheck` module. However, after architectural review, decided to remove health checking entirely instead.
+
+**Final Approach:**
+- Remove all health checking code from Gateway (~150 lines)
+- Make Gateway fully stateless (no backend state tracking)
+- Delegate health checking to external load balancers (cloud-native pattern)
+
+**Changes:**
+- Removed `Backend.Healthy` field
+- Removed health check goroutines, context, WaitGroup from Gateway struct
+- Removed `startHealthChecks()`, `healthCheckWorker()`, `checkBackendHealth()` methods
+- Removed `HasHealthyBackends()` method
+- Changed from multiple backends per tenant to single backend URL
+- Simplified `/health` endpoint to basic liveness check
+- Updated constructor to accept router (removed dual constructor confusion)
+
+**Result:**
+- ✅ Gateway has no health check code (achieved)
+- ✅ Gateway is stateless and cloud-native
+- ✅ All tests pass
+- ⚠️ **Breaking change** - users must use external load balancers
+- **Version bump required:** v4.0.0 (major version due to breaking change)
+
 ---
 
 ### In Progress 🚧
 
-#### Next: Health Check Extraction (Priority 1)
-**Goal:** Separate health checking from Gateway routing
-
-**Approach:**
-1. Create `internal/healthcheck` module with clean interface
-2. Define `HealthChecker` interface (Start, Stop, IsHealthy)
-3. Move health check workers and state from `gateway.go`
-4. Gateway becomes consumer of health check results (doesn't manage them)
-
-**Files to create/modify:**
-- `internal/healthcheck/checker.go` (new - ~200 lines from gateway.go)
-- `internal/routing/gateway.go` (remove lines 35-39, 234-304)
-- `internal/app/application.go` (wire health checker)
-
-**Agent involvement** (per AGENTS.md):
-- @architect: Review module boundaries and interface design
-- @backend: Implement extraction carefully (no behavior change)
-- @testing: Test health checker in isolation, integration tests
-- @reviewer: Ensure no regressions, validate design compliance
-
-**Success criteria:**
-- [ ] Gateway has no health check code
-- [ ] HealthChecker is a deep module (simple interface, complex implementation)
-- [ ] All tests pass
-- [ ] No behavior change (health checks work identically)
+Currently no active refactoring efforts.
 
 ---
 
 ### Planned 📋
 
-#### Future: Gateway Constructor Simplification (Priority 2)
-**Goal:** Single, obvious way to create Gateway
+#### Future: Consider Additional Cloud-Native Patterns
+**Goal:** Continue simplifying by leveraging platform capabilities
 
-**Approach:**
-- Remove `NewGateway` (creates router internally)
-- Keep `NewGatewayWithRouter`, rename to `NewGateway`
-- Update all callers in `application.go`
+**Potential areas:**
+- Metrics export (delegate to sidecar pattern)
+- Distributed tracing (use OpenTelemetry SDK, not custom implementation)
+- TLS termination (can be handled by load balancer/ingress)
 
-**Files to modify:**
-- `internal/routing/gateway.go` (remove one constructor)
-- `internal/app/application.go` (always create router first)
-
-**Estimated effort:** Small (1-2 hour change)
-
----
-
-#### Future: Shallow Wrapper Consolidation (Priority 3)
-**Goal:** Reduce indirection, improve code clarity
-
-**Approach:**
-- After health check extraction, merge `SetupRoutes()` into caller
-- Evaluate each wrapper function - does it add value or just indirection?
-- Keep wrappers that do meaningful work (validation, recovery, logging)
-
-**Files to modify:**
-- `internal/routing/gateway.go` (consolidate wrappers)
-
-**Estimated effort:** Small (depends on health check extraction completion)
+**Philosophy:** Keep evaluating what can be delegated to infrastructure vs. what must be in the gateway
 
 ---
 
@@ -1514,13 +1428,12 @@ Before writing any code, ask:
 - ✅ Handlers package removed (71 lines)
 - ✅ lua_routes.go removed (49 lines)
 - ✅ Script compilation unified (single compiler cache)
-- ✅ Total code reduction: ~700 lines removed
+- ✅ **Health checking removed** (~150 lines) - Gateway now stateless
+- ✅ Gateway constructor simplified (single constructor pattern)
+- ✅ Total code reduction: ~900+ lines removed
 
-**Remaining technical debt:**
-- ❌ Health checking mixed into Gateway (~70 lines to extract)
-- ❌ Two Gateway constructors (need to consolidate)
-- ❌ Shallow wrapper functions (3-4 functions)
-- ❌ Gateway.GetConfig() information leakage
+**Remaining considerations:**
+- Continue evaluating cloud-native patterns (see Refactoring Roadmap)
 
 **Code quality metrics:**
 - Functions >50 lines: 2 (down from 3)
@@ -1536,6 +1449,14 @@ Before writing any code, ask:
 - Major refactoring occurs
 
 **Version history:**
+- v4.0.0 (Dec 2025): Health checking removal - stateless gateway design
+  - **BREAKING CHANGE**: Removed all health checking and load balancing from Gateway
+  - Added "Design Decisions Record" section documenting architectural choices
+  - Updated Gateway module documentation to reflect stateless design
+  - Documented migration path for users relying on built-in health checks
+  - Updated component architecture diagrams
+  - Removed ~150 lines of health checking code
+  - Gateway now delegates health checking to external load balancers
 - v2.0.1 (Dec 2025): Document current technical debt and refactoring progress
   - Added gopher-luar refactoring success documentation (90% code reduction)
   - Documented known issues in Gateway module with path forward
