@@ -1,36 +1,50 @@
 # Keystone Gateway
 
-High-performance reverse proxy with embedded Lua scripting. Multi-tenant routing without the complexity.
+[![Go](https://img.shields.io/badge/Go-1.21-blue)](https://golang.org) [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Why Keystone Gateway?
+Keystone Gateway is a **general-purpose HTTP routing primitive** with **embedded Lua scripting**.  
+It is designed for engineers who want **control without opinions**: the gateway handles HTTP efficiently, while tenants implement authentication, rate limiting, transformations, and other policies in Lua.
 
-- **Embedded Lua**: Define routes in Lua scripts, no recompilation needed
-- **Multi-tenant**: Route by domain, path, or both
-- **Performance**: Thread-safe Lua pools, HTTP/2, connection pooling
-- **Simple**: One binary, YAML config, Lua scripts. That's it.
+> ⚡ **Dumb gateway, smart tenants.** Keystone provides primitives, not workflows.
+
+---
+
+## TL;DR
+
+- Multi-tenant routing by domain/path
+- Embedded Lua scripting for routes and middleware
+- Deep modules: simple API, complex implementation
+- High performance: HTTP/2, connection pooling, Lua state pools
+- No built-in auth, rate limiting, or opinions
+
+---
+
+## Philosophy
+
+1. **Deep Modules** – Interfaces are simpler than implementations (e.g., Lua engine, HTTP client, request wrapper).  
+2. **Information Hiding** – Users never manage Lua states, bytecode, or connection pools.  
+3. **Pull Complexity Down** – Complex logic lives in Go, Lua stays simple.  
+4. **General-Purpose** – Works for many use cases, not just one.  
+5. **Gateway is Dumb** – Primitives only; tenants compose business logic.
+
+---
 
 ## Quick Start
 
 ```bash
-# Get it running
-git clone https://github.com/your-org/keystone-gateway.git
+git clone https://github.com/ygalsk/keystone-gateway.git
 cd keystone-gateway
 make dev
 
-# Gateway runs on :8080
+# Health check
 curl http://localhost:8080/admin/health
 ```
 
-### Basic Configuration
+### Minimal Configuration Example
 
 ```yaml
-# config.yaml
 server:
-  port: "8080"                # Optional: server port
-
-request_limits:               # Optional: security limits
-  max_body_size: 10485760     # 10MB default
-  max_header_size: 1048576    # 1MB default
+  port: "8080"
 
 tenants:
   - name: "api"
@@ -41,225 +55,100 @@ tenants:
         url: "http://localhost:3001"
 ```
 
+### Lua Route Example
+
 ```lua
 -- scripts/api.lua
-chi_route("GET", "/hello", function(request, response)
-    response_write(response, "Hello World")
+chi_route("GET", "/hello", function(req, res)
+    res:Write("Hello World")
 end)
 ```
 
-Start: `./keystone-gateway -config config.yaml`
+---
 
-## How It Works
-
-1. **Configure tenants** - Define who gets routed where
-2. **Write Lua scripts** - Define routes and middleware
-3. **Start gateway** - Routes traffic based on domain/path
-4. **Monitor** - Check `/admin/health` for status
-
-## Routing Strategies
-
-```yaml
-# Route by domain
-tenants:
-  - name: "api"
-    domains: ["api.example.com"]
-    lua_routes: "api"
-
-# Route by path
-  - name: "app"
-    path_prefix: "/app/"
-    lua_routes: "app"
-
-# Route by both (hybrid)
-  - name: "v2-api"
-    domains: ["api.example.com"]
-    path_prefix: "/v2/"
-    lua_routes: "v2"
-```
-
-## Lua Scripting
+## Lua API Highlights
 
 ```lua
--- Simple route
-chi_route("GET", "/users", function(request, response)
-    response_write(response, "User list")
-end)
+-- Access request properties
+print(req.Method)  -- GET, POST, etc. (property, not method!)
+print(req.URL)     -- Full URL
+print(req.Path)    -- URL path
 
--- With parameters
-chi_route("GET", "/users/{id}", function(request, response)
-    local id = chi_param(request, "id")
-    response_write(response, "User: " .. id)
-end)
+-- Request methods
+local body, err = req:Body()
+local auth = req:Header("Authorization")
+local id = req:Param("id")  -- From route pattern
 
--- Middleware (no pattern parameter)
-chi_middleware(function(request, response, next)
-    response_header(response, "X-Gateway", "Keystone")
+-- Make HTTP requests with options
+local resp = HTTP:Get("https://example.com/data", {
+    headers = {
+        Authorization = "Bearer token"
+    },
+    timeout = 5000,           -- milliseconds
+    follow_redirects = false
+})
+
+if resp.Status == 200 then
+    res:Write(resp.Body)
+end
+
+-- Middleware (MUST be defined before routes!)
+chi_middleware(function(req, res, next)
+    res:Header("X-Gateway", "Keystone")
     next()
 end)
-
--- Groups
-chi_group(function()
-    chi_route("GET", "/users", function(request, response)
-        response_write(response, "Users")
-    end)
-    chi_route("POST", "/users", function(request, response)
-        response_write(response, "Create user")
-    end)
-end)
-
--- HTTP client for proxying
-chi_route("GET", "/proxy/{path}", function(request, response)
-    local path = chi_param(request, "path")
-    local body, status, headers = http_get("https://api.example.com/" .. path)
-    response_status(response, status)
-    response_write(response, body)
-end)
 ```
 
-## Advanced Features
+**Key Points:**
+- Properties: `req.Method`, `req.URL`, `req.Path`, `req.Host`
+- Methods: `req:Header()`, `req:Body()`, `req:Param()`, `req:Query()`
+- HTTP client: `HTTP:Get/Post/Put/Delete(url, options)`
+- See [docs/lua.md](docs/lua.md) for complete API reference  
 
-### HTTP Client & Request Processing
-```lua
--- Read request body with size limits
-chi_route("POST", "/api/data", function(request, response)
-    local body = request_body(request)  -- Cached, size-limited
-    local method = request_method(request)
-    local auth = request_header(request, "Authorization")
+---
 
-    if #body > 0 then
-        response_header(response, "Content-Type", "application/json")
-        response_write(response, '{"received": ' .. #body .. ' bytes}')
-    end
-end)
+## Why Keystone Exists
 
--- External API calls with custom headers
-local headers = {["Authorization"] = "Bearer token123"}
-local body, status, resp_headers = http_post("https://api.external.com/data",
-    '{"key": "value"}', headers)
-```
+Most gateways bake in opinions: auth, rate limiting, and workflows. Keystone provides **general-purpose primitives**, letting tenants implement exactly what they need — nothing more, nothing less.
 
-### Context Caching & Performance
-```lua
--- Cache expensive operations across request pipeline
-chi_middleware(function(request, response, next)
-    local user_id = authenticate_user(request)
-    chi_context_set(request, "user_id", user_id)  -- Cache for later use
-    next()
-end)
+- No built-in auth or rate limiting  
+- No service discovery baked in  
+- No GraphQL or protocol assumptions  
 
-chi_route("GET", "/profile", function(request, response)
-    local user_id = chi_context_get(request, "user_id")  -- Retrieve cached value
-    response_write(response, "Profile for user: " .. user_id)
-end)
-```
+All policies and business logic live in Lua scripts.
 
-### Error Handling
-```lua
--- Custom 404 and 405 handlers
-chi_not_found(function(request, response)
-    response_status(response, 404)
-    response_write(response, '{"error": "Resource not found"}')
-end)
+---
 
-chi_method_not_allowed(function(request, response)
-    response_status(response, 405)
-    response_write(response, '{"error": "Method not allowed"}')
-end)
-```
+## Features
 
-## Load Balancing
+- Multi-tenant routing (domain, path, hybrid)  
+- Load balancing & health checks  
+- Hot-reloadable Lua scripts  
+- TLS support & graceful shutdown  
+- HTTP/2 and connection pooling  
+- Optional compression & request limits  
 
-Multiple services = automatic round-robin:
-
-```yaml
-services:
-  - name: "api-1"
-    url: "http://api-1:3001"
-  - name: "api-2"
-    url: "http://api-2:3001"
-  - name: "api-3"
-    url: "http://api-3:3001"
-```
-
-Health checks happen automatically.
-
-## Production Features
-
-- **Health monitoring**: `/admin/health`, `/admin/tenants/{name}/health`
-- **Request limits**: Configurable body/header/URL size limits (default: 10MB/1MB/8KB)
-- **Compression**: Configurable gzip for JSON/HTML/text/CSS/JS
-- **TLS**: Configure cert/key files
-- **Graceful shutdown**: SIGTERM handling
-- **Performance**: HTTP/2, connection pooling, Lua state pools, bytecode compilation
-- **Security**: Request size limits, configurable timeouts (⚠️ Note: Lua scripts have file system access)
-
-### Configuration Example
-```yaml
-request_limits:
-  max_body_size: 10485760     # 10MB
-  max_header_size: 1048576    # 1MB
-  max_url_size: 8192          # 8KB
-
-compression:
-  enabled: true
-  level: 5
-  content_types:
-    - "application/json"
-    - "text/html"
-    - "text/css"
-    - "text/javascript"
-    - "application/xml"
-    - "text/plain"
-```
-
-## Make Commands
-
-```bash
-make dev         # Start development
-make test        # Run all tests
-make staging     # Deploy to staging
-make production  # Deploy to production
-make clean       # Cleanup
-```
+---
 
 ## Project Structure
 
 ```
-cmd/           # Main application
-internal/      # Core Go packages
-  config/      # YAML configuration
-  lua/         # Lua engine integration
-  routing/     # HTTP routing & load balancing
-configs/       # Configuration examples
-scripts/lua/   # Lua routing scripts
-tests/         # Unit, integration, e2e tests
+cmd/           # Main app
+internal/      # Core modules: Lua, routing, HTTP client
+configs/       # YAML examples
+scripts/lua/   # Tenant Lua scripts
+tests/         # Unit and integration tests
 ```
 
-## Examples
+---
 
-See `configs/examples/`:
-- `simple.yaml` - Single backend
-- `multi-tenant.yaml` - Multiple tenants
-- `production.yaml` - Production setup
+## Contributing
 
-See `scripts/lua/examples/`:
-- `api-routes.lua` - Basic API routing
-- `auth-routes.lua` - Authentication middleware
+- Contributions welcome!  
+- See `docs/development.md` for guidelines.  
+- Use Lua primitives; keep business logic in tenant scripts.
 
-## Documentation
-
-- **[Quick Start](docs/quick-start.md)** - 2-minute setup
-- **[Configuration](docs/config.md)** - YAML reference
-- **[Lua Scripting](docs/lua.md)** - Route definitions
-- **[Examples](docs/examples.md)** - Real-world patterns
-- **[Development](docs/development.md)** - Contributing guide
-
-## Philosophy
-
-Keep it simple. Get it working. Make it fast.
-
-Keystone Gateway is a reverse proxy with embedded Lua scripting. One binary, YAML config, Lua scripts. No external dependencies, no complex setup, no microservice hell.
+---
 
 ## License
 
