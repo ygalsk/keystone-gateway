@@ -4,46 +4,65 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Keystone Gateway</title>
-    <meta name="description" content="One binary. Zero complexity. Route everything.">
+    <meta name="description" content="A general-purpose HTTP routing primitive. Primitives, not opinions.">
     <style>
         /* Typography */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
         :root {
-            --text-primary: #0f0f23;
-            --text-secondary: #666666;
-            --text-tertiary: #999999;
-            --accent: #ff6b35;
-            --accent-hover: #e55a2b;
-            --accent-light: #fff5f2;
-            --border: #e0e0e0;
-            --bg: #ffffff;
-            --bg-subtle: #f8f8f8;
-            --code-bg: #1a1a2e;
-            --code-text: #eee;
-            --code-comment: #888;
-            --code-keyword: #ff6b35;
-            --code-string: #4ecdc4;
-            --code-function: #ffe66d;
+            --text-primary: #1a1a1a;
+            --text-secondary: #5a5a5a;
+            --text-tertiary: #8a8a8a;
+            --accent: #6B8E23;
+            --accent-hover: #556B2F;
+            --accent-light: #f0f5e8;
+            --accent-brown: #B8956E;
+            --accent-brown-dark: #8B6F47;
+            --accent-brown-light: #D4C4A8;
+            --border: #d4c4b0;
+            --bg: #d4c4a8;
+            --bg-subtle: #c8b89c;
+            --bg-gradient-start: #d4c4a8;
+            --bg-gradient-end: #c8b89c;
+            --code-bg: #2a2418;
+            --code-bg-header: #3d3426;
+            --code-text: #e8e8e0;
+            --code-comment: #9a8a7a;
+            --code-keyword: #a8c97f;
+            --code-string: #7CB342;
+            --code-function: #d4a574;
             --mono: 'JetBrains Mono', monospace;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
 
         [data-theme="dark"] {
-            --text-primary: #f1f1f1;
-            --text-secondary: #a3a3a3;
-            --text-tertiary: #737373;
-            --accent: #ff6b35;
-            --accent-hover: #e55a2b;
-            --accent-light: #2a1a17;
-            --border: #2a2a2a;
-            --bg: #0a0a0a;
-            --bg-subtle: #111111;
-            --code-bg: #1a1a2e;
-            --code-text: #eee;
-            --code-comment: #888;
-            --code-keyword: #ff6b35;
-            --code-string: #4ecdc4;
-            --code-function: #ffe66d;
+            --text-primary: #e8e8e0;
+            --text-secondary: #b8b8a8;
+            --text-tertiary: #888878;
+            --accent: #7CB342;
+            --accent-hover: #8BC34A;
+            --accent-light: #1a2a0f;
+            --accent-brown: #C4A882;
+            --accent-brown-dark: #A0826D;
+            --accent-brown-light: #8B7A5F;
+            --border: #5a4f3f;
+            --bg: #1a1814;
+            --bg-subtle: #242018;
+            --bg-card: #242018;
+            --bg-gradient-start: #1a1814;
+            --bg-gradient-end: #242018;
+            --code-bg: #1a1814;
+            --code-bg-header: #2a2418;
+            --code-text: #e8e8e0;
+            --code-comment: #7a6a5a;
+            --code-keyword: #a8c97f;
+            --code-string: #7CB342;
+            --code-function: #d4a574;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
         }
 
         * {
@@ -54,81 +73,92 @@
 
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            line-height: 1.6;
+            line-height: 1.7;
             color: var(--text-primary);
             background: var(--bg);
             font-feature-settings: 'kern' 1, 'liga' 1, 'ss01' 1;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
+            overflow-x: hidden;
         }
 
-        /* Layout - Mobile First */
+        /* Layout */
         .container {
-            max-width: 64rem;
+            max-width: 75rem;
             margin: 0 auto;
-            padding: 0 1rem;
+            padding: 0 1.5rem;
         }
 
-        /* Typography Scale - Mobile First */
+        /* Enhanced Typography */
         .h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            line-height: 0.9;
-            letter-spacing: -0.03em;
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.04em;
+            color: var(--text-primary);
         }
 
         .h2 {
-            font-size: 1.75rem;
-            font-weight: 600;
-            line-height: 1.1;
-            letter-spacing: -0.02em;
+            font-size: 2.25rem;
+            font-weight: 700;
+            line-height: 1.2;
+            letter-spacing: -0.03em;
+            color: var(--text-primary);
         }
 
         .h3 {
-            font-size: 1.25rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            line-height: 1.2;
+            line-height: 1.3;
+            color: var(--accent);
         }
 
         .body-large {
-            font-size: 1.125rem;
+            font-size: 1.25rem;
             font-weight: 400;
+            line-height: 1.7;
             color: var(--text-secondary);
         }
 
         .body {
-            font-size: 0.9rem;
+            font-size: 1rem;
+            font-weight: 400;
+            line-height: 1.7;
             color: var(--text-secondary);
         }
 
         .caption {
-            font-size: 0.8rem;
+            font-size: 0.875rem;
             color: var(--text-tertiary);
         }
 
-        /* Components */
+        /* Buttons */
         .btn {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            padding: 0.75rem 1.5rem;
-            font-size: 0.875rem;
-            font-weight: 500;
+            padding: 0.875rem 1.75rem;
+            font-size: 0.9375rem;
+            font-weight: 600;
             text-decoration: none;
-            border-radius: 0.375rem;
-            transition: all 0.15s ease;
-            border: 1px solid;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+            border: 2px solid;
+            cursor: pointer;
         }
 
         .btn-primary {
             background: var(--accent);
             color: white;
             border-color: var(--accent);
+            box-shadow: var(--shadow-md);
         }
 
         .btn-primary:hover {
             background: var(--accent-hover);
             border-color: var(--accent-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
         }
 
         .btn-secondary {
@@ -138,57 +168,20 @@
         }
 
         .btn-secondary:hover {
-            background: var(--bg-subtle);
+            background: var(--accent-light);
+            border-color: var(--accent-brown-dark);
+            transform: translateY(-2px);
         }
-
-        /* Code */
-        .code-block {
-            background: var(--code-bg);
-            border: 1px solid var(--border);
-            border-radius: 0.5rem;
-            overflow: hidden;
-        }
-
-        .code-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0.75rem 1rem;
-            border-bottom: 1px solid var(--border);
-            background: var(--bg);
-        }
-
-        .code-title {
-            font-family: var(--mono);
-            font-size: 0.75rem;
-            color: var(--text-tertiary);
-            font-weight: 500;
-        }
-
-        .code-content {
-            padding: 1rem;
-            font-family: var(--mono);
-            font-size: 0.875rem;
-            line-height: 1.5;
-            color: var(--code-text);
-            white-space: pre;
-            max-width: 100%;
-            word-break: break-all;
-        }
-
-        .code-comment { color: var(--code-comment); }
-        .code-keyword { color: var(--code-keyword); font-weight: 500; }
-        .code-string { color: var(--code-string); }
-        .code-function { color: var(--code-function); }
 
         /* Navigation */
         nav {
             position: sticky;
             top: 0;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(8px);
-            border-bottom: 1px solid var(--border);
+            background: rgba(212, 196, 168, 0.95);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--accent-brown);
             z-index: 100;
+            box-shadow: var(--shadow-sm);
         }
 
         [data-theme="dark"] nav {
@@ -199,110 +192,103 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            height: 4rem;
+            height: 5rem;
         }
 
         .logo {
             font-weight: 700;
-            font-size: 1.125rem;
-            color: var(--text-primary);
+            font-size: 1.25rem;
             text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.875rem;
+            transition: opacity 0.2s ease;
+        }
+
+        .logo:hover {
+            opacity: 0.8;
+        }
+
+        .logo-text {
+            display: flex;
+            align-items: baseline;
+        }
+
+        .logo-brown {
+            color: var(--accent-brown);
+        }
+
+        .logo-green {
+            color: var(--accent);
+        }
+
+        .kiwi-icon {
+            width: 6.25rem;
+            height: 6.25rem;
+            flex-shrink: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .kiwi-icon svg,
+        .kiwi-icon img {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+            max-width: 100%;
+            max-height: 100%;
+            transition: transform 0.3s ease;
+        }
+
+        .logo:hover .kiwi-icon svg,
+        .logo:hover .kiwi-icon img {
+            transform: scale(1.05) rotate(-5deg);
         }
 
         .nav-links {
             display: flex;
-            gap: 2rem;
+            gap: 2.5rem;
             list-style: none;
         }
 
         .nav-links a {
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 0.875rem;
+            font-size: 0.9375rem;
             font-weight: 500;
-            transition: color 0.15s ease;
+            transition: color 0.2s ease;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--accent);
+            transition: width 0.3s ease;
         }
 
         .nav-links a:hover {
             color: var(--text-primary);
         }
 
-        /* Sections */
-        section {
-            padding: 6rem 0;
+        .nav-links a:hover::after {
+            width: 100%;
         }
 
-        .hero {
-            padding: 8rem 0 6rem;
-            text-align: center;
-        }
-
-        .hero .h1 {
-            margin-bottom: 1.5rem;
-        }
-
-        .hero .body-large {
-            margin-bottom: 3rem;
-            max-width: 36rem;
-            margin-left: auto;
-            margin-right: auto;
-        }
-
-        .hero-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-            flex-wrap: wrap;
-            margin-bottom: 4rem;
-        }
-
-        /* Grid */
-        .grid {
-            display: grid;
-            gap: 2rem;
-        }
-
-        .grid-2 {
-            grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-        }
-
-        .grid-3 {
-            grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-        }
-
-        /* Feature Cards */
-        .feature {
-            padding: 2rem 0;
-        }
-
-        .feature .h3 {
-            margin-bottom: 0.75rem;
-            color: var(--text-primary);
-        }
-
-        /* Accent the important parts */
-        .nav-links a:hover {
-            color: var(--accent);
-        }
-
-        .caption a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        .caption a:hover {
-            color: var(--accent-hover);
-        }
-
-        /* Dark mode toggle */
         .theme-toggle {
             background: none;
             border: 1px solid var(--border);
-            border-radius: 0.375rem;
-            padding: 0.5rem;
+            border-radius: 0.5rem;
+            padding: 0.625rem;
             cursor: pointer;
             color: var(--text-secondary);
-            transition: all 0.15s ease;
+            transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -311,109 +297,394 @@
         .theme-toggle:hover {
             color: var(--text-primary);
             background: var(--bg-subtle);
+            border-color: var(--accent-brown);
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 8rem 0 6rem;
+            position: relative;
+            overflow: hidden;
+            background: var(--bg);
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -10%;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(107, 142, 35, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: -30%;
+            left: -5%;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(184, 149, 110, 0.1) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .hero-text {
+            animation: fadeInUp 0.8s ease;
+        }
+
+        .hero-visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+            animation: fadeInUp 1s ease;
+        }
+
+.hero-kiwi {
+    max-width: 1000px;
+}
+
+.hero-kiwi img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+}
+
+        .hero-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2.5rem;
+            flex-wrap: wrap;
+        }
+
+        .hero-code {
+            margin-top: 2rem;
+            animation: fadeInUp 1.2s ease;
+        }
+
+        /* Network Arcs Decoration */
+        .network-arcs {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 200px;
+            overflow: hidden;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .arc {
+            position: absolute;
+            border: 2px solid;
+            border-radius: 50%;
+            opacity: 0.15;
+        }
+
+        .arc-1 {
+            width: 300px;
+            height: 300px;
+            border-color: var(--accent);
+            bottom: -150px;
+            left: 10%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .arc-2 {
+            width: 400px;
+            height: 400px;
+            border-color: var(--accent-brown);
+            bottom: -200px;
+            right: 15%;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        /* Code Blocks */
+        .code-block {
+            background: var(--code-bg);
+            border: 1px solid var(--accent-brown);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .code-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--accent-brown);
+            background: var(--code-bg-header);
+        }
+
+        .code-title {
+            font-family: var(--mono);
+            font-size: 0.8125rem;
+            color: var(--text-tertiary);
+            font-weight: 500;
+        }
+
+        .code-copy {
+            background: none;
+            border: none;
+            color: var(--text-tertiary);
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            transition: all 0.2s ease;
+            font-family: var(--mono);
+        }
+
+        .code-copy:hover {
+            background: var(--bg-subtle);
+            color: var(--accent);
+        }
+
+        .code-content {
+            padding: 1.5rem;
+            font-family: var(--mono);
+            font-size: 0.875rem;
+            line-height: 1.8;
+            color: var(--code-text);
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .code-comment { color: var(--code-comment); }
+        .code-keyword { color: var(--code-keyword); font-weight: 500; }
+        .code-string { color: var(--code-string); }
+        .code-function { color: var(--code-function); }
+
+        /* Sections */
+        section {
+            padding: 8rem 0;
+            position: relative;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        /* Feature Cards */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+        }
+
+        .feature-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-icon {
+            width: 3rem;
+            height: 3rem;
+            margin-bottom: 1.5rem;
+            color: var(--accent);
+        }
+
+        .feature-card .h3 {
+            margin-bottom: 1rem;
+        }
+
+        .feature-card .body {
+            margin-bottom: 0;
+        }
+
+        /* Philosophy Section */
+        .philosophy {
+            background: var(--bg);
+        }
+
+        .philosophy-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .philosophy-visual {
+            background: var(--code-bg);
+            border-radius: 1rem;
+            padding: 2rem;
+            border: 1px solid var(--accent-brown);
+        }
+
+        .module-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .module-box {
+            background: var(--bg-subtle);
+            border: 2px solid var(--accent);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .module-box.simple {
+            border-color: var(--accent);
+            border-width: 2px;
+        }
+
+        .module-box.complex {
+            border-color: var(--accent-brown);
+            border-width: 4px;
+            background: var(--code-bg-header);
+        }
+
+        /* Examples Section */
+        .example-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--accent-brown);
+            padding: 4rem 0;
+            background: var(--bg);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Typing Animation */
+        .typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.2em;
+            background: var(--accent);
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
         }
 
         /* Utilities */
         .text-center { text-align: center; }
+        .mb-4 { margin-bottom: 1rem; }
         .mb-8 { margin-bottom: 2rem; }
         .mb-12 { margin-bottom: 3rem; }
+        .mt-8 { margin-top: 2rem; }
         .mt-16 { margin-top: 4rem; }
 
-        /* Mobile First Layout */
-        .nav-links {
-            display: none;
-        }
-
-        .hero-actions {
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .hero {
-            padding: 4rem 0 3rem;
-        }
-
-        section {
-            padding: 3rem 0;
-        }
-
-        .grid-2,
-        .grid-3 {
-            grid-template-columns: 1fr;
-        }
-
-        .feature {
-            padding: 1.5rem 0;
-        }
-
-        .code-content {
-            font-size: 0.8rem;
-            padding: 0.75rem;
-        }
-
-        /* Tablet and Desktop */
-        @media (min-width: 768px) {
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
             .container {
-                padding: 0 1.5rem;
-            }
-
-            .nav-links {
-                display: flex;
-            }
-
-            .hero {
-                padding: 8rem 0 6rem;
-            }
-
-            section {
-                padding: 6rem 0;
-            }
-
-            .hero-actions {
-                flex-direction: row;
-            }
-
-            .grid-2 {
-                grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
-            }
-
-            .grid-3 {
-                grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-            }
-
-            .feature {
-                padding: 2rem 0;
-            }
-
-            .code-content {
-                font-size: 0.875rem;
-                padding: 1rem;
+                padding: 0 1rem;
             }
 
             .h1 {
-                font-size: 3.5rem;
-                letter-spacing: -0.05em;
+                font-size: 2.25rem;
             }
 
             .h2 {
-                font-size: 2.5rem;
-                letter-spacing: -0.03em;
+                font-size: 1.75rem;
             }
 
             .h3 {
-                font-size: 1.5rem;
-            }
-
-            .body-large {
                 font-size: 1.25rem;
             }
 
-            .body {
-                font-size: 1rem;
+            .hero {
+                padding: 4rem 0 3rem;
             }
 
-            .caption {
-                font-size: 0.875rem;
+            .hero-content {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+
+            .hero-kiwi {
+                max-width: 625px;
+            }
+
+            .philosophy-content {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+
+            section {
+                padding: 4rem 0;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .nav-content {
+                height: 4rem;
+            }
+        }
+
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .hero-content {
+                gap: 3rem;
+            }
+
+            .hero-kiwi {
+                max-width: 750px;
             }
         }
     </style>
@@ -422,9 +693,18 @@
     <nav>
         <div class="container">
             <div class="nav-content">
-                <a href="#" class="logo">Keystone</a>
+                <a href="#" class="logo">
+                    <span class="kiwi-icon">
+                        <img src="mascot.svg" alt="Keystone Gateway mascot">
+                    </span>
+                    <span class="logo-text">
+                        <span class="logo-green">Key</span><span class="logo-brown">stone-Gate</span><span class="logo-green">way</span>
+                    </span>
+                </a>
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <ul class="nav-links">
+                        <li><a href="#philosophy">Philosophy</a></li>
+                        <li><a href="#features">Features</a></li>
                         <li><a href="#start">Start</a></li>
                         <li><a href="#examples">Examples</a></li>
                         <li><a href="docs/">Docs</a></li>
@@ -440,88 +720,193 @@
 
     <main>
         <section class="hero">
+            <div class="network-arcs">
+                <div class="arc arc-1"></div>
+                <div class="arc arc-2"></div>
+            </div>
             <div class="container">
-                <h1 class="h1">Finally, a gateway that<br>doesn't hate you back.</h1>
-                <p class="body-large">
-                    Download one binary. Write some Lua. Route everything.
-                    No YAML archaeology. No service mesh therapy sessions. No explaining to your manager why the load balancer needs a load balancer.
-                </p>
-
-                <div class="hero-actions">
-                    <a href="#start" class="btn btn-primary">Get Started</a>
-                    <a href="https://github.com/ygalsk/keystone-gateway" class="btn btn-secondary">
-                        View Source
-                        <span>↗</span>
-                    </a>
-                </div>
-
-                <div class="code-block" style="max-width: min(500px, 100%); margin: 0 auto;">
-                    <div class="code-header">
-                        <span class="code-title">Terminal</span>
-                    </div>
-                    <div class="code-content"><span class="code-comment"># Download and run</span>
+                <div class="hero-content">
+                    <div class="hero-text">
+                        <h1 class="h1">Primitives,<br>not opinions.</h1>
+                        <p class="body-large" style="margin-top: 1.5rem; margin-bottom: 0;">
+                            A general-purpose HTTP routing primitive. The gateway provides powerful building blocks—you compose them into solutions. Deep modules with simple interfaces. Stateless by design.
+                        </p>
+                        <div class="hero-actions">
+                            <a href="#start" class="btn btn-primary">Get Started</a>
+                            <a href="https://github.com/ygalsk/keystone-gateway" class="btn btn-secondary">
+                                View Source
+                                <span>↗</span>
+                            </a>
+                        </div>
+                        <div class="hero-code">
+                            <div class="code-block">
+                                <div class="code-header">
+                                    <span class="code-title">Terminal</span>
+                                    <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
+                                </div>
+                                <div class="code-content" id="typing-code"><span class="code-comment"># Download and run</span>
 git clone https://github.com/ygalsk/keystone-gateway.git
 cd keystone-gateway
-make dev
+make dev</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="hero-visual">
+                        <div class="hero-kiwi">
+                            <img src="mascot.svg" alt="Keystone Gateway mascot">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
 
-<span class="code-comment"># Test the gateway</span>
-curl localhost:8080/admin/health</div>
+        <section id="philosophy" class="philosophy">
+            <div class="container">
+                <div class="section-header fade-in">
+                    <h2 class="h2">Deep Modules.<br>Simple Interfaces.</h2>
+                    <p class="body-large" style="margin-top: 1rem; max-width: 600px; margin-left: auto; margin-right: auto;">
+                        The best modules have interfaces much simpler than their implementations. Complexity is hidden, not exposed.
+                    </p>
+                </div>
+                <div class="philosophy-content fade-in">
+                    <div>
+                        <h3 class="h3" style="margin-bottom: 1.5rem;">What We Hide</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
+                                <strong>Lua state pooling</strong> - Thread-safe state management
+                            </li>
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
+                                <strong>Bytecode compilation</strong> - Performance optimization
+                            </li>
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
+                                <strong>Connection pooling</strong> - HTTP/2, timeouts, TLS
+                            </li>
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
+                                <strong>Request body caching</strong> - Automatic optimization
+                            </li>
+                        </ul>
+                        <h3 class="h3" style="margin-top: 2.5rem; margin-bottom: 1.5rem;">What We Expose</h3>
+                        <ul style="list-style: none; padding: 0;">
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
+                                Simple route registration
+                            </li>
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
+                                Request/response properties
+                            </li>
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
+                                HTTP client methods
+                            </li>
+                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
+                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
+                                Clear configuration
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="philosophy-visual fade-in">
+                        <div class="module-diagram">
+                            <div class="module-box simple">
+                                <strong style="color: var(--accent);">Simple Interface</strong>
+                                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">req.Method, req:Header()</div>
+                            </div>
+                            <div style="text-align: center; color: var(--accent); font-size: 1.5rem;">↓</div>
+                            <div class="module-box complex">
+                                <strong style="color: var(--accent-brown);">Complex Implementation</strong>
+                                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Caching, parsing, context management, pooling</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </section>
 
         <section id="features">
             <div class="container">
-                <h2 class="h2 text-center mb-12">
-                    Built for engineers who value their time
-                </h2>
-
-                <div class="grid grid-3">
-                    <div class="feature">
+                <div class="section-header fade-in">
+                    <h2 class="h2">General-Purpose Primitives</h2>
+                    <p class="body-large" style="margin-top: 1rem;">
+                        Everything you need to build routing solutions. Nothing you don't.
+                    </p>
+                </div>
+                <div class="feature-grid">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/>
+                                <path d="M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
                         <h3 class="h3">One Binary</h3>
                         <p class="body">
-                            Download. Run. Done. No containers, orchestrators, or explaining to your team
-                            why you need 47 microservices just to route HTTP requests.
+                            Single executable. No containers or orchestrators. Download, configure, run. Everything you need in one stateless binary.
                         </p>
                     </div>
-
-                    <div class="feature">
-                        <h3 class="h3">Lua Scripts</h3>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                                <path d="M2 17l10 5 10-5"/>
+                                <path d="M2 12l10 5 10-5"/>
+                            </svg>
+                        </div>
+                        <h3 class="h3">Deep Modules</h3>
                         <p class="body">
-                            Write routing logic in actual code instead of YAML. Change routes without
-                            recompiling, restarting, or filing a DevOps ticket and waiting three sprints.
+                            Simple interfaces hide complex implementations. Lua engine, HTTP client, request wrapper—all designed with deep module principles.
                         </p>
                     </div>
-
-                    <div class="feature">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                        </div>
                         <h3 class="h3">Multi-tenant</h3>
                         <p class="body">
-                            Route by domain, path, headers, moon phase, whatever. One gateway can handle
-                            hundreds of tenants without breaking your sanity.
+                            Route by domain, path, or both. One gateway handles hundreds of tenants. Each tenant defines their own routing logic in Lua scripts.
                         </p>
                     </div>
-
-                    <div class="feature">
-                        <h3 class="h3">HTTP Client</h3>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                            </svg>
+                        </div>
+                        <h3 class="h3">HTTP Client Primitive</h3>
                         <p class="body">
-                            Make upstream requests, transform responses, cache results, proxy everything.
-                            Full HTTP client built right into your Lua scripts.
+                            General-purpose HTTP client with connection pooling, HTTP/2, and timeout management. Make upstream requests, transform responses.
                         </p>
                     </div>
-
-                    <div class="feature">
-                        <h3 class="h3">Load Balancing</h3>
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 6v6l4 2"/>
+                            </svg>
+                        </div>
+                        <h3 class="h3">Stateless Design</h3>
                         <p class="body">
-                            Round-robin, health checks, automatic failover. Because your users shouldn't
-                            notice when your backend decides to take a coffee break.
+                            No backend state tracking. No health check workers. Horizontally scalable by design. Infrastructure handles reliability.
                         </p>
                     </div>
-
-                    <div class="feature">
+                    <div class="feature-card fade-in">
+                        <div class="feature-icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                            </svg>
+                        </div>
                         <h3 class="h3">Production Ready</h3>
                         <p class="body">
-                            HTTP/2, connection pooling, request limits, health monitoring. All the boring
-                            stuff that keeps you from getting paged at 3 AM.
+                            HTTP/2 support, connection pooling, Lua state pools, bytecode compilation. High performance with minimal resource usage.
                         </p>
                     </div>
                 </div>
@@ -530,16 +915,16 @@ curl localhost:8080/admin/health</div>
 
         <section id="start">
             <div class="container">
-                <h2 class="h2 text-center mb-8">
-                    From zero to routing in 60 seconds
-                </h2>
-
-                <div class="grid grid-2">
-                    <div>
+                <div class="section-header fade-in">
+                    <h2 class="h2">From zero to routing<br>in 60 seconds</h2>
+                </div>
+                <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 3rem;">
+                    <div class="fade-in">
                         <h3 class="h3 mb-8">1. Configure tenants</h3>
                         <div class="code-block">
                             <div class="code-header">
                                 <span class="code-title">config.yaml</span>
+                                <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
                             </div>
                             <div class="code-content"><span class="code-keyword">tenants</span>:
   - <span class="code-keyword">name</span>: <span class="code-string">"api"</span>
@@ -551,12 +936,12 @@ curl localhost:8080/admin/health</div>
         <span class="code-keyword">url</span>: <span class="code-string">"http://api-server:3000"</span></div>
                         </div>
                     </div>
-
-                    <div>
+                    <div class="fade-in">
                         <h3 class="h3 mb-8">2. Write Lua routes</h3>
                         <div class="code-block">
                             <div class="code-header">
                                 <span class="code-title">scripts/api.lua</span>
+                                <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
                             </div>
                             <div class="code-content"><span class="code-comment">-- Route with auth middleware</span>
 <span class="code-function">chi_middleware</span>(<span class="code-keyword">function</span>(req, res, next)
@@ -573,9 +958,12 @@ curl localhost:8080/admin/health</div>
                         </div>
                     </div>
                 </div>
-
-                <div class="text-center mt-16">
+                <div class="text-center mt-16 fade-in">
                     <div class="code-block" style="display: inline-block; text-align: left;">
+                        <div class="code-header">
+                            <span class="code-title">Terminal</span>
+                            <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
+                        </div>
                         <div class="code-content"><span class="code-comment"># Start the gateway</span>
 ./keystone-gateway -config config.yaml</div>
                     </div>
@@ -588,41 +976,35 @@ curl localhost:8080/admin/health</div>
 
         <section id="examples">
             <div class="container">
-                <h2 class="h2 text-center mb-8">
-                    Real problems. Real solutions.
-                </h2>
-
-                <div class="grid grid-3">
-                    <div class="feature">
+                <div class="section-header fade-in">
+                    <h2 class="h2">Real problems.<br>Real solutions.</h2>
+                </div>
+                <div class="feature-grid fade-in">
+                    <div class="example-card">
                         <h3 class="h3">API Gateway</h3>
                         <p class="body">
-                            Replace AWS API Gateway with something you can actually debug.
-                            Route /users to user service, /orders to order service.
+                            Route requests to microservices by path or domain. Tenants define routing logic in Lua. No opinions, just primitives you compose.
                         </p>
-                        <p class="caption">
+                        <p class="caption" style="margin-top: 1rem;">
                             <a href="docs/examples.md#microservices-by-path">View example →</a>
                         </p>
                     </div>
-
-                    <div class="feature">
+                    <div class="example-card">
                         <h3 class="h3">Auth Proxy</h3>
                         <p class="body">
-                            Add authentication to any service without touching its code.
-                            JWT validation, OAuth flows, custom auth logic.
+                            Implement authentication in tenant Lua scripts. JWT validation, OAuth flows, custom logic—you decide. Gateway provides HTTP primitives.
                         </p>
-                        <p class="caption">
+                        <p class="caption" style="margin-top: 1rem;">
                             <a href="docs/examples.md#authentication-middleware">View example →</a>
                         </p>
                     </div>
-
-                    <div class="feature">
-                        <h3 class="h3">Load Balancer</h3>
+                    <div class="example-card">
+                        <h3 class="h3">Request Transformation</h3>
                         <p class="body">
-                            Distribute traffic across multiple backends.
-                            Health checks, automatic failover, custom routing logic.
+                            Transform requests and responses in Lua. Modify headers, rewrite paths, aggregate data from multiple backends.
                         </p>
-                        <p class="caption">
-                            <a href="docs/examples.md#load-balancing">View example →</a>
+                        <p class="caption" style="margin-top: 1rem;">
+                            <a href="docs/examples.md#request-transformation">View example →</a>
                         </p>
                     </div>
                 </div>
@@ -630,15 +1012,16 @@ curl localhost:8080/admin/health</div>
         </section>
     </main>
 
-    <footer style="border-top: 1px solid var(--border); padding: 3rem 0; background: var(--bg-subtle);">
+    <footer>
         <div class="container text-center">
-            <p class="caption">
-                <strong>Keep it simple. Get it working. Make it fast.</strong>
+            <p class="body" style="margin-bottom: 1rem;">
+                <strong style="color: var(--accent);">Primitives, not opinions.</strong><br>
+                <span style="color: var(--text-secondary);">Deep modules, not shallow complexity.</span>
             </p>
-            <p class="caption" style="margin-top: 0.5rem;">
+            <p class="caption" style="margin-top: 1.5rem;">
                 MIT Licensed •
-                <a href="https://github.com/ygalsk/keystone-gateway">Source</a> •
-                <a href="docs/">Documentation</a>
+                <a href="https://github.com/ygalsk/keystone-gateway" style="color: var(--accent);">Source</a> •
+                <a href="docs/" style="color: var(--accent);">Documentation</a>
             </p>
         </div>
     </footer>
@@ -649,8 +1032,7 @@ curl localhost:8080/admin/health</div>
         const themeIcon = document.getElementById('theme-icon');
         const body = document.body;
 
-        // Check for saved theme preference or default to 'dark'
-        const currentTheme = localStorage.getItem('theme') || 'dark';
+        const currentTheme = localStorage.getItem('theme') || 'light';
 
         if (currentTheme === 'dark') {
             body.setAttribute('data-theme', 'dark');
@@ -673,7 +1055,7 @@ curl localhost:8080/admin/health</div>
             }
         });
 
-        // Smooth scrolling for anchor links
+        // Smooth scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
@@ -686,6 +1068,62 @@ curl localhost:8080/admin/health</div>
                 }
             });
         });
+
+        // Scroll animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Copy code functionality
+        function copyCode(button) {
+            const codeBlock = button.closest('.code-block');
+            const codeContent = codeBlock.querySelector('.code-content');
+            const text = codeContent.textContent;
+            
+            navigator.clipboard.writeText(text).then(() => {
+                const originalText = button.textContent;
+                button.textContent = 'Copied!';
+                button.style.color = 'var(--accent)';
+                setTimeout(() => {
+                    button.textContent = originalText;
+                    button.style.color = '';
+                }, 2000);
+            });
+        }
+
+        // Typing animation for hero code
+        const typingCode = document.getElementById('typing-code');
+        if (typingCode) {
+            const originalText = typingCode.innerHTML;
+            typingCode.innerHTML = '';
+            let index = 0;
+            const typingSpeed = 30;
+
+            function typeChar() {
+                if (index < originalText.length) {
+                    typingCode.innerHTML = originalText.substring(0, index + 1) + '<span class="typing-cursor"></span>';
+                    index++;
+                    setTimeout(typeChar, typingSpeed);
+                } else {
+                    typingCode.innerHTML = originalText;
+                }
+            }
+
+            setTimeout(typeChar, 500);
+        }
     </script>
 </body>
 </html>
