@@ -34,7 +34,7 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 			defer e.statePool.Put(L)
 
 			// Create our deep modules (wrappers)
-			reqModule := modules.NewRequest(req, e.config.RequestLimits.MaxBodySize)
+			reqModule := modules.NewRequest(req, e.maxBodySize)
 			resModule := modules.NewResponse(w)
 
 			// Call the Lua handler function with the modules.
@@ -60,7 +60,7 @@ func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {
 				L := e.statePool.Get()
 				defer e.statePool.Put(L)
 
-				reqModule := modules.NewRequest(req, e.config.RequestLimits.MaxBodySize)
+				reqModule := modules.NewRequest(req, e.maxBodySize)
 				resModule := modules.NewResponse(w)
 
 				// Create the 'next' function for the Lua middleware to call

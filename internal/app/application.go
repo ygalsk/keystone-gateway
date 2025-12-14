@@ -38,7 +38,7 @@ func New(cfg *config.Config, version string) (*Application, error) {
 		if scriptsDir == "" {
 			scriptsDir = "./scripts"
 		}
-		luaEngine = lua.NewEngine(scriptsDir, router, cfg)
+		luaEngine = lua.NewEngine(scriptsDir, router, cfg.RequestLimits.MaxBodySize)
 	}
 
 	app := &Application{

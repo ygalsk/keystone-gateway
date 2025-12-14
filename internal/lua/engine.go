@@ -11,8 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	lua "github.com/yuin/gopher-lua"
-
-	"keystone-gateway/internal/config"
 )
 
 const (
@@ -30,17 +28,17 @@ type Engine struct {
 	compiler    *ScriptCompiler
 	router      *chi.Mux
 	statePool   *LuaStatePool
-	config      *config.Config
+	maxBodySize int64
 }
 
-func NewEngine(scriptsDir string, router *chi.Mux, cfg *config.Config) *Engine {
+func NewEngine(scriptsDir string, router *chi.Mux, maxBodySize int64) *Engine {
 	engine := &Engine{
 		scriptsDir:  scriptsDir,
 		scriptPaths: make(map[string]string),
 		globalPaths: make(map[string]string),
 		compiler:    NewScriptCompiler(150), // Unified cache for all scripts
 		router:      router,
-		config:      cfg,
+		maxBodySize: maxBodySize,
 	}
 
 	engine.statePool = NewLuaStatePool(DefaultStatePoolSize, func() *lua.LState {

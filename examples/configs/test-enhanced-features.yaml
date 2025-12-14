@@ -1,11 +1,6 @@
 # Test Configuration for Enhanced Chi Features
 # Tests: context caching, error handlers, request body reading, route organization
 
-admin_base_path: "/admin"
-
-server:
-  port: "8090"
-
 compression:
   enabled: true
   level: 5
@@ -21,4 +16,5 @@ tenants:
   # Test tenant with pure Lua routing (no backend services needed)
   - name: "enhanced-demo"
     path_prefix: "/"
-    lua_routes: "enhanced-test"
+    lua_routes:
+      - "enhanced-test"

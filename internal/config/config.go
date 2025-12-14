@@ -19,13 +19,6 @@ type LuaRoutingConfig struct {
 	GlobalScripts []string `yaml:"global_scripts,omitempty"`
 }
 
-// TLSConfig represents TLS configuration for the gateway
-type TLSConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	CertFile string `yaml:"cert_file"`
-	KeyFile  string `yaml:"key_file"`
-}
-
 // CompressionConfig represents HTTP response compression configuration
 type CompressionConfig struct {
 	Enabled      bool     `yaml:"enabled"`
@@ -33,13 +26,60 @@ type CompressionConfig struct {
 	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
 }
 
-// ApplyDefaults applies sensible defaults to compression config
-func (c *CompressionConfig) ApplyDefaults() {
-	if c.Level == 0 {
-		c.Level = 5 // Balanced compression level
+
+// RequestLimitsConfig represents request size limits
+type RequestLimitsConfig struct {
+	MaxBodySize int64 `yaml:"max_body_size,omitempty"` // Max request body size in bytes (default: 10MB)
+}
+
+// ServerConfig represents server configuration
+// Note: Port is removed as CLI flag takes precedence
+type ServerConfig struct {
+}
+
+// Config represents the main configuration structure for the gateway,
+// containing tenant definitions and configuration sections.
+type Config struct {
+	Tenants       []Tenant            `yaml:"tenants"`
+	Server        ServerConfig        `yaml:"server,omitempty"`
+	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"` // Embedded Lua routing only
+	Compression   CompressionConfig   `yaml:"compression"`
+	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
+}
+
+// UnmarshalYAML implements custom unmarshaling with automatic defaults.
+// This ensures defaults are always applied and it's impossible to create a Config without them.
+func (c *Config) UnmarshalYAML(value *yaml.Node) error {
+	// Use a type alias to avoid recursion
+	type rawConfig Config
+	raw := rawConfig{
+		// Set defaults before unmarshaling
+		Compression: CompressionConfig{
+			Level: 5,
+			ContentTypes: []string{
+				"text/html",
+				"text/css",
+				"text/javascript",
+				"application/json",
+				"application/xml",
+				"text/plain",
+			},
+		},
+		RequestLimits: RequestLimitsConfig{
+			MaxBodySize: 10 << 20, // 10MB
+		},
 	}
-	if len(c.ContentTypes) == 0 {
-		c.ContentTypes = []string{
+
+	if err := value.Decode(&raw); err != nil {
+		return err
+	}
+
+	// Apply defaults for zero values
+	if raw.Compression.Level == 0 {
+		raw.Compression.Level = 5
+	}
+	if len(raw.Compression.ContentTypes) == 0 {
+		raw.Compression.ContentTypes = []string{
 			"text/html",
 			"text/css",
 			"text/javascript",
@@ -48,57 +88,12 @@ func (c *CompressionConfig) ApplyDefaults() {
 			"text/plain",
 		}
 	}
-}
-
-// RequestLimitsConfig represents request size and header limits
-type RequestLimitsConfig struct {
-	MaxBodySize   int64 `yaml:"max_body_size,omitempty"`   // Max request body size in bytes (default: 10MB)
-	MaxHeaderSize int64 `yaml:"max_header_size,omitempty"` // Max header size in bytes (default: 1MB)
-	MaxURLSize    int64 `yaml:"max_url_size,omitempty"`    // Max URL length in bytes (default: 8KB)
-}
-
-// ApplyDefaults applies secure default limits
-func (r *RequestLimitsConfig) ApplyDefaults() {
-	if r.MaxBodySize <= 0 {
-		r.MaxBodySize = 10 << 20 // 10MB
+	if raw.RequestLimits.MaxBodySize <= 0 {
+		raw.RequestLimits.MaxBodySize = 10 << 20
 	}
-	if r.MaxHeaderSize <= 0 {
-		r.MaxHeaderSize = 1 << 20 // 1MB
-	}
-	if r.MaxURLSize <= 0 {
-		r.MaxURLSize = 8 << 10 // 8KB
-	}
-}
 
-// ServerConfig represents server configuration
-type ServerConfig struct {
-	Port string `yaml:"port,omitempty"` // Server port (default: 8080)
-}
-
-// GetPort returns the configured port or default (8080)
-func (s ServerConfig) GetPort() string {
-	if s.Port != "" {
-		return s.Port
-	}
-	return "8080"
-}
-
-// ApplyDefaults applies sensible defaults to all configuration sections
-func (c *Config) ApplyDefaults() {
-	c.Compression.ApplyDefaults()
-	c.RequestLimits.ApplyDefaults()
-}
-
-// Config represents the main configuration structure for the gateway,
-// containing tenant definitions and admin settings.
-type Config struct {
-	Tenants       []Tenant            `yaml:"tenants"`
-	AdminBasePath string              `yaml:"admin_base_path,omitempty"`
-	Server        ServerConfig        `yaml:"server"`
-	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"` // Embedded Lua routing only
-	TLS           TLSConfig           `yaml:"tls"`
-	Compression   CompressionConfig   `yaml:"compression"`
-	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
+	*c = Config(raw)
+	return nil
 }
 
 // Tenant represents a routing configuration for a specific application or service,
@@ -107,16 +102,14 @@ type Tenant struct {
 	Name       string    `yaml:"name"`
 	PathPrefix string    `yaml:"path_prefix,omitempty"`
 	Domains    []string  `yaml:"domains,omitempty"`
-	Interval   int       `yaml:"health_interval"`
 	LuaRoutes  []string  `yaml:"lua_routes,omitempty"` // Scripts for route definition
 	Services   []Service `yaml:"services"`
 }
 
-// Service represents a backend service endpoint with health check configuration.
+// Service represents a backend service endpoint.
 type Service struct {
-	Name   string `yaml:"name"`
-	URL    string `yaml:"url"`
-	Health string `yaml:"health"`
+	Name string `yaml:"name"`
+	URL  string `yaml:"url"`
 }
 
 // LoadConfig reads and parses a YAML configuration file, returning a validated Config instance.
@@ -138,14 +131,12 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
 
+	// Validate tenants (defaults already applied via UnmarshalYAML)
 	for _, tenant := range cfg.Tenants {
 		if err := ValidateTenant(tenant); err != nil {
 			return nil, fmt.Errorf("invalid tenant %s: %w", tenant.Name, err)
 		}
 	}
-
-	// Apply defaults after loading and validation
-	cfg.ApplyDefaults()
 
 	return &cfg, nil
 }
@@ -180,9 +171,6 @@ func ValidateTenant(t Tenant) error {
 		u, err := url.Parse(s.URL)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			return fmt.Errorf("service %q has invalid url: %q", s.Name, s.URL)
-		}
-		if s.Health != "" && !strings.HasPrefix(s.Health, "/") {
-			return fmt.Errorf("service %q health path must start with '/': %q", s.Name, s.Health)
 		}
 	}
 

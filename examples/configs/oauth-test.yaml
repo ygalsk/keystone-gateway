@@ -1,7 +1,5 @@
 # OAuth Middleware Test Configuration
 
-admin_base_path: "/admin"
-
 # HTTP Response Compression Configuration
 compression:
   enabled: true
@@ -17,9 +15,6 @@ compression:
 lua_routing:
   enabled: true
   scripts_dir: "./scripts/lua"
-
-server:
-  port: "8080"
 
 tenants:
   - name: "oauth-proxy"
