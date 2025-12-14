@@ -313,7 +313,17 @@ func (gw *Gateway) GetConfig() *config.Config {
 	return gw.config
 }
 
-// GetRouteRegistry returns the Lua route registry (for compatibility)
-func (gw *Gateway) GetRouteRegistry() *LuaRouteRegistry {
-	return NewLuaRouteRegistry(gw.router)
+// HasHealthyBackends returns true if at least one backend is healthy across all tenants
+func (gw *Gateway) HasHealthyBackends() bool {
+	gw.mu.RLock()
+	defer gw.mu.RUnlock()
+
+	for _, backends := range gw.backends {
+		for _, backend := range backends {
+			if backend.Healthy {
+				return true
+			}
+		}
+	}
+	return false
 }

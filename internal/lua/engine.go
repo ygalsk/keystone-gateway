@@ -3,9 +3,7 @@ package lua
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,7 +13,6 @@ import (
 	lua "github.com/yuin/gopher-lua"
 
 	"keystone-gateway/internal/config"
-	"keystone-gateway/internal/routing"
 )
 
 const (
@@ -26,20 +23,14 @@ const (
 	DefaultDirMode         = 0755
 )
 
-// luaResponseWriter wraps http.ResponseWriter for Lua integration
-type luaResponseWriter struct {
-	w http.ResponseWriter
-}
-
 type Engine struct {
-	scriptsDir    string
-	scriptPaths   map[string]string
-	globalPaths   map[string]string
-	compiler      *ScriptCompiler
-	router        *chi.Mux
-	routeRegistry *routing.LuaRouteRegistry
-	statePool     *LuaStatePool
-	config        *config.Config
+	scriptsDir  string
+	scriptPaths map[string]string
+	globalPaths map[string]string
+	compiler    *ScriptCompiler
+	router      *chi.Mux
+	statePool   *LuaStatePool
+	config      *config.Config
 }
 
 func NewEngine(scriptsDir string, router *chi.Mux, cfg *config.Config) *Engine {
@@ -51,7 +42,6 @@ func NewEngine(scriptsDir string, router *chi.Mux, cfg *config.Config) *Engine {
 		router:      router,
 		config:      cfg,
 	}
-	engine.routeRegistry = routing.NewLuaRouteRegistry(router)
 
 	engine.statePool = NewLuaStatePool(DefaultStatePoolSize, func() *lua.LState {
 		L := lua.NewState(lua.Options{
@@ -193,41 +183,6 @@ func (e *Engine) GetLoadedScripts() []string {
 	return scripts
 }
 
-// ExecuteScriptHandler executes a Lua script handler function for HTTP requests
-func (e *Engine) ExecuteScriptHandler(scriptKey, functionName string, w http.ResponseWriter, r *http.Request) error {
-	// Get compiled script from unified compiler
-	compiled, exists := e.compiler.GetScript(scriptKey)
-	if !exists {
-		return fmt.Errorf("compiled script not found: %s", scriptKey)
-	}
-
-	L := e.statePool.Get()
-	defer e.statePool.Put(L)
-	e.SetupChiBindings(L, e.router)
-
-	// Use bytecode execution
-	if err := ExecuteWithBytecode(L, compiled); err != nil {
-		return fmt.Errorf("script execution failed: %w", err)
-	}
-
-	// Get the handler function and call it
-	handlerFunc := L.GetGlobal(functionName)
-	if handlerFunc.Type() != lua.LTFunction {
-		return fmt.Errorf("handler function not found: %s", functionName)
-	}
-
-	// Create request/response tables and call the handler
-	respWriter := &luaResponseWriter{w: w}
-	respTable := createLuaResponse(L, respWriter)
-	reqTable := createLuaRequest(L, r)
-
-	return L.CallByParam(lua.P{
-		Fn:      handlerFunc.(*lua.LFunction),
-		NRet:    0,
-		Protect: true,
-	}, reqTable, respTable)
-}
-
 // GetScript returns script content (backward compatibility)
 func (e *Engine) GetScript(scriptTag string) (string, bool) {
 	if compiled, ok := e.loadScript(scriptTag, false); ok {
@@ -235,117 +190,3 @@ func (e *Engine) GetScript(scriptTag string) (string, bool) {
 	}
 	return "", false
 }
-
-// CompileScript compiles a script to bytecode (public method for LuaHandler)
-func (e *Engine) CompileScript(scriptKey, content string) error {
-	_, err := e.compiler.CompileScript(scriptKey, content)
-	return err
-}
-
-// createLuaRequest creates a Lua table representing an HTTP request
-func createLuaRequest(L *lua.LState, r *http.Request) *lua.LTable {
-	reqTable := L.NewTable()
-
-	// Basic request info
-	reqTable.RawSetString("method", lua.LString(r.Method))
-	reqTable.RawSetString("url", lua.LString(r.URL.String()))
-	reqTable.RawSetString("path", lua.LString(r.URL.Path))
-	reqTable.RawSetString("host", lua.LString(r.Host))
-
-	// Headers
-	headersTable := L.NewTable()
-	for key, values := range r.Header {
-		if len(values) > 0 {
-			headersTable.RawSetString(key, lua.LString(values[0]))
-		}
-	}
-	reqTable.RawSetString("headers", headersTable)
-
-	// URL parameters from Chi router
-	paramsTable := L.NewTable()
-	if r.Context() != nil {
-		if rctx := chi.RouteContext(r.Context()); rctx != nil {
-			for i, key := range rctx.URLParams.Keys {
-				if i < len(rctx.URLParams.Values) {
-					paramsTable.RawSetString(key, lua.LString(rctx.URLParams.Values[i]))
-				}
-			}
-		}
-	}
-	reqTable.RawSetString("params", paramsTable)
-
-	// Query parameters
-	queryTable := L.NewTable()
-	for key, values := range r.URL.Query() {
-		if len(values) > 0 {
-			queryTable.RawSetString(key, lua.LString(values[0]))
-		}
-	}
-	reqTable.RawSetString("query", queryTable)
-
-	// Body content
-	var bodyContent string
-	if r.Body != nil {
-		if body, err := io.ReadAll(r.Body); err == nil {
-			bodyContent = string(body)
-		}
-	}
-
-	// Add helper methods
-	reqTable.RawSetString("body", L.NewFunction(func(L *lua.LState) int {
-		L.Push(lua.LString(bodyContent))
-		return 1
-	}))
-
-	reqTable.RawSetString("header", L.NewFunction(func(L *lua.LState) int {
-		headerName := L.ToString(1)
-		headerValue := r.Header.Get(headerName)
-		L.Push(lua.LString(headerValue))
-		return 1
-	}))
-
-	return reqTable
-}
-
-// createLuaResponse creates a Lua table representing an HTTP response
-func createLuaResponse(L *lua.LState, w *luaResponseWriter) *lua.LTable {
-	respTable := L.NewTable()
-
-	writeFunc := L.NewFunction(func(L *lua.LState) int {
-		content := L.ToString(1)
-		if _, err := w.w.Write([]byte(content)); err != nil {
-			slog.Error("lua_response_write_failed", "error", err)
-		}
-		return 0
-	})
-
-	headerFunc := L.NewFunction(func(L *lua.LState) int {
-		key := L.ToString(1)
-		value := L.ToString(2)
-		w.w.Header().Set(key, value)
-		return 0
-	})
-
-	statusFunc := L.NewFunction(func(L *lua.LState) int {
-		statusCode := L.ToInt(1)
-		w.w.WriteHeader(statusCode)
-		return 0
-	})
-
-	jsonFunc := L.NewFunction(func(L *lua.LState) int {
-		jsonContent := L.ToString(1)
-		w.w.Header().Set("Content-Type", "application/json")
-		if _, err := w.w.Write([]byte(jsonContent)); err != nil {
-			slog.Error("lua_json_response_failed", "error", err)
-		}
-		return 0
-	})
-
-	respTable.RawSetString("write", writeFunc)
-	respTable.RawSetString("header", headerFunc)
-	respTable.RawSetString("status", statusFunc)
-	respTable.RawSetString("json", jsonFunc)
-
-	return respTable
-}
-

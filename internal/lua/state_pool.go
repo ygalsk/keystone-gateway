@@ -1,13 +1,8 @@
 package lua
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
-	"net/http"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -96,64 +91,3 @@ func (p *LuaStatePool) Close() {
 }
 
 // RegisterScript and GetScript methods removed - using Engine's ScriptCompiler instead
-
-// LuaHandler represents a thread-safe Lua function handler
-// This version prevents segfaults through proper state isolation and pre-compilation
-type LuaHandler struct {
-	scriptKey    string
-	functionName string
-	tenantName   string
-	scriptTag    string
-	pool         *LuaStatePool
-	engine       *Engine
-}
-
-// Constants to avoid magic numbers/strings
-const (
-	defaultHandlerTimeout = 10 * time.Second
-)
-
-// NewLuaHandler creates a new thread-safe Lua handler that delegates to Engine
-func NewLuaHandler(scriptContent, functionName, tenantName, scriptTag string, pool *LuaStatePool, engine *Engine) *LuaHandler {
-	scriptKey := fmt.Sprintf("%s_%s", tenantName, functionName)
-
-	// Pre-compile script using Engine (single responsibility)
-	if err := engine.CompileScript(scriptKey, scriptContent); err != nil {
-		slog.Error("lua_handler_compile_failed", "script", scriptKey, "error", err)
-	}
-
-	return &LuaHandler{
-		scriptKey:    scriptKey,
-		functionName: functionName,
-		tenantName:   tenantName,
-		scriptTag:    scriptTag,
-		pool:         pool,
-		engine:       engine,
-	}
-}
-
-// ServeHTTP implements http.Handler by delegating to Engine (single responsibility)
-func (h *LuaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), defaultHandlerTimeout)
-	defer cancel()
-
-	done := make(chan error, 1)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				done <- fmt.Errorf("panic in Lua handler: %v", r)
-			}
-		}()
-		// Delegate all script execution to Engine
-		done <- h.engine.ExecuteScriptHandler(h.scriptKey, h.functionName, w, r)
-	}()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			http.Error(w, "Lua handler error: "+err.Error(), http.StatusInternalServerError)
-		}
-	case <-ctx.Done():
-		http.Error(w, "Lua handler timeout", http.StatusRequestTimeout)
-	}
-}

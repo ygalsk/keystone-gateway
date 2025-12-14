@@ -9,7 +9,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"keystone-gateway/internal/config"
-	"keystone-gateway/internal/handlers"
 	"keystone-gateway/internal/lua"
 	"keystone-gateway/internal/routing"
 )
@@ -20,7 +19,6 @@ type Application struct {
 	gateway   *routing.Gateway
 	luaEngine *lua.Engine
 	config    *config.Config
-	handlers  *handlers.Handlers
 	router    *chi.Mux
 }
 
@@ -43,14 +41,10 @@ func New(cfg *config.Config, version string) (*Application, error) {
 		luaEngine = lua.NewEngine(scriptsDir, router, cfg)
 	}
 
-	// Create handlers
-	appHandlers := handlers.New(gateway, luaEngine, version)
-
 	app := &Application{
 		gateway:   gateway,
 		luaEngine: luaEngine,
 		config:    cfg,
-		handlers:  appHandlers,
 		router:    router,
 	}
 
@@ -59,8 +53,16 @@ func New(cfg *config.Config, version string) (*Application, error) {
 		app.setupLuaRouting()
 	}
 
-	// Setup admin routes (these are regular routes)
-	app.setupAdminRoutes()
+	// Simple health check for load balancers
+	app.router.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		if app.gateway.HasHealthyBackends() {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("NO_HEALTHY_BACKENDS"))
+		}
+	})
 
 	// Finally, setup Gateway routes (these are the tenant proxy routes)
 	gateway.SetupRoutes()
@@ -93,19 +95,6 @@ func (app *Application) Handler() http.Handler {
 
 func (app *Application) Stop() {
 	app.gateway.StopHealthChecks()
-}
-
-func (app *Application) setupAdminRoutes() {
-	// Admin routes - add to the gateway's router
-	basePath := app.config.AdminBasePath
-	if basePath == "" {
-		basePath = "/"
-	}
-
-	app.router.Route(basePath, func(r chi.Router) {
-		r.Get("/health", app.handlers.Health)
-		r.Get("/tenants", app.handlers.Tenants)
-	})
 }
 
 func (app *Application) setupLuaRouting() {
