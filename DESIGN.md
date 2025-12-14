@@ -188,13 +188,17 @@ graph TD
 
 *   **`internal/app`**: The central coordinator. `application.go` wires everything together. It creates the master `chi` router, initializes the Lua engine, and sets up the static routing gateway. It orchestrates the startup sequence, ensuring Lua routes are registered before the static routes.
 
-*   **`internal/routing`**: Manages static, proxy-based routing. The `Gateway` (`gateway.go`) sets up `httputil.ReverseProxy` handlers for tenants configured with backend `services`. It also performs health checks on these backends to ensure requests are only sent to healthy instances.
+*   **`internal/routing`**: Manages static, proxy-based routing. The `Gateway` (`gateway.go`) sets up `httputil.ReverseProxy` handlers for tenants configured with backend `services`. **Note:** Health checking logic is currently embedded here but should be extracted to a separate module (see **Current Technical Debt** section).
 
 *   **`internal/lua`**: The dynamic scripting engine. This is a deep and powerful module with several key components:
-    *   **`engine.go`**: The public API for the Lua subsystem. It manages script execution.
-    *   **`script_compiler.go`**: Pre-compiles Lua source code into bytecode to reduce execution latency. The bytecode is cached in memory.
+    *   **`engine.go`**: The public API for the Lua subsystem. It manages script execution and state pool coordination.
+    *   **`script_compiler.go`**: Pre-compiles Lua source code into bytecode to reduce execution latency. The bytecode is cached in memory for reuse across all Lua states.
     *   **`state_pool.go`**: Manages a pool of `lua.LState` virtual machines. This is a critical performance optimization, as creating Lua states is expensive. Reusing them across requests significantly improves throughput.
-    *   **`chi_bindings.go`**: The bridge between Go and Lua. It exposes Go functions and types to the Lua environment, allowing scripts to register routes (`chi_route`), add middleware, and even make outbound HTTP calls.
+    *   **`chi_bindings.go`**: Reduced from 598 to ~50 lines via gopher-luar refactoring. Sets up the Lua environment with access to Chi router and deep modules.
+    *   **`modules/`** directory (new in Dec 2025 refactoring):
+        *   **`request.go`**: Deep Request module - Simple interface (properties + methods), complex caching and context management
+        *   **`response.go`**: Deep Response module - HTTP response writing with proper headers
+        *   **`http.go`**: Deep HTTP client module - Connection pooling, HTTP/2, timeout management
 
 ### Request Flow: End-to-End
 
@@ -395,30 +399,53 @@ end
 
 ---
 
-### 4. Gateway Routing (Deep Module)
+### 4. Gateway Routing (Currently Being Refactored)
 
-**Interface (Simple):**
+**Current Interface (Needs Simplification):**
 ```go
 type Gateway struct {}
 
 func NewGateway(cfg *Config) *Gateway
+func NewGatewayWithRouter(cfg *Config, router *chi.Mux) *Gateway  // Confusing - should remove
+func (gw *Gateway) SetupRoutes()  // Shallow wrapper
 func (gw *Gateway) Handler() http.Handler
 func (gw *Gateway) Stop()
+func (gw *Gateway) HasHealthyBackends() bool
+func (gw *Gateway) GetConfig() *config.Config  // Information leakage?
 ```
 
-**Hidden Complexity:**
+**Current Complexity (Some Hidden, Some Leaked):**
 - Host-based routing with hostrouter
 - Path-based routing with Chi
 - Hybrid routing (host + path)
 - Backend pool management
 - Round-robin load balancing
-- Health check orchestration
+- Health check orchestration (mixed in - should be extracted)
 - Graceful shutdown coordination
 
-**Why this is deep:**
-- **Simple interface**: Create, get handler, stop
-- **Complex implementation**: Multi-strategy routing, health checks, load balancing
-- **Information hiding**: Routing strategy selection hidden from users
+**Known Issues (See `internal/routing/gateway.go` comments):**
+- ❌ **Health checking logic embedded** (lines 234-304) - violates single responsibility
+- ❌ **Two constructors** create confusion about usage
+- ❌ **Shallow wrappers** like `SetupRoutes()` add indirection without value
+- ❌ **setupTenantRoutes()** does too much (line 99) - initialization, validation, routing setup
+- ❌ **Information leakage** via `GetConfig()` - exposes internal config
+
+**Goal State (Deep Module):**
+```go
+type Gateway struct {}
+
+func NewGateway(cfg *Config, router *chi.Mux) *Gateway  // Single constructor
+func (gw *Gateway) Handler() http.Handler
+func (gw *Gateway) Stop()
+```
+
+**Path Forward:**
+1. Extract health checking to `internal/healthcheck` module
+2. Remove `NewGatewayWithRouter` - keep single constructor
+3. Consolidate shallow wrappers
+4. Remove `GetConfig()` - no information leakage
+
+See **Current Technical Debt** and **Refactoring Roadmap** sections below.
 
 ---
 
@@ -783,6 +810,251 @@ end
 **Why bad:** Gateway is coupled to specific data formats. Not general-purpose.
 
 **Why good:** Gateway stays general. Tenants add their own transforms.
+
+---
+
+## Current Technical Debt
+
+This section documents known architectural debt and the plan to address it. This is normal in software evolution - the key is acknowledging it and having a path forward.
+
+### Priority 1: Extract Health Checking from Gateway
+
+**Problem:**
+Health checking logic is embedded in `internal/routing/gateway.go` (lines 234-304). This violates the single responsibility principle - Gateway should route requests, not manage health checks.
+
+**Current State:**
+```go
+// In Gateway struct (mixed concerns)
+healthCtx  context.Context
+healthStop context.CancelFunc
+healthWG   sync.WaitGroup
+
+// Health check methods in gateway.go
+func (gw *Gateway) startHealthChecks()
+func (gw *Gateway) healthCheckWorker(...)
+func (gw *Gateway) checkBackendHealth(...)
+```
+
+**Solution:**
+Create `internal/healthcheck` module:
+```go
+type HealthChecker interface {
+    Start(backends []*Backend) error
+    Stop()
+    IsHealthy(backend *Backend) bool
+    GetHealthyBackends(backends []*Backend) []*Backend
+}
+```
+
+**Benefits:**
+- Gateway focuses solely on routing (single responsibility)
+- Health checking can be tested independently
+- Can be reused for other health monitoring needs (databases, external APIs)
+- Clear module boundaries
+
+**Files to modify:**
+- `internal/routing/gateway.go` - remove health check code (lines 234-304)
+- `internal/healthcheck/checker.go` - new deep module
+- `internal/app/application.go` - wire health checker to gateway
+
+---
+
+### Priority 2: Simplify Gateway Constructors
+
+**Problem:**
+Two constructors (`NewGateway` and `NewGatewayWithRouter`) create confusion about responsibilities and usage (gateway.go:42-72). Which one should I use? What's the difference?
+
+**Current State:**
+```go
+func NewGateway(cfg *Config) *Gateway {
+    // Creates own router internally - hidden dependency
+    router := chi.NewRouter()
+    ...
+}
+
+func NewGatewayWithRouter(cfg *Config, router *chi.Mux) *Gateway {
+    // Takes router as parameter - explicit dependency
+    ...
+}
+```
+
+**Issue:**  Line 56 comment says: *"do we need these to sperate ones, this obfuscates the flow and responsiblilites of the module"*
+
+**Solution:**
+Keep only one constructor with explicit dependencies:
+```go
+func NewGateway(cfg *Config, router *chi.Mux) *Gateway {
+    // Single, obvious way to create Gateway
+    // Caller creates router if they need control
+    ...
+}
+```
+
+**Benefits:**
+- Clear, single way to create Gateway (follows "obvious code" principle)
+- Explicit dependencies (no hidden router creation)
+- Less code to maintain
+- No confusion about which constructor to use
+
+**Files to modify:**
+- `internal/routing/gateway.go` - remove `NewGateway`, keep only `NewGatewayWithRouter` (rename to `NewGateway`)
+- `internal/app/application.go` - update to always create router first
+
+---
+
+### Priority 3: Consolidate Shallow Wrappers
+
+**Problem:**
+Functions like `SetupRoutes()` (line 75) just call `setupRoutes()` + `startHealthChecks()`. This is temporal decomposition (grouping by when code runs), not deep modules.
+
+**Current State:**
+```go
+// Line 73 comment: "just a wrapper with helatch cheks, TOO SHALLOW"
+func (gw *Gateway) SetupRoutes() {
+    gw.setupRoutes()        // Private wrapper
+    gw.startHealthChecks()  // Should be in separate module
+}
+
+// Line 79 comment: "just error wrapper for a fucntion that needs refactoring"
+func (gw *Gateway) setupRoutes() {
+    for _, tenant := range gw.config.Tenants {
+        if err := gw.setupTenantRoutes(tenant); err != nil {
+            // Error handling
+        }
+    }
+}
+```
+
+**Solution:**
+- Extract health checks to separate module (see Priority 1)
+- Merge shallow wrappers into their callers
+- OR make wrappers do meaningful work (validation, logging, recovery)
+
+**Benefits:**
+- Less code to navigate (fewer indirection layers)
+- Clearer execution flow
+- Follows deep module pattern
+
+---
+
+### What's Going Well
+
+✅ **Lua Module Refactoring** - Successfully implemented deep modules:
+- `internal/lua/modules/request.go` - Simple interface (properties + 5 methods), complex caching implementation
+- `internal/lua/modules/response.go` - Simple HTTP response writing with proper content-type handling
+- `internal/lua/modules/http.go` - Deep HTTP client with connection pooling, timeouts, HTTP/2
+- Reduced `chi_bindings.go` from 598 lines to ~50 lines (90% reduction via gopher-luar)
+- Lua API is now discoverable and natural (`req.Method`, `req:Header("X-Foo")`)
+
+✅ **Handlers Removal** - Simplified admin routes:
+- Removed `internal/handlers/handlers.go` (71 lines of unnecessary abstraction)
+- Moved health check endpoint directly into `application.go`
+- Removed route group complexity
+- More direct, easier to understand
+
+✅ **Script Compilation** - Unified compiler cache:
+- Single `ScriptCompiler` handles all Lua bytecode caching
+- No duplicate compilation logic
+- Proper memory management
+- 50-70% memory reduction per gopher-lua docs
+
+---
+
+## Refactoring Roadmap
+
+### Completed ✅
+
+#### Dec 2025: Lua Module Deep Refactoring
+**Goal:** Eliminate glue code, create deep modules for Lua bindings
+
+**Commit:** 287bc80 - "use gopher-luar for automatic type conversion and make lua modules DEEP"
+
+**Changes:**
+- Introduced gopher-luar for automatic Go ↔ Lua type conversion
+- Created `internal/lua/modules/` directory with deep modules:
+  - `request.go` - Request wrapper with caching, Chi URL params, context management
+  - `response.go` - Response writer with proper headers and status codes
+  - `http.go` - HTTP client with connection pooling and HTTP/2
+- Reduced `chi_bindings.go` from 598 to ~50 lines (90% code reduction)
+- Improved Lua API: Properties (`req.Method`) instead of getters (`req:GetMethod()`)
+
+**Result:** DESIGN.md principle of "deep modules" achieved for Lua subsystem. This is a major win.
+
+#### Dec 2025: Handlers Package Removal
+**Goal:** Simplify application structure, remove unnecessary abstraction
+
+**Commit:** caf29cc - "refactor(routing): remove unused handlers import and route group registration"
+
+**Changes:**
+- Removed `internal/handlers/handlers.go` (71 lines)
+- Removed `internal/routing/lua_routes.go` (49 lines - logic moved to application.go)
+- Moved simple health check directly into `application.go`
+- Removed admin route group registration complexity
+
+**Result:** Simpler, more direct code path. Easier to understand application flow.
+
+---
+
+### In Progress 🚧
+
+#### Next: Health Check Extraction (Priority 1)
+**Goal:** Separate health checking from Gateway routing
+
+**Approach:**
+1. Create `internal/healthcheck` module with clean interface
+2. Define `HealthChecker` interface (Start, Stop, IsHealthy)
+3. Move health check workers and state from `gateway.go`
+4. Gateway becomes consumer of health check results (doesn't manage them)
+
+**Files to create/modify:**
+- `internal/healthcheck/checker.go` (new - ~200 lines from gateway.go)
+- `internal/routing/gateway.go` (remove lines 35-39, 234-304)
+- `internal/app/application.go` (wire health checker)
+
+**Agent involvement** (per AGENTS.md):
+- @architect: Review module boundaries and interface design
+- @backend: Implement extraction carefully (no behavior change)
+- @testing: Test health checker in isolation, integration tests
+- @reviewer: Ensure no regressions, validate design compliance
+
+**Success criteria:**
+- [ ] Gateway has no health check code
+- [ ] HealthChecker is a deep module (simple interface, complex implementation)
+- [ ] All tests pass
+- [ ] No behavior change (health checks work identically)
+
+---
+
+### Planned 📋
+
+#### Future: Gateway Constructor Simplification (Priority 2)
+**Goal:** Single, obvious way to create Gateway
+
+**Approach:**
+- Remove `NewGateway` (creates router internally)
+- Keep `NewGatewayWithRouter`, rename to `NewGateway`
+- Update all callers in `application.go`
+
+**Files to modify:**
+- `internal/routing/gateway.go` (remove one constructor)
+- `internal/app/application.go` (always create router first)
+
+**Estimated effort:** Small (1-2 hour change)
+
+---
+
+#### Future: Shallow Wrapper Consolidation (Priority 3)
+**Goal:** Reduce indirection, improve code clarity
+
+**Approach:**
+- After health check extraction, merge `SetupRoutes()` into caller
+- Evaluate each wrapper function - does it add value or just indirection?
+- Keep wrappers that do meaningful work (validation, recovery, logging)
+
+**Files to modify:**
+- `internal/routing/gateway.go` (consolidate wrappers)
+
+**Estimated effort:** Small (depends on health check extraction completion)
 
 ---
 
@@ -1229,22 +1501,31 @@ Before writing any code, ask:
 
 ## Appendix: Key Metrics
 
-**Current codebase (as of Dec 2024):**
-- Total lines: ~3,500 (excluding tests)
-- Lua bindings: 500+ lines (target: 50 with gopher-luar)
-- Modules: 8 core modules
-- External dependencies: 5 (Chi, gopher-lua, gopher-luar, yaml, sync)
+**Current codebase (as of Dec 2025):**
+- Total lines: ~2,800 (excluding tests) - Down from ~3,500
+- Lua bindings: ~50 lines ✅ (down from 598 - 90% reduction achieved!)
+- Core modules: 8
+- Deep Lua modules: 3 (request, response, http) ✅
+- External dependencies: 6 (Chi, gopher-lua, gopher-luar, yaml, sync, hostrouter)
 
-**Target after refactoring:**
-- Total lines: ~2,000 (40% reduction)
-- Lua bindings: 50 lines (90% reduction)
-- Modules: 6 core modules (consolidation)
-- External dependencies: Same (minimalist approach)
+**Achievements (Dec 2025 refactoring):**
+- ✅ Lua bindings: 598 → ~50 lines (90% reduction via gopher-luar)
+- ✅ Deep Request/Response/HTTP modules implemented
+- ✅ Handlers package removed (71 lines)
+- ✅ lua_routes.go removed (49 lines)
+- ✅ Script compilation unified (single compiler cache)
+- ✅ Total code reduction: ~700 lines removed
 
-**Complexity metrics:**
-- Functions >50 lines: 3 (target: 0)
-- Empty files: 3 (target: 0)
-- Pass-through parameters: Multiple instances (target: 0)
+**Remaining technical debt:**
+- ❌ Health checking mixed into Gateway (~70 lines to extract)
+- ❌ Two Gateway constructors (need to consolidate)
+- ❌ Shallow wrapper functions (3-4 functions)
+- ❌ Gateway.GetConfig() information leakage
+
+**Code quality metrics:**
+- Functions >50 lines: 2 (down from 3)
+- Empty files: 0 ✅ (down from 3)
+- Pass-through parameters: 1 instance (down from multiple)
 
 ---
 
@@ -1255,5 +1536,13 @@ Before writing any code, ask:
 - Major refactoring occurs
 
 **Version history:**
+- v2.0.1 (Dec 2025): Document current technical debt and refactoring progress
+  - Added gopher-luar refactoring success documentation (90% code reduction)
+  - Documented known issues in Gateway module with path forward
+  - Removed references to deleted handlers package
+  - Updated module structure to reflect new modules/ subdirectory
+  - Added "Current Technical Debt" section with priorities
+  - Added "Refactoring Roadmap" section showing completed and planned work
+  - Updated metrics to show actual achievements
 - v2.0 (Dec 2024): Initial comprehensive design based on "A Philosophy of Software Design"
 - v1.x (2024): Implicit design, no formal documentation
