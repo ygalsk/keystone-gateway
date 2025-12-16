@@ -4,32 +4,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Keystone Gateway</title>
-    <meta name="description" content="A general-purpose HTTP routing primitive. Primitives, not opinions.">
+    <meta name="description" content="A highly opinionated gateway with no opinions. Service router with embedded Lua scripting and LuaRocks support.">
     <style>
         /* Typography */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
         :root {
-            --text-primary: #1a1a1a;
-            --text-secondary: #5a5a5a;
-            --text-tertiary: #8a8a8a;
-            --accent: #6B8E23;
-            --accent-hover: #556B2F;
-            --accent-light: #f0f5e8;
-            --accent-brown: #B8956E;
-            --accent-brown-dark: #8B6F47;
-            --accent-brown-light: #D4C4A8;
-            --border: #d4c4b0;
-            --bg: #d4c4a8;
-            --bg-subtle: #c8b89c;
-            --bg-gradient-start: #d4c4a8;
-            --bg-gradient-end: #c8b89c;
+            --text-primary: #2C2C2C;
+            --text-secondary: #4A4A4A;
+            --text-tertiary: #8B7355;
+            --accent: #73B44C;
+            --accent-hover: #5A9138;
+            --accent-light: #E8F5E9;
+            --accent-brown: #5C4033;
+            --accent-brown-dark: #3D2B22;
+            --accent-brown-light: #8B7355;
+            --border: #E5E7EB;
+            --bg: #FAFADC;
+            --bg-subtle: #F5F5DC;
+            --bg-gradient-start: #FAFADC;
+            --bg-gradient-end: #F5F5DC;
             --code-bg: #2a2418;
             --code-bg-header: #3d3426;
             --code-text: #e8e8e0;
             --code-comment: #9a8a7a;
-            --code-keyword: #a8c97f;
-            --code-string: #7CB342;
+            --code-keyword: #9CCC65;
+            --code-string: #BFD85F;
             --code-function: #d4a574;
             --mono: 'JetBrains Mono', monospace;
             --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -40,13 +40,13 @@
         [data-theme="dark"] {
             --text-primary: #e8e8e0;
             --text-secondary: #b8b8a8;
-            --text-tertiary: #888878;
-            --accent: #7CB342;
-            --accent-hover: #8BC34A;
+            --text-tertiary: #8B7355;
+            --accent: #9CCC65;
+            --accent-hover: #BFD85F;
             --accent-light: #1a2a0f;
-            --accent-brown: #C4A882;
-            --accent-brown-dark: #A0826D;
-            --accent-brown-light: #8B7A5F;
+            --accent-brown: #8B7355;
+            --accent-brown-dark: #5C4033;
+            --accent-brown-light: #A0826D;
             --border: #5a4f3f;
             --bg: #1a1814;
             --bg-subtle: #242018;
@@ -57,8 +57,8 @@
             --code-bg-header: #2a2418;
             --code-text: #e8e8e0;
             --code-comment: #7a6a5a;
-            --code-keyword: #a8c97f;
-            --code-string: #7CB342;
+            --code-keyword: #9CCC65;
+            --code-string: #BFD85F;
             --code-function: #d4a574;
             --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
             --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
@@ -130,6 +130,17 @@
         .caption {
             font-size: 0.875rem;
             color: var(--text-tertiary);
+        }
+
+        /* Links */
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        a:hover {
+            color: var(--accent-hover);
         }
 
         /* Buttons */
@@ -486,7 +497,7 @@
         /* Feature Cards */
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 2rem;
         }
 
@@ -720,7 +731,6 @@
                 </a>
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <ul class="nav-links">
-                        <li><a href="#philosophy">Philosophy</a></li>
                         <li><a href="#features">Features</a></li>
                         <li><a href="#start">Start</a></li>
                         <li><a href="#examples">Examples</a></li>
@@ -744,9 +754,9 @@
             <div class="container">
                 <div class="hero-content">
                     <div class="hero-text">
-                        <h1 class="h1">Primitives,<br>not opinions.</h1>
+                        <h1 class="h1">A highly opinionated gateway<br>with no opinions</h1>
                         <p class="body-large" style="margin-top: 1.5rem; margin-bottom: 0;">
-                            A general-purpose HTTP routing primitive. The gateway provides powerful building blocks—you compose them into solutions. Deep modules with simple interfaces. Stateless by design.
+                            Service router with embedded Lua scripting. Write custom routing logic without rebuilding. LuaJIT-powered performance with LuaRocks ecosystem support out of the box.
                         </p>
                         <div class="hero-actions">
                             <a href="#start" class="btn btn-primary">Get Started</a>
@@ -777,78 +787,12 @@ make dev</div>
             </div>
         </section>
 
-        <section id="philosophy" class="philosophy">
-            <div class="container">
-                <div class="section-header fade-in">
-                    <h2 class="h2">Deep Modules.<br>Simple Interfaces.</h2>
-                    <p class="body-large" style="margin-top: 1rem; max-width: 600px; margin-left: auto; margin-right: auto;">
-                        The best modules have interfaces much simpler than their implementations. Complexity is hidden, not exposed.
-                    </p>
-                </div>
-                <div class="philosophy-content fade-in">
-                    <div>
-                        <h3 class="h3" style="margin-bottom: 1.5rem;">What We Hide</h3>
-                        <ul style="list-style: none; padding: 0;">
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
-                                <strong>Lua state pooling</strong> - Thread-safe state management
-                            </li>
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
-                                <strong>Bytecode compilation</strong> - Performance optimization
-                            </li>
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
-                                <strong>Connection pooling</strong> - HTTP/2, timeouts, TLS
-                            </li>
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent);">•</span>
-                                <strong>Request body caching</strong> - Automatic optimization
-                            </li>
-                        </ul>
-                        <h3 class="h3" style="margin-top: 2.5rem; margin-bottom: 1.5rem;">What We Expose</h3>
-                        <ul style="list-style: none; padding: 0;">
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
-                                Simple route registration
-                            </li>
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
-                                Request/response properties
-                            </li>
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
-                                HTTP client methods
-                            </li>
-                            <li style="margin-bottom: 1rem; padding-left: 1.5rem; position: relative;">
-                                <span style="position: absolute; left: 0; color: var(--accent-brown);">•</span>
-                                Clear configuration
-                            </li>
-                        </ul>
-                    </div>
-                    <div class="philosophy-visual fade-in">
-                        <div class="module-diagram">
-                            <div class="module-box simple">
-                                <strong style="color: var(--accent);">Simple Interface</strong>
-                                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">req.Method, req:Header()</div>
-                            </div>
-                            <div style="text-align: center; color: var(--accent); font-size: 1.5rem;">↓</div>
-                            <div class="module-box complex">
-                                <strong style="color: var(--accent-brown);">Complex Implementation</strong>
-                                <div style="font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.5rem;">Caching, parsing, context management, pooling</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <section id="features">
             <div class="container">
                 <div class="section-header fade-in">
-                    <h2 class="h2">General-Purpose Primitives</h2>
+                    <h2 class="h2">What You Can Do</h2>
                     <p class="body-large" style="margin-top: 1rem;">
-                        Everything you need to build routing solutions. Nothing you don't.
+                        Everything you need to build custom routing logic. Nothing you don't.
                     </p>
                 </div>
                 <div class="feature-grid">
@@ -868,28 +812,15 @@ make dev</div>
                     <div class="feature-card fade-in">
                         <div class="feature-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                                <path d="M2 17l10 5 10-5"/>
-                                <path d="M2 12l10 5 10-5"/>
-                            </svg>
-                        </div>
-                        <h3 class="h3">Deep Modules</h3>
-                        <p class="body">
-                            Simple interfaces hide complex implementations. Lua engine, HTTP client, request wrapper—all designed with deep module principles.
-                        </p>
-                    </div>
-                    <div class="feature-card fade-in">
-                        <div class="feature-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                                 <circle cx="9" cy="7" r="4"/>
                                 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
                                 <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                             </svg>
                         </div>
-                        <h3 class="h3">Multi-tenant</h3>
+                        <h3 class="h3">Multi-Service Routing</h3>
                         <p class="body">
-                            Route by domain, path, or both. One gateway handles hundreds of tenants. Each tenant defines their own routing logic in Lua scripts.
+                            Route requests to different backend services. Isolate service logic without separate deployments. One gateway, many services.
                         </p>
                     </div>
                     <div class="feature-card fade-in">
@@ -898,21 +829,9 @@ make dev</div>
                                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                             </svg>
                         </div>
-                        <h3 class="h3">HTTP Client Primitive</h3>
+                        <h3 class="h3">LuaJIT Performance</h3>
                         <p class="body">
-                            General-purpose HTTP client with connection pooling, HTTP/2, and timeout management. Make upstream requests, transform responses.
-                        </p>
-                    </div>
-                    <div class="feature-card fade-in">
-                        <div class="feature-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="12" cy="12" r="10"/>
-                                <path d="M12 6v6l4 2"/>
-                            </svg>
-                        </div>
-                        <h3 class="h3">Stateless Design</h3>
-                        <p class="body">
-                            No backend state tracking. No health check workers. Horizontally scalable by design. Infrastructure handles reliability.
+                            Powered by LuaJIT for exceptional speed. Full LuaRocks ecosystem support out of the box—use any Lua library without modification.
                         </p>
                     </div>
                     <div class="feature-card fade-in">
@@ -921,9 +840,9 @@ make dev</div>
                                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
                             </svg>
                         </div>
-                        <h3 class="h3">Production Ready</h3>
+                        <h3 class="h3">Bring Your Own Logic</h3>
                         <p class="body">
-                            HTTP/2 support, connection pooling, Lua state pools, bytecode compilation. High performance with minimal resource usage.
+                            No built-in auth, rate limiting, or workflows. You write the policies you need in Lua. No vendor lock-in, complete flexibility.
                         </p>
                     </div>
                 </div>
@@ -937,41 +856,46 @@ make dev</div>
                 </div>
                 <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 3rem;">
                     <div class="fade-in">
-                        <h3 class="h3 mb-8">1. Configure tenants</h3>
+                        <h3 class="h3 mb-8">1. Configure routes</h3>
                         <div class="code-block">
                             <div class="code-header">
                                 <span class="code-title">config.yaml</span>
                                 <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
                             </div>
-                            <div class="code-content"><span class="code-keyword">tenants</span>:
-  - <span class="code-keyword">name</span>: <span class="code-string">"api"</span>
-    <span class="code-keyword">domains</span>:
-      - <span class="code-string">"api.company.com"</span>
-    <span class="code-keyword">lua_routes</span>: <span class="code-string">"api"</span>
-    <span class="code-keyword">services</span>:
-      - <span class="code-keyword">name</span>: <span class="code-string">"backend"</span>
-        <span class="code-keyword">url</span>: <span class="code-string">"http://api-server:3000"</span></div>
+                            <div class="code-content"><span class="code-keyword">lua_routing</span>:
+  <span class="code-keyword">enabled</span>: <span class="code-string">true</span>
+  <span class="code-keyword">scripts_dir</span>: <span class="code-string">"./scripts"</span>
+  <span class="code-keyword">global_scripts</span>:
+    - <span class="code-string">"api"</span>
+
+<span class="code-keyword">routes</span>:
+  - <span class="code-keyword">method</span>: <span class="code-string">"GET"</span>
+    <span class="code-keyword">pattern</span>: <span class="code-string">"/users"</span>
+    <span class="code-keyword">handler</span>: <span class="code-string">"get_users"</span>
+    <span class="code-keyword">middleware</span>:
+      - <span class="code-string">"auth_middleware"</span></div>
                         </div>
                     </div>
                     <div class="fade-in">
-                        <h3 class="h3 mb-8">2. Write Lua routes</h3>
+                        <h3 class="h3 mb-8">2. Write handlers</h3>
                         <div class="code-block">
                             <div class="code-header">
                                 <span class="code-title">scripts/api.lua</span>
                                 <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
                             </div>
-                            <div class="code-content"><span class="code-comment">-- Route with auth middleware</span>
-<span class="code-function">chi_middleware</span>(<span class="code-keyword">function</span>(req, res, next)
-    <span class="code-keyword">if</span> <span class="code-function">request_header</span>(req, <span class="code-string">"Authorization"</span>) <span class="code-keyword">then</span>
-        <span class="code-function">next</span>()
-    <span class="code-keyword">else</span>
-        <span class="code-function">response_status</span>(res, <span class="code-string">401</span>)
+                            <div class="code-content"><span class="code-comment">-- Auth middleware</span>
+<span class="code-keyword">function</span> <span class="code-function">auth_middleware</span>(req, next)
+    <span class="code-keyword">if not</span> req.headers[<span class="code-string">"Authorization"</span>] <span class="code-keyword">then</span>
+        <span class="code-keyword">return</span> {status = <span class="code-string">401</span>, body = <span class="code-string">"Unauthorized"</span>}
     <span class="code-keyword">end</span>
-<span class="code-keyword">end</span>)
+    <span class="code-function">next</span>()
+    <span class="code-keyword">return nil</span>
+<span class="code-keyword">end</span>
 
-<span class="code-function">chi_route</span>(<span class="code-string">"GET"</span>, <span class="code-string">"/users"</span>, <span class="code-keyword">function</span>(req, res)
-    <span class="code-function">response_write</span>(res, <span class="code-string">"User data"</span>)
-<span class="code-keyword">end</span>)</div>
+<span class="code-comment">-- Handler function</span>
+<span class="code-keyword">function</span> <span class="code-function">get_users</span>(req)
+    <span class="code-keyword">return</span> {status = <span class="code-string">200</span>, body = <span class="code-string">"User data"</span>}
+<span class="code-keyword">end</span></div>
                         </div>
                     </div>
                 </div>
@@ -998,30 +922,21 @@ make dev</div>
                 </div>
                 <div class="feature-grid fade-in">
                     <div class="example-card">
-                        <h3 class="h3">API Gateway</h3>
+                        <h3 class="h3">Service Routing</h3>
                         <p class="body">
-                            Route requests to microservices by path or domain. Tenants define routing logic in Lua. No opinions, just primitives you compose.
+                            Route requests to different backend services based on path, headers, or custom logic. Simple Lua functions control the routing.
                         </p>
                         <p class="caption" style="margin-top: 1rem;">
-                            <a href="docs/examples.md#microservices-by-path">View example →</a>
+                            <a href="docs/examples.md">View examples →</a>
                         </p>
                     </div>
                     <div class="example-card">
-                        <h3 class="h3">Auth Proxy</h3>
+                        <h3 class="h3">Custom Middleware</h3>
                         <p class="body">
-                            Implement authentication in tenant Lua scripts. JWT validation, OAuth flows, custom logic—you decide. Gateway provides HTTP primitives.
+                            Implement authentication, logging, rate limiting—whatever you need. Write middleware functions that check requests before routing.
                         </p>
                         <p class="caption" style="margin-top: 1rem;">
-                            <a href="docs/examples.md#authentication-middleware">View example →</a>
-                        </p>
-                    </div>
-                    <div class="example-card">
-                        <h3 class="h3">Request Transformation</h3>
-                        <p class="body">
-                            Transform requests and responses in Lua. Modify headers, rewrite paths, aggregate data from multiple backends.
-                        </p>
-                        <p class="caption" style="margin-top: 1rem;">
-                            <a href="docs/examples.md#request-transformation">View example →</a>
+                            <a href="docs/examples.md">View examples →</a>
                         </p>
                     </div>
                 </div>
@@ -1032,8 +947,8 @@ make dev</div>
     <footer>
         <div class="container text-center">
             <p class="body" style="margin-bottom: 1rem;">
-                <strong style="color: var(--accent);">Primitives, not opinions.</strong><br>
-                <span style="color: var(--text-secondary);">Deep modules, not shallow complexity.</span>
+                <strong style="color: var(--accent);">A highly opinionated gateway with no opinions</strong><br>
+                <span style="color: var(--text-secondary);">Simple to deploy. Flexible to customize.</span>
             </p>
             <p class="caption" style="margin-top: 1.5rem;">
                 MIT Licensed •
