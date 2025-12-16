@@ -1,0 +1,30 @@
+# Minimal high-performance configuration
+# Disables expensive middleware for maximum throughput
+
+middleware:
+  request_id: false  # Skip UUID generation
+  real_ip: false     # Skip IP parsing
+  logging: false     # Biggest win - no I/O per request
+  throttle: 5000     # High limit for maximum throughput
+
+lua_routing:
+  enabled: true
+  scripts_dir: "./examples/scripts"
+  state_pool_size: 60
+  global_scripts:
+    - "init"
+    - "handlers"
+
+tenants:
+  - name: "api"
+    path_prefix: "/api"
+    routes:
+      # Simple hello endpoint (no middleware)
+      - method: "GET"
+        pattern: "/hello"
+        handler: "hello_handler"
+
+      # User endpoint for comparison
+      - method: "GET"
+        pattern: "/users/{id}"
+        handler: "get_user"

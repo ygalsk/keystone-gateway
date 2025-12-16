@@ -1,200 +1,121 @@
-# Keystone Gateway - Design Document
+# Keystone Gateway - Technical Design
 
-**Version:** 2.0  
-**Date:** December 2024  
-**Author:** Daniel Kremer  
-**Philosophy:** Based on "A Philosophy of Software Design" by John Ousterhout
+**Purpose:** This document describes the technical architecture and implementation details of Keystone Gateway.
+
+For philosophy and principles, see [MANIFEST.md](MANIFEST.md).
+For evolution history, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
 ## Table of Contents
 
-1. [Vision & Principles](#vision--principles)
-2. [Core Philosophy](#core-philosophy)
-3. [Architecture Overview](#architecture-overview)
-4. [Module Design](#module-design)
-5. [Design Decisions & Rationale](#design-decisions--rationale)
-6. [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
-7. [Development Guidelines](#development-guidelines)
-8. [Future Evolution](#future-evolution)
-
----
-
-## Vision & Principles
-
-### What Keystone Gateway IS
-
-**A general-purpose HTTP routing primitive with embedded Lua scripting.**
-
-Keystone Gateway is a high-performance reverse proxy that provides:
-- Multi-tenant HTTP routing (by domain, path, or both)
-- Embedded Lua scripting for route definition
-- Stateless request forwarding to backend services
-
-### What Keystone Gateway IS NOT
-
-- ❌ An API gateway with opinions (auth, rate limiting, etc.)
-- ❌ An OAuth provider or authentication system
-- ❌ A service mesh or distributed system
-- ❌ A configuration management system
-- ❌ A specialized tool for one use case
-
-### Core Design Principle
-
-> **The gateway is dumb. Tenants are smart.**
-
-The gateway provides **powerful, general-purpose primitives**. Tenants compose these primitives into specific solutions for their needs.
-
----
-
-## Core Philosophy
-
-### 1. Complexity is the Enemy
-
-**From the book (Chapter 2):**
-> "Complexity is anything related to the structure of a software system that makes it hard to understand and modify the system."
-
-**Our application:**
-- Minimize the number of concepts a developer must understand
-- Hide complexity inside deep modules
-- Keep interfaces simple and obvious
-
-### 2. Deep Modules
-
-**From the book (Chapter 4):**
-> "The best modules are those whose interfaces are much simpler than their implementations."
-
-**Deep modules in Keystone:**
-```
-┌─────────────────────────────────────┐
-│      Simple Interface (small)       │
-├─────────────────────────────────────┤
-│                                     │
-│                                     │
-│    Complex Implementation (large)   │
-│                                     │
-│                                     │
-└─────────────────────────────────────┘
-```
-
-**Examples:**
-- **Lua Engine**: Simple API (`ExecuteRouteScript`), complex internals (state pooling, bytecode compilation, caching)
-- **HTTP Client**: Simple API (`Get`, `Post`), complex internals (connection pooling, HTTP/2, timeouts)
-- **Request Wrapper**: Simple property access (`req.Method`), complex internals (caching, parsing, validation)
-
-### 3. Information Hiding
-
-**From the book (Chapter 5):**
-> "Each module should encapsulate a few pieces of knowledge, which represent design decisions."
-
-**What we hide:**
-- Lua state pool implementation
-- Bytecode compilation strategy
-- HTTP connection pooling details
-- Request body caching mechanism
-
-**What we expose:**
-- Simple route registration
-- Request/response properties
-- HTTP client methods
-- Configuration structure
-
-### 4. Pull Complexity Downward
-
-**From the book (Chapter 8):**
-> "It is more important for a module to have a simple interface than a simple implementation."
-
-**Application:**
-- Complex logic belongs in **Go**, not **Lua scripts**
-- Request body caching: automatic, not manual
-- State management: hidden in pools, not exposed to users
-- Error handling: define errors out of existence where possible
-
-### 5. General-Purpose Modules
-
-**From the book (Chapter 6):**
-> "A somewhat general-purpose approach can be simpler than a special-purpose approach."
-
-**Application:**
-- HTTP client works for ANY HTTP request (not specialized for OAuth, REST, etc.)
-- Request wrapper works for ANY request type
-- Routing works for ANY tenant configuration
-- No special cases baked into core
+1. [System Architecture & Flow](#system-architecture--flow)
+2. [Module Design](#module-design)
+3. [Design Decisions & Rationale](#design-decisions--rationale)
+4. [Design Decisions Record](#design-decisions-record)
+5. [Current State](#current-state)
+6. [Version History](#version-history)
 
 ---
 
 ## System Architecture & Flow
 
-This section provides a concrete, system-level view of Keystone Gateway's architecture. It details the components, their interactions, and the end-to-end flow of a request.
+This section provides a concrete, system-level view of Keystone Gateway's architecture, detailing the components, their interactions, and the end-to-end flow of a request.
 
 ### Component Architecture
 
-The gateway is composed of several key Go packages that work together to handle requests. The following diagram illustrates the high-level architecture and data flow:
+The gateway is composed of several key Go packages that work together to handle requests. The following diagram illustrates the verified architecture based on actual code analysis:
 
 ```mermaid
-graph TD
-    subgraph "User Request"
-        A[HTTP Request]
+graph TB
+    subgraph "Entry Point"
+        MAIN[cmd/main.go<br/>Main Entry Point]
     end
 
-    subgraph "Go Core Layer"
-        A --> B{http.Server};
-        B --> C["routing.Gateway (chi Router)"];
+    subgraph "Configuration"
+        CONFIG[internal/config/config.go<br/>Config Loader & Validator]
+    end
 
-        subgraph "Routing Logic"
-            C -- Route Match --> D[Static Route Handler];
-            C -- Route Match --> E[Dynamic Lua Handler];
-        end
+    subgraph "Core Gateway"
+        GW[internal/gateway/gateway.go<br/>Gateway Struct]
+        ROUTER[Chi Router<br/>*chi.Mux]
+        BACKENDS[Backends Map<br/>map string backend]
+        TRANSPORT[HTTP Transport<br/>internal/http/transport.go]
+    end
 
-        subgraph "Lua Subsystem (internal/lua)"
-            E --> F{State Pool};
-            F --> G["Lua VM (LState)"];
-            G -- Executes --> H[Compiled Lua Script];
-            H -- Uses --> I[CHI Bindings];
-            I -- Registers Routes --> C;
-        end
+    subgraph "Lua Subsystem"
+        ENGINE[internal/lua/engine.go<br/>Lua Engine]
+        POOL[internal/lua/state_pool.go<br/>LuaStatePool]
+        STATES[Lua States<br/>Pre-warmed VM Pool]
+    end
 
-        subgraph "Static Proxy (internal/routing)"
-            D --> L[Reverse Proxy];
-        end
-
-        subgraph "Configuration (internal/config)"
-            M[config.yaml] --> N{config.LoadConfig};
-            N --> O[App Initialization];
-            O --> C;
-            O --> F;
-        end
+    subgraph "HTTP Layer"
+        SERVER[http.Server<br/>Go HTTP Server]
+        HANDLER[HTTP Handlers]
+        MW[Middleware Chain]
     end
 
     subgraph "Backend Services"
-        L --> P[Upstream Service 1];
-        H --> Q["Upstream Service 2 (via Lua HTTP Client)"];
+        PROXY[httputil.ReverseProxy]
+        BACKEND1[Backend Service 1]
+        BACKEND2[Backend Service 2]
     end
 
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style P fill:#ccf,stroke:#333,stroke-width:2px
-    style Q fill:#ccf,stroke:#333,stroke-width:2px
+    MAIN -->|1. LoadConfig| CONFIG
+    MAIN -->|2. New Gateway| GW
+    MAIN -->|3. Handler| SERVER
+
+    CONFIG -->|Config struct| GW
+
+    GW -->|Creates| ROUTER
+    GW -->|Manages| BACKENDS
+    GW -->|Creates if enabled| ENGINE
+    GW -->|Uses| TRANSPORT
+
+    ENGINE -->|Creates| POOL
+    POOL -->|Manages| STATES
+
+    ROUTER -->|Routes to| HANDLER
+    ROUTER -->|Applies| MW
+
+    HANDLER -->|Lua Handler| ENGINE
+    HANDLER -->|Proxy Handler| BACKENDS
+
+    MW -->|Lua Middleware| ENGINE
+
+    BACKENDS -->|Contains| PROXY
+    PROXY -->|Uses| TRANSPORT
+    PROXY -->|Forwards to| BACKEND1
+    PROXY -->|Forwards to| BACKEND2
+
+    SERVER -->|Uses| ROUTER
+
+    style GW fill:#e1f5ff
+    style ENGINE fill:#fff4e1
+    style POOL fill:#fff4e1
+    style ROUTER fill:#e8f5e9
+    style CONFIG fill:#f3e5f5
 ```
+
+**Key Architecture Details:**
+- Gateway contains Chi router, backends map (with RWMutex), Lua engine (optional), and shared HTTP transport
+- Lua engine owns the state pool which pre-warms a fixed number of Lua VMs
+- Backends are lazily created on first use and cached in a thread-safe map
+- All routing (both proxy and Lua) goes through the Chi router
+- Middleware chain includes both Go middleware and optional Lua middleware
 
 ### Core Components
 
-*   **`cmd/main`**: The application entrypoint. It parses command-line flags (like `-config`), loads the configuration, initializes the main `app.Application`, and starts the HTTP server.
+*   **`cmd/main.go`**: The application entrypoint. Parses command-line flags (like `-config`), loads configuration, and starts the HTTP server with the gateway.
 
-*   **`internal/config`**: Defines the configuration structure (`config.go`) that maps directly to the `config.yaml`. It's responsible for loading and parsing this file. The `Tenant` is the core concept, linking domains/paths to either static backends or Lua scripts.
+*   **`internal/config`**: Defines the configuration structure (`config.go`) that maps directly to `config.yaml`. The `Tenant` is the core concept, linking path prefixes to routes (Lua handlers or backend proxies).
 
-*   **`internal/app`**: The central coordinator. `application.go` wires everything together. It creates the master `chi` router, initializes the Lua engine, and sets up the static routing gateway. It orchestrates the startup sequence, ensuring Lua routes are registered before the static routes.
+*   **`internal/gateway`**: The core gateway implementation (`gateway.go`). Creates the Chi router, initializes the Lua engine (if enabled), sets up routes from configuration, and handles both Lua and proxy routing. This is the main module that orchestrates everything.
 
-*   **`internal/routing`**: Manages static, proxy-based routing. The `Gateway` (`gateway.go`) sets up `httputil.ReverseProxy` handlers for tenants configured with backend `services`. Each tenant routes to a single backend URL (which may be an external load balancer).
-
-*   **`internal/lua`**: The dynamic scripting engine. This is a deep and powerful module with several key components:
-    *   **`engine.go`**: The public API for the Lua subsystem. It manages script execution and state pool coordination.
-    *   **`script_compiler.go`**: Pre-compiles Lua source code into bytecode to reduce execution latency. The bytecode is cached in memory for reuse across all Lua states.
-    *   **`state_pool.go`**: Manages a pool of `lua.LState` virtual machines. This is a critical performance optimization, as creating Lua states is expensive. Reusing them across requests significantly improves throughput.
-    *   **`chi_bindings.go`**: Reduced from 598 to ~50 lines via gopher-luar refactoring. Sets up the Lua environment with access to Chi router and deep modules.
-    *   **`modules/`** directory (new in Dec 2025 refactoring):
-        *   **`request.go`**: Deep Request module - Simple interface (properties + methods), complex caching and context management
-        *   **`response.go`**: Deep Response module - HTTP response writing with proper headers
-        *   **`http.go`**: Deep HTTP client module - Connection pooling, HTTP/2, timeout management
+*   **`internal/lua`**: The Lua scripting engine with key components:
+    *   **`engine.go`**: Public API for executing Lua handlers and middleware. Manages state pool coordination and script loading.
+    *   **`state_pool.go`**: Manages a pool of `lua.LState` virtual machines for thread safety and performance. Tracks metrics (hits, misses, wait time).
+    *   **`cgo_luajit.go`**: Restores `pcall`/`xpcall` for LuaRocks compatibility (workaround for golua library)
 
 ### Request Flow: End-to-End
 
@@ -205,30 +126,67 @@ An incoming HTTP request is handled by the single, master `chi` router. The path
 A request is mapped to a pre-configured, static backend service.
 
 1.  A request arrives at the `http.Server`.
-2.  The server passes it to the master `chi` router in `routing.Gateway`.
-3.  `chi` matches the request's host and path to a static route defined in the `config.yaml` (e.g., a `services` block for a `Tenant`).
+2.  The server passes it to the master `chi` router in the `Gateway`.
+3.  `chi` matches the request's path to a static route defined in the `config.yaml` (a route with `backend` specified).
 4.  The `routing.Gateway`'s handler takes over.
-5.  It looks up the healthy backend services for that tenant.
-6.  It selects a backend and uses `httputil.ReverseProxy` to forward the request.
+5.  It looks up the backend service for that tenant.
+6.  It uses `httputil.ReverseProxy` to forward the request.
 7.  The response from the upstream service is streamed back to the client.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Server (net/http)
-    participant Router (chi)
-    participant StaticProxy (routing.Gateway)
-    participant Upstream
+    participant HTTPServer as http.Server
+    participant Router as Chi Router
+    participant Middleware as Middleware Chain
+    participant Handler as Gateway Handler
+    participant BackendMap as Backends Map
+    participant Proxy as ReverseProxy
+    participant Backend as Backend Service
 
-    Client->>+Server: GET /some/path
-    Server->>+Router: Handle request
-    Router-->>+StaticProxy: Matched a static route
-    StaticProxy->>+Upstream: Proxies request
-    Upstream-->>-StaticProxy: 200 OK
-    StaticProxy-->>-Router: 200 OK
-    Router-->>-Server: 200 OK
-    Server-->>-Client: 200 OK
+    Client->>HTTPServer: HTTP Request
+    HTTPServer->>Router: ServeHTTP(w, r)
+
+    Router->>Router: Match route pattern
+    Note over Router: Chi pattern matching<br/>/api/users/{id}
+
+    Router->>Middleware: Apply middleware chain
+    Note over Middleware: RequestID, RealIP,<br/>Logger, Recoverer,<br/>Timeout, Throttle, etc.
+
+    Middleware->>Handler: http.HandlerFunc(w, r)
+
+    alt Backend configured in route
+        Handler->>Handler: getBackend(tenant, backendName)
+
+        alt Backend exists in map
+            Handler->>BackendMap: Read lock - check map
+            BackendMap-->>Handler: Return existing backend
+        else Backend doesn't exist
+            Handler->>Handler: Parse service URL
+            Handler->>Handler: Create ReverseProxy
+            Handler->>BackendMap: Write lock - store backend
+            Note over Handler: Lazy creation and caching
+        end
+
+        Handler->>Proxy: ServeHTTP(w, r)
+        Note over Proxy: Uses shared HTTP transport<br/>with connection pooling
+
+        Proxy->>Backend: Forward HTTP request
+        Backend-->>Proxy: HTTP response
+        Proxy-->>Handler: Response
+    end
+
+    Handler-->>Middleware: Response
+    Middleware-->>Router: Response
+    Router-->>HTTPServer: Response
+    HTTPServer-->>Client: HTTP Response
 ```
+
+**Key Details:**
+- All requests go through Chi router (unified routing)
+- Middleware applied before handler execution
+- Backends lazy-loaded and cached in map with RWMutex
+- ReverseProxy uses shared HTTP transport with connection pooling
 
 #### Scenario 2: Dynamic (Lua) Route
 
@@ -236,39 +194,99 @@ A request is handled by a custom Lua script.
 
 1.  A request arrives at the `http.Server`.
 2.  The server passes it to the master `chi` router.
-3.  `chi` matches the request to a route that was dynamically registered by a Lua script during startup (via `chi_route`).
-4.  The Go handler created by `chi_bindings` for that route is executed.
+3.  `chi` matches the request to a route defined in the YAML configuration that maps to a Lua handler function.
+4.  The Go handler created by the gateway for that route is executed.
 5.  The handler acquires a `lua.LState` from the `state_pool`.
-6.  It populates the Lua environment with request data (headers, body, etc.).
-7.  It executes the specific Lua function associated with the matched route.
-8.  The Lua script runs. It can:
-    *   Read the request details.
-    *   Make its own outbound HTTP calls to other services using the Lua HTTP client.
-    *   Manipulate data.
-    *   Write a response directly.
-9.  Once the script finishes, the `LState` is returned to the pool.
-10. The response generated by the Lua script is sent back to the client.
+6.  It constructs a Lua request table with all request data (method, path, headers, params, query, body).
+7.  It pushes the request table onto the Lua stack and calls the handler function.
+8.  The Lua handler function executes. It can:
+    *   Read request data from the table: `req.method`, `req.headers["Authorization"]`, `req.params.id`, `req.body`
+    *   Make outbound HTTP calls using Go primitives: `http_get()`, `http_post()`
+    *   Log messages using `log()`
+    *   Return a response table: `{status = 200, body = "...", headers = {...}}`
+9.  The handler parses the returned response table and writes the HTTP response.
+10. The `LState` is returned to the pool.
+11. The HTTP response is sent back to the client.
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Server (net/http)
-    participant Router (chi)
-    participant LuaHandler (chi_bindings)
-    participant LuaVM (lua.LState)
-    participant Upstream
+    participant HTTPServer as http.Server
+    participant Router as Chi Router
+    participant Middleware as Middleware Chain
+    participant LuaMW as Lua Middleware<br/>(if configured)
+    participant Handler as Lua Handler
+    participant Engine as Lua Engine
+    participant Pool as State Pool
+    participant LuaVM as Lua State
 
-    Client->>+Server: POST /dynamic/route
-    Server->>+Router: Handle request
-    Router-->>+LuaHandler: Matched a Lua-defined route
-    LuaHandler->>+LuaVM: Get state from pool & execute
-    LuaVM->>+Upstream: Lua script makes HTTP call
-    Upstream-->>-LuaVM: 200 OK
-    LuaVM-->>-LuaHandler: Script finishes, returns response
-    LuaHandler-->>-Router: 200 OK (response from Lua)
-    Router-->>-Server: 200 OK
-    Server-->>-Client: 200 OK
+    Client->>HTTPServer: HTTP Request
+    HTTPServer->>Router: ServeHTTP(w, r)
+
+    Router->>Router: Match route pattern
+    Note over Router: Chi pattern matching<br/>/users/{id}
+
+    Router->>Middleware: Apply Go middleware
+    Note over Middleware: RequestID, RealIP,<br/>Logger, Recoverer, etc.
+
+    alt Lua middleware configured
+        Middleware->>LuaMW: http.HandlerFunc(w, r)
+        LuaMW->>Engine: ExecuteMiddleware(name, w, r, next)
+        Engine->>Pool: Get() - blocks until available
+        Note over Pool: Pre-warmed pool<br/>Waits if exhausted
+        Pool-->>Engine: Lua State
+
+        Engine->>Engine: L.GetGlobal(middlewareName)
+        Engine->>Engine: pushRequestTable(L, r)
+        Engine->>Engine: Push next() function
+        Engine->>LuaVM: L.Call(2, 1)
+        Note over LuaVM: middleware(req, next)
+
+        alt Middleware returns response
+            LuaVM-->>Engine: Response table
+            Engine->>Engine: writeResponseFromTable(L, w)
+            Engine->>Pool: Put(L) - reset stack
+            Engine-->>LuaMW: Return (skip next)
+        else Middleware calls next()
+            LuaVM-->>Engine: nil
+            Engine->>Pool: Put(L)
+            Engine-->>LuaMW: Continue
+            LuaMW->>Handler: Call next handler
+        end
+    end
+
+    Handler->>Engine: ExecuteHandler(handlerName, w, r)
+    Engine->>Pool: Get() - blocks until available
+    Pool-->>Engine: Lua State
+
+    Engine->>Engine: L.GetGlobal(handlerName)
+    Engine->>Engine: pushRequestTable(L, r)
+    Note over Engine: Create req table with:<br/>method, path, url, host,<br/>headers, params (Chi),<br/>query, body
+
+    Engine->>LuaVM: L.Call(1, 1)
+    Note over LuaVM: handler(req)<br/>returns response table
+
+    LuaVM-->>Engine: Response table {status, body, headers}
+
+    Engine->>Engine: writeResponseFromTable(L, w)
+    Note over Engine: Extract status, headers, body<br/>Write HTTP response
+
+    Engine->>Pool: Put(L) - L.SetTop(0)
+    Note over Pool: Reset stack and<br/>return to pool
+
+    Engine-->>Handler: nil (success)
+    Handler-->>Router: Response
+    Router-->>HTTPServer: Response
+    HTTPServer-->>Client: HTTP Response
 ```
+
+**Key Details:**
+- Lua routes also go through Chi router (same path as proxy routes)
+- State pool blocks when exhausted (doesn't create new states dynamically)
+- Request table includes Chi route params via chi.RouteContext
+- Lua middleware can short-circuit by returning response or call next() to continue
+- States are reset (L.SetTop(0)) before returning to pool
+- Middleware chains: Go middleware → Lua middleware (if configured) → Lua handler
 
 ### Scalability and Performance
 
@@ -306,34 +324,40 @@ type Engine interface {
 
 ---
 
-### 2. Request Wrapper (Deep Module)
+### 2. Request/Response Tables (Simple Interface)
 
-**Interface (Simple):**
-```go
-type Request struct {
-    // Properties (not methods)
-    Method  string
-    URL     string
-    Path    string
-    Host    string
+**Lua receives request as table:**
+```lua
+req = {
+    method = "GET",                    -- HTTP method
+    path = "/users/123",               -- URL path
+    url = "http://...",                -- Full URL
+    host = "example.com",              -- Host header
+    remote_addr = "192.168.1.1:12345", -- Client IP
+    headers = {...},                   -- HTTP headers map
+    params = {id = "123"},             -- Chi URL parameters
+    query = {foo = "bar"},             -- Query parameters
+    body = "..."                       -- Request body (cached)
 }
-
-// Methods for dynamic access
-func (r *Request) Header(key string) string
-func (r *Request) Query(key string) string
-func (r *Request) Param(key string) string  // Chi URL params
-func (r *Request) Body() string             // Auto-cached
-func (r *Request) Headers() map[string]string
 ```
 
-**Lua usage:**
+**Lua returns response as table:**
 ```lua
-chi_route("GET", "/users/{id}", function(req, res)
-    local id = req:Param("id")              -- Clean, discoverable
-    local auth = req:Header("Authorization")
-    local body = req:Body()                 -- Cached automatically
-    print(req.Method)                        -- Property access
-end)
+function handler(req)
+    return {
+        status = 200,
+        body = "Hello, " .. req.params.id,
+        headers = {["Content-Type"] = "text/plain"}
+    }
+end
+```
+
+**Configuration in YAML:**
+```yaml
+routes:
+  - method: "GET"
+    pattern: "/users/{id}"
+    handler: "handler"
 ```
 
 **Hidden Complexity:**
@@ -341,42 +365,38 @@ end)
 - URL parameters extracted from Chi router context
 - Query string parsing
 - Header normalization
-- Size limits enforcement
+- Size limits enforcement (10MB default)
+- Table construction optimized with RawSet operations
 
 **Why this is deep:**
-- **Simple interface**: Just properties and a few methods
+- **Simple interface**: Just Lua tables (native data structure)
 - **Complex implementation**: Caching, parsing, context management, size limits
-- **Information hiding**: User doesn't manage cache or know about context
+- **Information hiding**: User doesn't manage cache or know about Go internals
 
 ---
 
-### 3. HTTP Client (Deep Module)
+### 3. HTTP Client (Go Primitives)
 
 **Interface (Simple):**
-```go
-type HTTPClient struct {}
+```lua
+-- HTTP GET request
+local resp, err = http_get("https://api.example.com/data")
 
-type HTTPResponse struct {
-    Body    string
-    Status  int
-    Headers map[string]string
-}
-
-func (c *HTTPClient) Get(url string, headers map[string]string) *HTTPResponse
-func (c *HTTPClient) Post(url, body string, headers map[string]string) *HTTPResponse
-func (c *HTTPClient) Put(url, body string, headers map[string]string) *HTTPResponse
-func (c *HTTPClient) Delete(url string, headers map[string]string) *HTTPResponse
+-- HTTP POST request
+local resp, err = http_post(
+    "https://api.example.com/users",
+    '{"name":"John"}',
+    {["Content-Type"] = "application/json"}
+)
 ```
 
-**Lua usage:**
+**Response structure:**
 ```lua
-local resp = HTTP:Get("https://api.example.com/data", {
-    Authorization = "Bearer " .. token
-})
-
-if resp.Status == 200 then
-    res:Write(resp.Body)
-end
+resp = {
+    status = 200,
+    body = "...",
+    headers = {["Content-Type"] = "application/json"}
+}
 ```
 
 **Hidden Complexity:**
@@ -415,9 +435,7 @@ The Gateway is intentionally stateless and delegates infrastructure concerns to 
 - **Stateless operation**: No backend state tracking, connection pooling managed by stdlib
 
 **Complexity (Hidden):**
-- Host-based routing with hostrouter
 - Path-based routing with Chi
-- Hybrid routing (host + path)
 - Reverse proxy configuration
 - Transport optimization
 
@@ -426,8 +444,6 @@ The Gateway is intentionally stateless and delegates infrastructure concerns to 
 ✅ **Horizontally scalable**: No state to synchronize
 ✅ **Cloud-native**: Leverages platform load balancing
 ✅ **Simple**: Fewer moving parts, less to break
-
-This aligns with the core principle: "The gateway provides primitives, infrastructure provides reliability."
 
 ---
 
@@ -483,19 +499,22 @@ func LoadConfig(path string) (*Config, error)
 
 ---
 
-### Decision 2: gopher-luar for Lua Bindings
+### Decision 2: Table-Based Lua API
 
-**Why gopher-luar?**
-- ✅ **Eliminates glue code**: 500 lines → 50 lines
-- ✅ **Automatic reflection**: Go structs → Lua tables
-- ✅ **Discoverable API**: Methods callable from Lua naturally
-- ✅ **Maintainable**: Less code = fewer bugs
+**Why table-based?**
+- ✅ **Simple**: Native Lua data structures (tables)
+- ✅ **Predictable**: Clear input/output contract
+- ✅ **Fast**: Optimized table construction with RawSet operations
+- ✅ **Discoverable**: `req.method`, `req.headers`, `req.body` - obvious field names
 
-**Cost:**
-- ⚠️ **Reflection overhead**: Slight performance cost (acceptable for gateway use case)
-- ⚠️ **Less control**: Automatic binding means less fine-tuning
+**How it works:**
+- Gateway constructs request table from HTTP request
+- Pushes table to Lua stack
+- Calls Lua handler function
+- Handler returns response table
+- Gateway parses response table and writes HTTP response
 
-**Rationale:** The massive reduction in code complexity outweighs minor performance cost. Gateway is I/O bound anyway.
+**Rationale:** Tables are the natural Lua idiom. Simple, fast, and predictable.
 
 ---
 
@@ -571,13 +590,21 @@ L.PCall(0, lua.MultRet, nil)
 -- Tenant's own OAuth module (their code, not gateway's)
 local OAuth = require("oauth_proxy")
 
-chi_middleware(function(req, res, next)
+function oauth_middleware(req, next)
     if not OAuth.validate(req) then
-        res:Status(401)
-        return
+        return {status = 401, body = "Unauthorized"}
     end
     next()
-end)
+    return nil
+end
+
+-- In config.yaml:
+routes:
+  - method: "POST"
+    pattern: "/api/data"
+    handler: "process_data"
+    middleware:
+      - "oauth_middleware"
 ```
 
 **Rationale:** Gateway provides HTTP primitives. Tenants compose them into auth solutions.
@@ -594,10 +621,22 @@ end)
 
 **Example:**
 ```yaml
+lua_routing:
+  enabled: true
+  scripts_dir: "./scripts"
+  global_scripts:
+    - "handlers"
+
 tenants:
   - name: "api"
-    domains: ["api.example.com"]
-    lua_routes: "api-routes"
+    path_prefix: "/api"
+    routes:
+      - method: "GET"
+        pattern: "/users/{id}"
+        handler: "get_user"
+      - method: "GET"
+        pattern: "/legacy/*"
+        backend: "backend"
     services:
       - name: "backend"
         url: "http://backend:3000"
@@ -609,195 +648,6 @@ tenants:
 - Go code: Requires recompilation
 
 **Rationale:** YAML is the right level of abstraction for configuration.
-
----
-
-## Anti-Patterns to Avoid
-
-### ❌ Shallow Modules (Too Many Small Functions)
-
-**Bad (current chi_bindings.go):**
-```go
-L.SetGlobal("request_method", ...)      // 20 lines
-L.SetGlobal("request_url", ...)         // 20 lines
-L.SetGlobal("request_header", ...)      // 20 lines
-L.SetGlobal("request_body", ...)        // 30 lines
-// ... 20 more functions
-```
-
-**Good (with gopher-luar):**
-```go
-// One deep Request module
-L.SetGlobal("Request", luar.NewType(L, Request{}))
-
-// Usage in Lua:
-// req.Method, req:Header("X-Foo"), req:Body()
-```
-
-**Why bad:** Each function requires type checking, error handling, Lua stack manipulation. 500 lines of boilerplate.
-
-**Why good:** One module, many capabilities. 50 lines total with gopher-luar.
-
----
-
-### ❌ Information Leakage
-
-**Bad (OAuth in gateway core):**
-```go
-// Gateway knows about OAuth tokens
-type OAuthConfig struct {
-    TokenFile   string
-    TokenFormat string  // Leaked implementation detail
-    ExpiryBuffer int
-}
-```
-
-**Good (OAuth in tenant code):**
-```lua
--- Tenant's OAuth module uses gateway primitives
-local OAuth = require("oauth_proxy")
-local token = OAuth.get_token()  -- Implementation hidden
-
--- Gateway only provides HTTP client
-local resp = HTTP:Get(url, {Authorization = "Bearer " .. token})
-```
-
-**Why bad:** Gateway is coupled to OAuth implementation details.
-
-**Why good:** Gateway provides HTTP primitive, tenant composes auth logic.
-
----
-
-### ❌ Pass-Through Variables
-
-**Bad:**
-```go
-// cmd/main.go
-cfg := config.LoadConfig(path)
-
-// app/application.go
-func New(cfg *config.Config) {
-    engine := lua.NewEngine(cfg)  // Just passing through
-}
-
-// lua/engine.go  
-func NewEngine(cfg *config.Config) {
-    limits := cfg.RequestLimits  // Only needs this
-}
-```
-
-**Good:**
-```go
-// cmd/main.go
-cfg := config.LoadConfig(path)
-
-// app/application.go
-func New(cfg *config.Config) {
-    engine := lua.NewEngine(cfg.RequestLimits)  // Pass what's needed
-}
-
-// lua/engine.go
-func NewEngine(limits RequestLimits) {
-    // Only depends on what it uses
-}
-```
-
-**Why bad:** `cfg` travels through multiple layers unchanged. Creates coupling.
-
-**Why good:** Each layer takes only what it needs. Reduces coupling.
-
----
-
-### ❌ Classitis (Too Many Empty Files)
-
-**Bad (current structure):**
-```
-internal/routing/
-  ├── gateway.go           # 200 lines
-  ├── circuit_breaker.go   # EMPTY
-  ├── health_checker.go    # EMPTY
-  └── load_balancer.go     # EMPTY
-```
-
-**Good:**
-```
-internal/routing/
-  └── gateway.go  # 250 lines (everything consolidated)
-```
-
-**Why bad:** Empty files created "in anticipation" of features. Adds cognitive load.
-
-**Why good:** Code lives where it's needed. Add files when they're actually needed.
-
----
-
-### ❌ Temporal Decomposition
-
-**Bad (splitting by when code runs):**
-```go
-// Phase 1 functions
-func ParseConfig() {}
-func ValidateConfig() {}
-
-// Phase 2 functions
-func SetupRouting() {}
-func StartServer() {}
-
-// Phase 3 functions
-func HandleRequest() {}
-```
-
-**Good (splitting by knowledge/capability):**
-```go
-// Config module (encapsulates config knowledge)
-type Config struct {}
-func LoadConfig() {}
-func (c *Config) Validate() {}
-
-// Gateway module (encapsulates routing knowledge)
-type Gateway struct {}
-func NewGateway(cfg Config) {}
-func (g *Gateway) Handler() http.Handler
-```
-
-**Why bad:** Groups code by execution order. Changes spread across multiple places.
-
-**Why good:** Groups code by related knowledge. Changes are localized.
-
----
-
-### ❌ Special Cases in Core
-
-**Bad:**
-```go
-// Gateway knows about HTML, CSV, ZIP formats
-if strings.Contains(url, "format=html") {
-    // HTML redirect logic
-} else if strings.Contains(url, "format=csv") {
-    // CSV download logic
-} else if strings.Contains(url, "zipexport") {
-    // ZIP logic
-}
-```
-
-**Good:**
-```go
-// Gateway provides general-purpose HTTP proxy
-func (gw *Gateway) Proxy(w, r, targetURL) {
-    // Standard HTTP proxying
-}
-
-// Tenant handles special cases in their code
-// scripts/lua/data_transforms.lua (tenant's file)
-local Transforms = require("transforms")
-if url:match("format=html") then
-    Transforms.redirect_to_html(req, res)
-end
-```
-
-**Why bad:** Gateway is coupled to specific data formats. Not general-purpose.
-
-**Why good:** Gateway stays general. Tenants add their own transforms.
 
 ---
 
@@ -836,97 +686,13 @@ Remove `hostrouter` dependency entirely. Gateway now uses **path-based routing o
 - Updated tests to use path-based routing
 
 **Migration Path:**
-Users who relied on domain-based routing should:
+Users who relied on domain-based routing should configure external reverse proxy (Nginx, HAProxy, K8s Ingress) to route domains to path prefixes on the gateway.
 
-**Example migration:**
-```yaml
-# Before (v4.x) - Host-based routing
-tenants:
-  - name: "api"
-    domains: ["api.example.com"]
-    services:
-      - url: "http://backend:3000"
-  - name: "admin"
-    domains: ["admin.example.com"]
-    services:
-      - url: "http://admin-backend:4000"
-
-# After (v5.x) - Path-based routing with external reverse proxy
-# Nginx/HAProxy configuration:
-# api.example.com -> proxy to gateway:8080/api
-# admin.example.com -> proxy to gateway:8080/admin
-
-tenants:
-  - name: "api"
-    path_prefix: "/api"
-    services:
-      - url: "http://backend:3000"
-  - name: "admin"
-    path_prefix: "/admin"
-    services:
-      - url: "http://admin-backend:4000"
-```
-
-**Nginx example for domain routing:**
-```nginx
-server {
-    listen 80;
-    server_name api.example.com;
-    location / {
-        proxy_pass http://gateway:8080/api;
-    }
-}
-
-server {
-    listen 80;
-    server_name admin.example.com;
-    location / {
-        proxy_pass http://gateway:8080/admin;
-    }
-}
-```
-
-**Kubernetes Ingress example:**
-```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: gateway-ingress
-spec:
-  rules:
-  - host: api.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: gateway
-            port:
-              number: 8080
-        # Gateway will receive requests at /api path prefix
-  - host: admin.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: gateway
-            port:
-              number: 8080
-```
+See [ROADMAP.md](ROADMAP.md#v500-december-2025---path-only-routing) for migration examples.
 
 **Trade-offs:**
-- ✅ **Gains**:
-  - Simpler architecture (one router, one routing mechanism)
-  - Lua routes always work (no hidden router switching)
-  - Removed ~50 lines of domain routing code
-  - Clearer mental model for users
-  - Aligns with "gateway is dumb" principle
-- ⚠️ **Loses**:
-  - Built-in domain-based routing
-  - Requires external reverse proxy for domain routing
+- ✅ **Gains**: Simpler architecture, Lua routes always work, clearer mental model
+- ⚠️ **Loses**: Built-in domain-based routing
 - **Verdict**: Simplification and architectural clarity outweigh the convenience of built-in domain routing
 
 This is a **breaking change** requiring a major version bump (v5.0.0).
@@ -963,6 +729,8 @@ Users who relied on built-in health checking should:
 2. **Alternative**: Implement custom health checking in Lua scripts if needed
 3. **For development**: Use a simple reverse proxy like Nginx locally
 
+See [ROADMAP.md](ROADMAP.md#v400-december-14-2025---stateless-revolution) for migration guide.
+
 **Trade-offs:**
 - ✅ **Gains**: Simpler code, stateless operation, better scalability, cloud-native alignment
 - ⚠️ **Loses**: Built-in health checking for simple deployments without external LB
@@ -972,24 +740,7 @@ This is a **breaking change** requiring a major version bump (v4.0.0).
 
 ---
 
-## Current Technical Debt
-
-This section documents known areas for potential improvement.
-
-### Opportunity 1: Simplify SetupRoutes Method
-
-**Current State:**
-`SetupRoutes()` is a dedicated method that configures tenant routes during initialization.
-
-**Consideration:**
-Could potentially be merged into the constructor or caller, but keeping it provides:
-- Clear separation between construction and initialization
-- Easier testing (can create Gateway without setting up routes)
-- Explicit initialization step in application flow
-
-**Decision:** Keep as-is. The explicit initialization step has value.
-
----
+## Current State
 
 ### What's Going Well
 
@@ -1000,7 +751,6 @@ Could potentially be merged into the constructor or caller, but keeping it provi
 - Removed ~50 lines of domain routing code
 - Clearer mental model: path-based routing only
 - Aligns with "gateway is dumb" principle
-- See **Design Decisions Record** above for full rationale
 
 ✅ **Health Checking Removal** (Dec 2025) - Achieved stateless design:
 - Removed ~150 lines of health checking code from Gateway
@@ -1008,14 +758,14 @@ Could potentially be merged into the constructor or caller, but keeping it provi
 - Gateway is now fully stateless (no backend state tracking)
 - Aligned with cloud-native infrastructure patterns
 - Simplified constructor (single backend per tenant)
-- See **Design Decisions Record** above for full rationale
 
-✅ **Lua Module Refactoring** (Dec 2025) - Successfully implemented deep modules:
-- `internal/lua/modules/request.go` - Simple interface (properties + 5 methods), complex caching implementation
-- `internal/lua/modules/response.go` - Simple HTTP response writing with proper content-type handling
-- `internal/lua/modules/http.go` - Deep HTTP client with connection pooling, timeouts, HTTP/2
-- Reduced `chi_bindings.go` from 598 lines to ~50 lines (90% reduction via gopher-luar)
-- Lua API is now discoverable and natural (`req.Method`, `req:Header("X-Foo")`)
+✅ **Lua Module Refactoring** (Dec 2025) - Successfully implemented table-based API:
+- Simple interface: Lua handlers receive request tables, return response tables
+- Request table contains: `method`, `path`, `url`, `host`, `remote_addr`, `headers`, `params`, `query`, `body`
+- Response table contains: `status`, `body`, `headers`
+- Go primitives: `log()`, `http_get()`, `http_post()` exposed as simple functions
+- Reduced `chi_bindings.go` from 598 lines to ~50 lines (90% reduction)
+- Lua API is now discoverable and natural (table-based: `req.method`, `req.headers["Authorization"]`, `req.body`)
 
 ✅ **Handlers Removal** (Dec 2025) - Simplified admin routes:
 - Removed `internal/handlers/handlers.go` (71 lines of unnecessary abstraction)
@@ -1024,14 +774,13 @@ Could potentially be merged into the constructor or caller, but keeping it provi
 - More direct, easier to understand
 
 ✅ **Configuration Anti-Pattern Fixes** (Dec 2025) - Cleaned up config module:
-- Removed 8+ dead fields (TLSConfig, AdminBasePath, Tenant.Interval, Service.Health, ServerConfig.Port, unused RequestLimits fields)
+- Removed 8+ dead fields (TLSConfig, AdminBasePath, Tenant.Interval, Service.Health, etc.)
 - Fixed pass-through anti-pattern: lua.Engine no longer receives full Config, only maxBodySize it needs
 - Moved defaults from ApplyDefaults() to UnmarshalYAML (impossible to create Config without defaults)
 - Reduced coupling between config and lua packages
 - Net reduction: -27 lines, cleaner codebase
-- All changes approved by REVIEWER agent
 
-✅ **Script Compilation** (Earlier) - Unified compiler cache:
+✅ **Script Compilation** - Unified compiler cache:
 - Single `ScriptCompiler` handles all Lua bytecode caching
 - No duplicate compilation logic
 - Proper memory management
@@ -1039,79 +788,9 @@ Could potentially be merged into the constructor or caller, but keeping it provi
 
 ---
 
-## Refactoring Roadmap
+### Opportunities for Improvement
 
-### Completed ✅
-
-#### Dec 2025: Lua Module Deep Refactoring
-**Goal:** Eliminate glue code, create deep modules for Lua bindings
-
-**Commit:** 287bc80 - "use gopher-luar for automatic type conversion and make lua modules DEEP"
-
-**Changes:**
-- Introduced gopher-luar for automatic Go ↔ Lua type conversion
-- Created `internal/lua/modules/` directory with deep modules:
-  - `request.go` - Request wrapper with caching, Chi URL params, context management
-  - `response.go` - Response writer with proper headers and status codes
-  - `http.go` - HTTP client with connection pooling and HTTP/2
-- Reduced `chi_bindings.go` from 598 to ~50 lines (90% code reduction)
-- Improved Lua API: Properties (`req.Method`) instead of getters (`req:GetMethod()`)
-
-**Result:** DESIGN.md principle of "deep modules" achieved for Lua subsystem. This is a major win.
-
-#### Dec 2025: Handlers Package Removal
-**Goal:** Simplify application structure, remove unnecessary abstraction
-
-**Commit:** caf29cc - "refactor(routing): remove unused handlers import and route group registration"
-
-**Changes:**
-- Removed `internal/handlers/handlers.go` (71 lines)
-- Removed `internal/routing/lua_routes.go` (49 lines - logic moved to application.go)
-- Moved simple health check directly into `application.go`
-- Removed admin route group registration complexity
-
-**Result:** Simpler, more direct code path. Easier to understand application flow.
-
-#### Dec 2025: Health Checking Removal
-**Goal:** Simplify Gateway to be fully stateless, delegate health checking to infrastructure
-
-**Commit:** TBD (current changes)
-
-**Original Plan:**
-Initially planned to extract health checking to `internal/healthcheck` module. However, after architectural review, decided to remove health checking entirely instead.
-
-**Final Approach:**
-- Remove all health checking code from Gateway (~150 lines)
-- Make Gateway fully stateless (no backend state tracking)
-- Delegate health checking to external load balancers (cloud-native pattern)
-
-**Changes:**
-- Removed `Backend.Healthy` field
-- Removed health check goroutines, context, WaitGroup from Gateway struct
-- Removed `startHealthChecks()`, `healthCheckWorker()`, `checkBackendHealth()` methods
-- Removed `HasHealthyBackends()` method
-- Changed from multiple backends per tenant to single backend URL
-- Simplified `/health` endpoint to basic liveness check
-- Updated constructor to accept router (removed dual constructor confusion)
-
-**Result:**
-- ✅ Gateway has no health check code (achieved)
-- ✅ Gateway is stateless and cloud-native
-- ✅ All tests pass
-- ⚠️ **Breaking change** - users must use external load balancers
-- **Version bump required:** v4.0.0 (major version due to breaking change)
-
----
-
-### In Progress 🚧
-
-Currently no active refactoring efforts.
-
----
-
-### Planned 📋
-
-#### Future: Consider Additional Cloud-Native Patterns
+#### Consider Additional Cloud-Native Patterns
 **Goal:** Continue simplifying by leveraging platform capabilities
 
 **Potential areas:**
@@ -1123,508 +802,52 @@ Currently no active refactoring efforts.
 
 ---
 
-## Development Guidelines
-
-### 1. When to Create a New Module
-
-**Create a module when:**
-- ✅ It encapsulates a distinct piece of knowledge (e.g., "how to manage Lua states")
-- ✅ It can have a simple interface hiding complex implementation
-- ✅ It's reusable across multiple parts of the codebase
-- ✅ It has a clear, single responsibility
-
-**Don't create a module when:**
-- ❌ It's just one function (keep it in the parent module)
-- ❌ It's empty or "planned for the future"
-- ❌ It's only used in one place and tightly coupled to that place
-- ❌ It's just grouping code by execution phase
-
-**Example - Good module:**
-```go
-// internal/lua/compiler.go
-// Clear responsibility: Compile Lua scripts to bytecode
-type ScriptCompiler struct {
-    cache map[string]*CompiledScript
-}
-
-func (c *ScriptCompiler) CompileScript(name, content string) (*CompiledScript, error)
-func (c *ScriptCompiler) GetScript(name string) (*CompiledScript, bool)
-```
-
----
-
-### 2. Interface Design Checklist
-
-Before exposing a function/method to Lua, ask:
-
-- [ ] **Is this a primitive capability or business logic?**
-  - Primitive → Gateway (e.g., HTTP request)
-  - Business logic → Tenant (e.g., OAuth flow)
-
-- [ ] **Can this be a property instead of a method?**
-  - `req.Method` > `req:GetMethod()`
-  - Properties are simpler and more discoverable
-
-- [ ] **Does this leak implementation details?**
-  - Bad: `GetTokenFromFile(path)` (leaks file storage)
-  - Good: `GetToken()` (hides storage mechanism)
-
-- [ ] **Is the interface minimal?**
-  - Expose only what's necessary
-  - Can't remove functions later (breaking change)
-  - Can always add functions later (non-breaking)
-
-- [ ] **Is it obvious what this does?**
-  - Good: `req:Body()` - clearly returns body
-  - Bad: `req:Data()` - what data?
-
----
-
-### 3. Error Handling Strategy
-
-**Prefer defining errors out of existence:**
-
-**Bad (errors as control flow):**
-```go
-func ValidatePath(path string) error {
-    if !strings.HasPrefix(path, "/") {
-        return errors.New("path must start with /")
-    }
-    if !strings.HasSuffix(path, "/") {
-        return errors.New("path must end with /")
-    }
-    return nil
-}
-```
-
-**Good (make it impossible to construct invalid state):**
-```go
-type PathPrefix string
-
-func NewPathPrefix(s string) PathPrefix {
-    // Auto-fix, can't be invalid
-    s = strings.TrimSpace(s)
-    if !strings.HasPrefix(s, "/") {
-        s = "/" + s
-    }
-    if !strings.HasSuffix(s, "/") {
-        s += "/"
-    }
-    return PathPrefix(s)
-}
-```
-
-**When to use errors:**
-- External I/O failures (file not found, network error)
-- User input that can't be auto-corrected
-- Truly exceptional conditions
-
-**When to avoid errors:**
-- Configuration that can be normalized
-- Optional values (use nil/empty instead)
-- Conditions you can prevent at construction time
-
----
-
-### 4. Adding New Lua Primitives
-
-**Process:**
-
-1. **Identify the primitive capability**
-   - Is this a general-purpose operation?
-   - Or is it business logic that belongs in tenant code?
-
-2. **Design the Go module (deep!)**
-   ```go
-   // internal/lua/modules/new_thing.go
-   type NewThing struct {
-       // Private fields (hidden complexity)
-   }
-   
-   // Simple public methods
-   func (t *NewThing) DoSomething() Result
-   ```
-
-3. **Expose via gopher-luar**
-   ```go
-   // internal/lua/chi_bindings.go
-   L.SetGlobal("NewThing", luar.New(L, modules.NewThing()))
-   ```
-
-4. **Document in docs/lua.md**
-   ```markdown
-   ### NewThing
-   
-   ```lua
-   local result = NewThing:DoSomething()
-   ```
-   
-   Description of what it does...
-   ```
-
-5. **Create example in scripts/lua/examples/**
-   ```lua
-   -- examples/new_thing_demo.lua
-   chi_route("GET", "/demo", function(req, res)
-       local result = NewThing:DoSomething()
-       res:Write(result)
-   end)
-   ```
-
-**Checklist before committing:**
-- [ ] Module has simple interface, complex implementation (deep)
-- [ ] Used gopher-luar to avoid glue code
-- [ ] Documented in docs/lua.md
-- [ ] Example script created
-- [ ] No business logic leaked into gateway core
-
----
-
-### 5. Refactoring Guidelines
-
-**When to refactor:**
-- ✅ Code is duplicated in 3+ places
-- ✅ Function is longer than 50 lines and doing multiple things
-- ✅ You're adding a feature and current structure makes it hard
-- ✅ Interface is confusing and you keep making mistakes
-
-**When NOT to refactor:**
-- ❌ "It could be prettier" (aesthetics alone)
-- ❌ "We might need X in the future" (speculation)
-- ❌ "I want to try pattern Y" (resume-driven development)
-- ❌ Code works fine and changes are rare
-
-**Refactoring process:**
-1. Write a failing test for new behavior OR
-2. Document current behavior with tests
-3. Make the change
-4. Verify tests still pass
-5. Update documentation
-6. Commit with clear message explaining WHY
-
-**Red flags during refactoring:**
-- Increasing number of interfaces/abstractions
-- More layers added "for flexibility"
-- Splitting one file into many small files
-- Adding empty files for "future features"
-
-**Good refactoring:**
-- Consolidating duplicate code
-- Extracting complex implementation behind simple interface
-- Removing dead code
-- Simplifying confusing interfaces
-
----
-
-### 6. Code Review Checklist
-
-Before submitting PR:
-
-**Architecture:**
-- [ ] Does this follow the "dumb gateway, smart tenant" principle?
-- [ ] Are new modules deep (simple interface, complex implementation)?
-- [ ] Is complexity pulled downward (in Go, not Lua)?
-- [ ] Are we avoiding information leakage?
-
-**Code Quality:**
-- [ ] No empty files created "for the future"
-- [ ] No pass-through variables (cfg passed through 3+ layers)
-- [ ] Functions are <50 lines (or have good reason to be longer)
-- [ ] Clear, obvious naming (no abbreviations unless standard)
-
-**Lua Integration:**
-- [ ] Using gopher-luar for new bindings (avoid manual glue code)
-- [ ] Primitives only (no business logic in gateway)
-- [ ] Properties preferred over methods where appropriate
-- [ ] Documented in docs/lua.md
-
-**Testing:**
-- [ ] Happy path tested
-- [ ] Error cases considered (or designed out)
-- [ ] Example script provided if new feature
-
-**Documentation:**
-- [ ] DESIGN.md updated if architecture changed
-- [ ] docs/lua.md updated if Lua API changed
-- [ ] Inline comments for complex algorithms
-- [ ] No comments explaining obvious code
-
----
-
-## Future Evolution
-
-### Planned Features (Aligned with Design)
-
-#### 1. Enhanced Lua Primitives
-**Status:** Planned for Q1 2025
-
-**What:**
-- WebSocket support in Lua
-- Server-Sent Events (SSE) support
-- Streaming response handling
-
-**Why this fits:**
-- ✅ General-purpose primitives (not business logic)
-- ✅ Extends HTTP client capabilities
-- ✅ Maintains deep module design
-
-**Implementation sketch:**
-```go
-// internal/lua/modules/websocket.go
-type WebSocket struct {
-    conn *websocket.Conn
-}
-
-func (ws *WebSocket) Send(message string) error
-func (ws *WebSocket) Receive() (string, error)
-func (ws *WebSocket) Close() error
-```
-
-```lua
--- Tenant usage
-chi_route("GET", "/ws", function(req, res)
-    local ws = WebSocket.Upgrade(req, res)
-    while true do
-        local msg = ws:Receive()
-        ws:Send("Echo: " .. msg)
-    end
-end)
-```
-
----
-
-#### 2. Metrics and Observability
-**Status:** Under consideration
-
-**What:**
-- Prometheus metrics exposure
-- Request tracing integration
-- Structured logging helpers
-
-**Why this fits:**
-- ✅ Infrastructure concern (gateway responsibility)
-- ✅ Doesn't impose business logic
-- ✅ Optional (can be disabled)
-
-**Design principle:**
-- Metrics are **opt-in** per tenant
-- Tenants define **what** to measure (not how)
-- Gateway handles collection/export (Prometheus, OpenTelemetry)
-
-**Example:**
-```lua
--- Tenant defines what to measure
-chi_middleware(function(req, res, next)
-    local start = os.clock()
-    next()
-    local duration = os.clock() - start
-    
-    -- Gateway primitive for metrics
-    Metrics:RecordLatency("api_requests", duration, {
-        method = req.Method,
-        path = req.Path
-    })
-end)
-```
-
----
-
-#### 3. Request/Response Transformation Helpers
-**Status:** Research phase
-
-**What:**
-- JSON parsing/generation in Lua
-- XML parsing
-- Base64 encoding/decoding
-- URL encoding/decoding
-
-**Why this fits:**
-- ✅ General-purpose utilities
-- ✅ Common need across tenants
-- ✅ Better performance than pure Lua implementations
-
-**Design decision:**
-- Provide as optional Lua libraries (not core)
-- Tenants `require` what they need
-- No automatic inclusion (keeps core lean)
-
-**Example:**
-```lua
-local JSON = require("json")  -- Gateway-provided utility
-
-chi_route("POST", "/data", function(req, res)
-    local data = JSON.decode(req:Body())
-    data.processed = true
-    res:JSON(JSON.encode(data))
-end)
-```
-
----
-
-### Features We Will NOT Add
-
-#### ❌ Built-in Authentication
-**Why not:**
-- Every tenant has different auth needs (OAuth, mTLS, API keys, custom)
-- Gateway would need to handle sessions, tokens, etc. (state)
-- Violates "general-purpose" principle
-
-**Alternative:**
-- Tenants implement auth in Lua using HTTP primitives
-- Or use external auth service (AuthN/AuthZ gateway)
-
----
-
-#### ❌ Rate Limiting in Core
-**Why not:**
-- Rate limiting strategies vary (per IP, per user, per tenant, sliding window, token bucket)
-- Requires state (counters, timestamps)
-- Not a primitive HTTP operation
-
-**Alternative:**
-- Tenants implement rate limiting in Lua
-- Or use external service (Redis-based rate limiter)
-- Gateway provides primitives (timers, storage access if needed)
-
----
-
-#### ❌ Service Discovery Integration
-**Why not:**
-- Too many service discovery systems (Consul, etcd, Kubernetes, DNS)
-- Gateway would need to support all or pick one (opinion)
-- Configuration via YAML works fine for most cases
-
-**Alternative:**
-- Use external tool to generate YAML config
-- Kubernetes can template config via ConfigMaps
-- Simple cron job to regenerate config from discovery system
-
----
-
-#### ❌ GraphQL Gateway
-**Why not:**
-- GraphQL is a specific protocol, not a primitive
-- Requires schema management, query parsing, validation
-- Many good GraphQL gateways exist already
-
-**Alternative:**
-- Tenants can proxy to GraphQL backend
-- Or implement GraphQL handling in Lua if needed
-- Gateway provides HTTP primitives, tenants compose
-
----
-
-### Evolution Guidelines
-
-**When considering new features, ask:**
-
-1. **Is this a primitive or an opinion?**
-   - Primitive: HTTP client, WebSocket, file I/O → ✅ Consider
-   - Opinion: OAuth, rate limiting, auth → ❌ Leave to tenants
-
-2. **Does this make the interface simpler or more complex?**
-   - Simpler: Consolidates existing complexity → ✅ Good
-   - More complex: Adds new concepts to learn → ❌ Bad
-
-3. **Is this general-purpose or special-purpose?**
-   - General: Works for 80%+ of use cases → ✅ Good
-   - Special: Solves one specific problem → ❌ Tenant code
-
-4. **Can this be a library instead of core?**
-   - If yes → ✅ Make it a library (require-able)
-   - If no → Maybe belongs in core
-
-5. **Does this hide complexity or expose it?**
-   - Hides: Deep module with simple interface → ✅ Good
-   - Exposes: Many functions, config options → ❌ Reconsider
-
-**Process for adding features:**
-1. Prototype as Lua library first (tenant code)
-2. If useful across tenants → Move to gateway-provided library
-3. If essential and can't be library → Add to core
-4. Update DESIGN.md with rationale
-
----
-
-## Summary: Design Principles Checklist
-
-Before writing any code, ask:
-
-- [ ] **Deep modules**: Does this have a simple interface hiding complex implementation?
-- [ ] **Information hiding**: Are implementation details hidden from users?
-- [ ] **Pull complexity down**: Is complexity in Go, not Lua?
-- [ ] **General-purpose**: Does this work for many use cases, not just one?
-- [ ] **Define errors out**: Can I prevent this error at construction time?
-- [ ] **Gateway is dumb**: Am I adding primitives, not opinions?
-- [ ] **Obvious code**: Is it clear what this does without comments?
-
-**Remember:**
-> "Working code isn't enough. The goal is not just to make something work, but to create a system that is simple and obvious." 
-> — John Ousterhout
+## Version History
+
+**For detailed version history with rationale and migration guides, see [ROADMAP.md](ROADMAP.md).**
+
+- **v5.0.0** (Dec 2025): Path-only routing - Removed host-based routing
+- **v4.0.0** (Dec 2025): Stateless gateway - Removed health checking
+- **v3.0.0** (Dec 2025): Deep modules refactoring - gopher-luar adoption
+- **v2.0.0** (Sep 2025): Performance breakthrough - Bytecode compilation
+- **v1.4.0** (Aug 2025): KISS/DRY refactoring
+- **v1.2.0** (Jul 2025): Host-based routing added (later removed in v5.0.0)
+- **v1.0.0** (Jul 2025): Initial release
 
 ---
 
 ## Appendix: Key Metrics
 
 **Current codebase (as of Dec 2025):**
-- Total lines: ~2,800 (excluding tests) - Down from ~3,500
-- Lua bindings: ~50 lines ✅ (down from 598 - 90% reduction achieved!)
-- Core modules: 8
-- Deep Lua modules: 3 (request, response, http) ✅
-- External dependencies: 6 (Chi, gopher-lua, gopher-luar, yaml, sync, hostrouter)
+- Total lines: ~1,600 (excluding tests) - Down from ~3,500
+- Lua engine: Table-based API (simple, fast, predictable)
+- Core modules: 3 (gateway, lua, config)
+- External dependencies: 3 (Chi, golua, yaml)
 
 **Achievements (Dec 2025 refactoring):**
-- ✅ Lua bindings: 598 → ~50 lines (90% reduction via gopher-luar)
-- ✅ Deep Request/Response/HTTP modules implemented
+- ✅ Lua API: Table-based interface (request table in, response table out)
+- ✅ Go primitives: `log()`, `http_get()`, `http_post()` exposed to Lua
 - ✅ Handlers package removed (71 lines)
 - ✅ lua_routes.go removed (49 lines)
 - ✅ Script compilation unified (single compiler cache)
 - ✅ **Health checking removed** (~150 lines) - Gateway now stateless
+- ✅ **Host routing removed** (~50 lines) - Path-only routing
 - ✅ Gateway constructor simplified (single constructor pattern)
-- ✅ Total code reduction: ~900+ lines removed
-
-**Remaining considerations:**
-- Continue evaluating cloud-native patterns (see Refactoring Roadmap)
+- ✅ Total code reduction: ~1,900 lines removed (3,500 → 1,600)
 
 **Code quality metrics:**
 - Functions >50 lines: 2 (down from 3)
 - Empty files: 0 ✅ (down from 3)
-- Pass-through parameters: 1 instance (down from multiple)
+- Pass-through parameters: 0 ✅ (eliminated)
 
 ---
 
 **This design document is a living document. Update it when:**
 - Core architectural decisions change
 - New modules are added
-- Design principles evolve
 - Major refactoring occurs
 
-**Version history:**
-- v5.0.0 (Dec 2025): Host-based routing removal - path-only routing
-  - **BREAKING CHANGE**: Removed `hostrouter` dependency and `Domains` config field
-  - Gateway now uses path-based routing only
-  - Domain routing delegated to external reverse proxies/ingress controllers
-  - Simplified `Handler()` method to always return single Chi router
-  - Fixed bug where Lua routes were unreachable when host-based routing was enabled
-  - Removed ~50 lines of domain routing code
-  - Updated tenant validation: `PathPrefix` is now optional
-  - Added comprehensive migration examples (Nginx, Kubernetes Ingress)
-  - Documented in "Design Decisions Record" section
-- v4.0.0 (Dec 2025): Health checking removal - stateless gateway design
-  - **BREAKING CHANGE**: Removed all health checking and load balancing from Gateway
-  - Added "Design Decisions Record" section documenting architectural choices
-  - Updated Gateway module documentation to reflect stateless design
-  - Documented migration path for users relying on built-in health checks
-  - Updated component architecture diagrams
-  - Removed ~150 lines of health checking code
-  - Gateway now delegates health checking to external load balancers
-- v2.0.1 (Dec 2025): Document current technical debt and refactoring progress
-  - Added gopher-luar refactoring success documentation (90% code reduction)
-  - Documented known issues in Gateway module with path forward
-  - Removed references to deleted handlers package
-  - Updated module structure to reflect new modules/ subdirectory
-  - Added "Current Technical Debt" section with priorities
-  - Added "Refactoring Roadmap" section showing completed and planned work
-  - Updated metrics to show actual achievements
-- v2.0 (Dec 2024): Initial comprehensive design based on "A Philosophy of Software Design"
-- v1.x (2024): Implicit design, no formal documentation
+For philosophy and principles, see [MANIFEST.md](MANIFEST.md).
+For evolution history, see [ROADMAP.md](ROADMAP.md).
+
+**Last updated:** December 2025 (v5.0.0)

@@ -1,0 +1,102 @@
+# Example config for Go-Owned Routing + LuaJIT architecture
+
+middleware:
+  request_id: false
+  real_ip: false
+  logging: false
+  recovery: true
+  timeout: 5
+  throttle: 5000
+
+compression:
+  enabled: false
+
+# Lua configuration
+lua_routing:
+  enabled: true
+  scripts_dir: "./examples/scripts"
+  state_pool_size: 100  # Number of pre-allocated Lua VMs (default: 10)
+  global_scripts:
+    - "init"      # Initialize global functions/libraries
+    - "handlers"  # Load handler functions
+    - "advanced"  # Advanced LuaRocks demonstrations
+  # LuaRocks support (optional)
+  module_paths:
+    - "/usr/local/share/lua/5.1/?.lua"
+    - "/usr/local/share/lua/5.1/?/init.lua"
+  module_cpaths:
+    - "/usr/local/lib/lua/5.1/?.so"
+
+# Tenants with Go-owned routing
+tenants:
+  - name: "api"
+    path_prefix: "/api"
+
+    # Explicit routes (Go-owned)
+    routes:
+      # Simple GET route with Lua handler
+      - method: "GET"
+        pattern: "/hello"
+        handler: "hello_handler"
+
+      # Route with URL params
+      - method: "GET"
+        pattern: "/users/{id}"
+        handler: "get_user"
+
+      # Route with middleware
+      - method: "POST"
+        pattern: "/users"
+        handler: "create_user"
+        middleware:
+          - "require_auth"
+
+      # Proxy route (no Lua, just forward to backend)
+      - method: "GET"
+        pattern: "/legacy/*"
+        backend: "legacy-service"
+
+      # LuaRocks demonstration routes
+      - method: "GET"
+        pattern: "/luarocks-status"
+        handler: "luarocks_status"
+
+      - method: "GET"
+        pattern: "/luarocks-demo"
+        handler: "luarocks_demo"
+
+      - method: "POST"
+        pattern: "/json-processing"
+        handler: "json_processing"
+
+      - method: "GET"
+        pattern: "/pattern-matching"
+        handler: "pattern_matching"
+
+      - method: "GET"
+        pattern: "/network-info"
+        handler: "network_info"
+
+    # Route groups (nested routes with shared middleware) PREFERED WAY
+    route_groups:
+      - pattern: "/articles"
+        middleware:
+          - "require_auth"
+        routes:
+          - method: "GET"
+            pattern: "/"
+            handler: "list_articles"
+
+          - method: "POST"
+            pattern: "/"
+            handler: "create_article"
+
+    # Backend services
+    services:
+      - name: "legacy-service"
+        url: "http://localhost:3000"
+
+    # Custom error handlers
+    error_handlers:
+      not_found: "handle_404"
+      method_not_allowed: "handle_405"

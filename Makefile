@@ -12,8 +12,16 @@ dev: ## Start development - build and run locally
 	go run ./cmd
 
 .PHONY: build
-build: ## Build binary
+build: ## Build binary (without LuaJIT)
 	go build -o keystone-gateway ./cmd
+
+.PHONY: build-luajit
+build-luajit: ## Build with LuaJIT support
+	CGO_CFLAGS="$$(pkg-config luajit --cflags)" CGO_LDFLAGS="$$(pkg-config luajit --libs)" go build -tags luajit -o keystone-gateway ./cmd
+
+.PHONY: run-luajit
+run-luajit: build-luajit ## Build and run with LuaJIT + example config
+	./keystone-gateway -config examples/configs/config-golua.yaml
 
 .PHONY: test
 test: ## Run all tests

@@ -21,11 +21,27 @@ It is designed for engineers who want **control without opinions**: the gateway 
 
 ## Philosophy
 
-1. **Deep Modules** – Interfaces are simpler than implementations (e.g., Lua engine, HTTP client, request wrapper).  
-2. **Information Hiding** – Users never manage Lua states, bytecode, or connection pools.  
-3. **Pull Complexity Down** – Complex logic lives in Go, Lua stays simple.  
-4. **General-Purpose** – Works for many use cases, not just one.  
+1. **Deep Modules** – Interfaces are simpler than implementations (e.g., Lua engine, HTTP client, request wrapper).
+2. **Information Hiding** – Users never manage Lua states, bytecode, or connection pools.
+3. **Pull Complexity Down** – Complex logic lives in Go, Lua stays simple.
+4. **General-Purpose** – Works for many use cases, not just one.
 5. **Gateway is Dumb** – Primitives only; tenants compose business logic.
+
+---
+
+## Documentation
+
+### Core Documents
+- **[MANIFEST.md](MANIFEST.md)** - Project philosophy, principles, and development guidelines
+- **[DESIGN.md](DESIGN.md)** - Technical architecture and implementation details
+- **[ROADMAP.md](ROADMAP.md)** - Evolution from v1.0.0 to v5.0.0 and lessons learned
+- **[CHANGELOG.md](CHANGELOG.md)** - Detailed version history and migration guides
+
+### Additional Resources
+- **[docs/lua.md](docs/lua.md)** - Complete Lua API reference
+- **[docs/config.md](docs/config.md)** - Configuration guide
+- **[docs/examples.md](docs/examples.md)** - Example implementations
+- **[docs/development.md](docs/development.md)** - Development and contribution guide
 
 ---
 
@@ -37,31 +53,39 @@ cd keystone-gateway
 make dev
 
 # Health check
-curl http://localhost:8080/admin/health
+curl http://localhost:8080/health
 ```
 
 ### Minimal Configuration Example
 
 ```yaml
-server:
-  port: "8080"
+lua_routing:
+  enabled: true
+  scripts_dir: "./examples/scripts"
+  global_scripts:
+    - "init"
+    - "handlers"
 
 tenants:
   - name: "api"
-    domains: ["localhost"]
-    lua_routes: "api"
-    services:
-      - name: "backend"
-        url: "http://localhost:3001"
+    path_prefix: "/api"
+    routes:
+      - method: "GET"
+        pattern: "/hello"
+        handler: "hello_handler"
 ```
 
-### Lua Route Example
+### Lua Handler Example
 
 ```lua
--- scripts/api.lua
-chi_route("GET", "/hello", function(req, res)
-    res:Write("Hello World")
-end)
+-- examples/scripts/handlers.lua
+function hello_handler(req)
+    return {
+        status = 200,
+        body = "Hello from Keystone Gateway!",
+        headers = {["Content-Type"] = "text/plain"}
+    }
+end
 ```
 
 ---
@@ -69,41 +93,49 @@ end)
 ## Lua API Highlights
 
 ```lua
--- Access request properties
-print(req.Method)  -- GET, POST, etc. (property, not method!)
-print(req.URL)     -- Full URL
-print(req.Path)    -- URL path
+-- Handler function receives request table
+function my_handler(req)
+    -- Access request properties
+    local method = req.method      -- "GET", "POST", etc.
+    local path = req.path          -- "/users/123"
+    local user_id = req.params.id  -- Chi URL parameters
+    local token = req.headers["Authorization"]
+    local query_val = req.query.foo
 
--- Request methods
-local body, err = req:Body()
-local auth = req:Header("Authorization")
-local id = req:Param("id")  -- From route pattern
+    -- Make HTTP requests
+    local resp, err = http_get("https://api.example.com/data")
+    if err then
+        log("Error: " .. err)
+        return {status = 500, body = "Internal error"}
+    end
 
--- Make HTTP requests with options
-local resp = HTTP:Get("https://example.com/data", {
-    headers = {
-        Authorization = "Bearer token"
-    },
-    timeout = 5000,           -- milliseconds
-    follow_redirects = false
-})
-
-if resp.Status == 200 then
-    res:Write(resp.Body)
+    -- Return response table
+    return {
+        status = 200,
+        body = resp.body,
+        headers = {["Content-Type"] = "application/json"}
+    }
 end
 
--- Middleware (MUST be defined before routes!)
-chi_middleware(function(req, res, next)
-    res:Header("X-Gateway", "Keystone")
-    next()
-end)
+-- Middleware function with next callback
+function require_auth(req, next)
+    if not req.headers["Authorization"] then
+        return {
+            status = 401,
+            body = "Unauthorized"
+        }
+    end
+    next()  -- Continue to handler
+    return nil
+end
 ```
 
 **Key Points:**
-- Properties: `req.Method`, `req.URL`, `req.Path`, `req.Host`
-- Methods: `req:Header()`, `req:Body()`, `req:Param()`, `req:Query()`
-- HTTP client: `HTTP:Get/Post/Put/Delete(url, options)`
-- See [docs/lua.md](docs/lua.md) for complete API reference  
+- **Request table**: `req.method`, `req.path`, `req.headers`, `req.params`, `req.query`, `req.body`
+- **Response table**: `{status = 200, body = "...", headers = {...}}`
+- **Go primitives**: `log(msg)`, `http_get(url)`, `http_post(url, body, headers)`
+- **Configuration**: Routes and middleware defined in YAML config
+- See example scripts in `examples/scripts/` directory  
 
 ---
 
@@ -121,12 +153,14 @@ All policies and business logic live in Lua scripts.
 
 ## Features
 
-- Multi-tenant routing (domain, path, hybrid)  
-- Load balancing & health checks  
-- Hot-reloadable Lua scripts  
-- TLS support & graceful shutdown  
-- HTTP/2 and connection pooling  
-- Optional compression & request limits  
+- Multi-tenant routing with path-based prefixes
+- Embedded Lua scripting with LuaJIT support
+- Stateless design (delegates load balancing to infrastructure)
+- Lua state pooling for high performance
+- HTTP/2 and connection pooling
+- Optional compression and request limits
+- LuaRocks module support
+- Graceful shutdown  
 
 ---
 

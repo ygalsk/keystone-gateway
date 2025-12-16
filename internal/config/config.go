@@ -16,6 +16,9 @@ type LuaRoutingConfig struct {
 	Enabled       bool     `yaml:"enabled"`
 	ScriptsDir    string   `yaml:"scripts_dir,omitempty"`
 	GlobalScripts []string `yaml:"global_scripts,omitempty"`
+	ModulePaths   []string `yaml:"module_paths,omitempty"`   // Lua module paths for LuaRocks
+	ModuleCPaths  []string `yaml:"module_cpaths,omitempty"`  // C module paths for LuaRocks
+	StatePoolSize int      `yaml:"state_pool_size,omitempty"` // Lua VM pool size (default: 10)
 }
 
 // CompressionConfig represents HTTP response compression configuration
@@ -114,14 +117,41 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// Route represents a single HTTP route (Go-owned routing)
+type Route struct {
+	Method     string   `yaml:"method"`               // "GET", "POST", etc.
+	Pattern    string   `yaml:"pattern"`              // "/users/{id}"
+	Handler    string   `yaml:"handler,omitempty"`    // Lua function name
+	Backend    string   `yaml:"backend,omitempty"`    // Backend service name (proxy)
+	Middleware []string `yaml:"middleware,omitempty"` // Lua middleware function names
+}
+
+// RouteGroup represents Chi route group with nested routes
+type RouteGroup struct {
+	Pattern    string   `yaml:"pattern"`              // "/articles"
+	Middleware []string `yaml:"middleware,omitempty"` // Group-level middleware
+	Routes     []Route  `yaml:"routes"`               // Nested routes
+}
+
+// ErrorHandlers represents custom error handlers
+type ErrorHandlers struct {
+	NotFound         string `yaml:"not_found,omitempty"`           // 404 handler (Lua function)
+	MethodNotAllowed string `yaml:"method_not_allowed,omitempty"` // 405 handler (Lua function)
+}
+
 // Tenant represents a routing configuration for a specific application or service,
 // using path-based routing. For domain-based routing, use an external reverse proxy
 // (Nginx, HAProxy) or ingress controller to route different domains to different path prefixes.
 type Tenant struct {
-	Name       string    `yaml:"name"`
-	PathPrefix string    `yaml:"path_prefix,omitempty"`
-	LuaRoutes  []string  `yaml:"lua_routes,omitempty"` // Scripts for route definition
-	Services   []Service `yaml:"services"`
+	Name          string         `yaml:"name"`
+	PathPrefix    string         `yaml:"path_prefix,omitempty"`
+	Routes        []Route        `yaml:"routes,omitempty"`         // Go-owned explicit routes
+	RouteGroups   []RouteGroup   `yaml:"route_groups,omitempty"`  // Chi route groups
+	ErrorHandlers ErrorHandlers  `yaml:"error_handlers,omitempty"`
+	Services      []Service      `yaml:"services"`
+
+	// DEPRECATED: Remove in v7.0.0 - use Routes instead
+	LuaRoutes []string `yaml:"lua_routes,omitempty"`
 }
 
 // Service represents a backend service endpoint.
@@ -168,14 +198,43 @@ func ValidateTenant(t Tenant) error {
 		}
 	}
 
-	// Require at least one service ONLY if no Lua routing is configured
-	if len(t.Services) == 0 && len(t.LuaRoutes) == 0 {
-		return fmt.Errorf("tenant must have at least one service or lua_routes configured")
+	// Require at least one route configuration
+	hasRoutes := len(t.Routes) > 0 || len(t.RouteGroups) > 0 || len(t.LuaRoutes) > 0 || len(t.Services) > 0
+	if !hasRoutes {
+		return fmt.Errorf("tenant must have at least one route, route_group, lua_routes, or service configured")
 	}
+
+	// Validate services
 	for _, s := range t.Services {
 		u, err := url.Parse(s.URL)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			return fmt.Errorf("service %q has invalid url: %q", s.Name, s.URL)
+		}
+	}
+
+	// Validate routes
+	for i, route := range t.Routes {
+		if route.Method == "" {
+			return fmt.Errorf("route %d: method is required", i)
+		}
+		if route.Pattern == "" {
+			return fmt.Errorf("route %d: pattern is required", i)
+		}
+		if route.Handler == "" && route.Backend == "" {
+			return fmt.Errorf("route %d: either handler or backend is required", i)
+		}
+		if route.Handler != "" && route.Backend != "" {
+			return fmt.Errorf("route %d: cannot specify both handler and backend", i)
+		}
+	}
+
+	// Validate route groups
+	for i, group := range t.RouteGroups {
+		if group.Pattern == "" {
+			return fmt.Errorf("route_group %d: pattern is required", i)
+		}
+		if len(group.Routes) == 0 {
+			return fmt.Errorf("route_group %d: must have at least one route", i)
 		}
 	}
 
