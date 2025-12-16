@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	"keystone-gateway/internal/app"
+	"keystone-gateway/internal/gateway"
 	"keystone-gateway/internal/config"
 )
 
@@ -65,26 +65,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create application
-	application, err := app.New(cfg, Version)
+	// Create gateway
+	gw, err := gateway.New(cfg, Version)
 	if err != nil {
-		slog.Error("app_creation_failed", "error", err)
+		slog.Error("gateway_creation_failed", "error", err)
 		os.Exit(1)
 	}
 
 	// Run server with graceful shutdown
-	if err := runServer(application, *addr); err != nil {
+	if err := runServer(gw, *addr); err != nil {
 		slog.Error("server_run_failed", "error", err)
 		os.Exit(1)
 	}
 }
 
 // runServer runs the server with proper context cancellation and graceful shutdown
-func runServer(application *app.Application, addr string) error {
+func runServer(gw *gateway.Gateway, addr string) error {
 	// Create HTTP server
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           application.Handler(),
+		Handler:           gw.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -126,7 +126,7 @@ func runServer(application *app.Application, addr string) error {
 		slog.Info("shutdown_initiated")
 
 		// Stop application components
-		application.Stop()
+		gw.Stop()
 
 		// Create shutdown context with timeout
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), DefaultShutdownTimeout)

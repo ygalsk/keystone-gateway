@@ -437,14 +437,20 @@ This aligns with the core principle: "The gateway provides primitives, infrastru
 ```go
 type Config struct {
     Tenants       []Tenant
-    AdminBasePath string
-    Server        ServerConfig
+    Server        ServerConfig  // Empty struct, placeholder for future
+    LuaRouting    LuaRoutingConfig
     Compression   CompressionConfig
     RequestLimits RequestLimitsConfig
 }
 
 func LoadConfig(path string) (*Config, error)
 ```
+
+**Defaults Applied Automatically:**
+- Compression.Level: 5 (balanced)
+- Compression.ContentTypes: 6 common MIME types
+- RequestLimits.MaxBodySize: 10MB
+- All defaults applied via `UnmarshalYAML` (impossible to create Config without defaults)
 
 **Why shallow is OK here:**
 - Configuration is inherently structural (not algorithmic)
@@ -799,6 +805,134 @@ end
 
 This section documents major architectural decisions and their rationale.
 
+### Decision: Remove Host-Based Routing (HostRouter) (Dec 2025)
+
+**Context:**
+The gateway supported both path-based routing (via Chi router) and host-based routing (via `hostrouter` library). This dual routing system created complexity:
+- `Handler()` method returned either `gw.router` OR `gw.hostRouter` depending on tenant config
+- Lua routes registered only on `gw.router`, becoming unreachable when host-based routing was enabled
+- Two different routing mechanisms that behaved differently
+- Unclear mental model for users
+
+**Decision:**
+Remove `hostrouter` dependency entirely. Gateway now uses **path-based routing only**. Domain-based routing should be handled by external reverse proxies, ingress controllers, or load balancers.
+
+**Rationale:**
+1. **"Gateway is dumb" principle**: Domain routing is infrastructure, not a gateway primitive
+2. **Simpler mental model**: One router (`chi.Mux`), one routing mechanism
+3. **Aligns with health check removal**: Both delegate infrastructure concerns to infrastructure layer
+4. **Fixes Lua route bug**: Lua routes now always work since there's only one router
+5. **Cloud-native pattern**: Ingress controllers and reverse proxies are designed for domain routing
+6. **Consistent with design philosophy**: Gateway provides HTTP primitives, infrastructure provides routing
+
+**Implementation:**
+- Removed `hostRouter hostrouter.Routes` field from Gateway struct
+- Removed `import "github.com/go-chi/hostrouter"`
+- Removed `Domains []string` field from Tenant config
+- Simplified `Handler()` to always return `gw.router`
+- Removed domain validation logic (`isValidDomain()` function)
+- Updated `setupSingleTenantRoutes()` to only handle path-based routing
+- Updated tenant validation: `PathPrefix` is now optional (defaults to catch-all `/*` if not specified)
+- Updated tests to use path-based routing
+
+**Migration Path:**
+Users who relied on domain-based routing should:
+
+**Example migration:**
+```yaml
+# Before (v4.x) - Host-based routing
+tenants:
+  - name: "api"
+    domains: ["api.example.com"]
+    services:
+      - url: "http://backend:3000"
+  - name: "admin"
+    domains: ["admin.example.com"]
+    services:
+      - url: "http://admin-backend:4000"
+
+# After (v5.x) - Path-based routing with external reverse proxy
+# Nginx/HAProxy configuration:
+# api.example.com -> proxy to gateway:8080/api
+# admin.example.com -> proxy to gateway:8080/admin
+
+tenants:
+  - name: "api"
+    path_prefix: "/api"
+    services:
+      - url: "http://backend:3000"
+  - name: "admin"
+    path_prefix: "/admin"
+    services:
+      - url: "http://admin-backend:4000"
+```
+
+**Nginx example for domain routing:**
+```nginx
+server {
+    listen 80;
+    server_name api.example.com;
+    location / {
+        proxy_pass http://gateway:8080/api;
+    }
+}
+
+server {
+    listen 80;
+    server_name admin.example.com;
+    location / {
+        proxy_pass http://gateway:8080/admin;
+    }
+}
+```
+
+**Kubernetes Ingress example:**
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: gateway-ingress
+spec:
+  rules:
+  - host: api.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway
+            port:
+              number: 8080
+        # Gateway will receive requests at /api path prefix
+  - host: admin.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: gateway
+            port:
+              number: 8080
+```
+
+**Trade-offs:**
+- ✅ **Gains**:
+  - Simpler architecture (one router, one routing mechanism)
+  - Lua routes always work (no hidden router switching)
+  - Removed ~50 lines of domain routing code
+  - Clearer mental model for users
+  - Aligns with "gateway is dumb" principle
+- ⚠️ **Loses**:
+  - Built-in domain-based routing
+  - Requires external reverse proxy for domain routing
+- **Verdict**: Simplification and architectural clarity outweigh the convenience of built-in domain routing
+
+This is a **breaking change** requiring a major version bump (v5.0.0).
+
+---
+
 ### Decision: Delegate Health Checking to External Infrastructure (Dec 2025)
 
 **Context:**
@@ -859,6 +993,15 @@ Could potentially be merged into the constructor or caller, but keeping it provi
 
 ### What's Going Well
 
+✅ **Host-Based Routing Removal** (Dec 2025) - Simplified routing architecture:
+- Removed `hostrouter` dependency and `Domains` config field
+- Simplified `Handler()` method to always return single router
+- Fixed Lua route bug (routes now always reachable)
+- Removed ~50 lines of domain routing code
+- Clearer mental model: path-based routing only
+- Aligns with "gateway is dumb" principle
+- See **Design Decisions Record** above for full rationale
+
 ✅ **Health Checking Removal** (Dec 2025) - Achieved stateless design:
 - Removed ~150 lines of health checking code from Gateway
 - Eliminated health check goroutines, state synchronization, context management
@@ -879,6 +1022,14 @@ Could potentially be merged into the constructor or caller, but keeping it provi
 - Moved health check endpoint directly into `application.go`
 - Removed route group complexity
 - More direct, easier to understand
+
+✅ **Configuration Anti-Pattern Fixes** (Dec 2025) - Cleaned up config module:
+- Removed 8+ dead fields (TLSConfig, AdminBasePath, Tenant.Interval, Service.Health, ServerConfig.Port, unused RequestLimits fields)
+- Fixed pass-through anti-pattern: lua.Engine no longer receives full Config, only maxBodySize it needs
+- Moved defaults from ApplyDefaults() to UnmarshalYAML (impossible to create Config without defaults)
+- Reduced coupling between config and lua packages
+- Net reduction: -27 lines, cleaner codebase
+- All changes approved by REVIEWER agent
 
 ✅ **Script Compilation** (Earlier) - Unified compiler cache:
 - Single `ScriptCompiler` handles all Lua bytecode caching
@@ -1449,6 +1600,16 @@ Before writing any code, ask:
 - Major refactoring occurs
 
 **Version history:**
+- v5.0.0 (Dec 2025): Host-based routing removal - path-only routing
+  - **BREAKING CHANGE**: Removed `hostrouter` dependency and `Domains` config field
+  - Gateway now uses path-based routing only
+  - Domain routing delegated to external reverse proxies/ingress controllers
+  - Simplified `Handler()` method to always return single Chi router
+  - Fixed bug where Lua routes were unreachable when host-based routing was enabled
+  - Removed ~50 lines of domain routing code
+  - Updated tenant validation: `PathPrefix` is now optional
+  - Added comprehensive migration examples (Nginx, Kubernetes Ingress)
+  - Documented in "Design Decisions Record" section
 - v4.0.0 (Dec 2025): Health checking removal - stateless gateway design
   - **BREAKING CHANGE**: Removed all health checking and load balancing from Gateway
   - Added "Design Decisions Record" section documenting architectural choices

@@ -420,6 +420,7 @@
             border-radius: 0.75rem;
             overflow: hidden;
             box-shadow: var(--shadow-lg);
+            max-width: 100%;
         }
 
         .code-header {
@@ -463,6 +464,7 @@
             color: var(--code-text);
             white-space: pre;
             overflow-x: auto;
+            max-width: 100%;
         }
 
         .code-comment { color: var(--code-comment); }
@@ -630,6 +632,21 @@
         @media (max-width: 768px) {
             .container {
                 padding: 0 1rem;
+            }
+
+            .code-block {
+                max-width: 100%;
+                overflow-x: auto;
+            }
+
+            .code-content {
+                font-size: 0.75rem;
+                padding: 1rem;
+            }
+
+            .hero-code {
+                max-width: 100%;
+                overflow: hidden;
             }
 
             .h1 {

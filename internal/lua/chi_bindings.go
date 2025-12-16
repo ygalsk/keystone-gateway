@@ -10,6 +10,8 @@ import (
 	"layeh.com/gopher-luar"
 )
 
+//shoudlnt this be handled the sma eway as the modules?
+
 // SetupChiBindings exposes modules and routing functions to the Lua state.
 // This function now uses gopher-luar to eliminate manual bindings.
 func (e *Engine) SetupChiBindings(L *lua.LState, r chi.Router) {

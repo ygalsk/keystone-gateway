@@ -1,0 +1,38 @@
+# Test Configuration for Path-Based Routing
+# This demonstrates the new v5.0.0 architecture with path-only routing
+
+middleware:
+  request_id: true
+  real_ip: true
+  logging: true
+  recovery: true
+  timeout: 30
+  throttle: 100
+
+compression:
+  enabled: true
+  level: 5
+
+request_limits:
+  max_body_size: 10485760  # 10MB
+
+tenants:
+  # Tenant 1: API service on /api path
+  - name: "api-service"
+    path_prefix: "/api"
+    services:
+      - name: "api-backend"
+        url: "http://localhost:9001"
+
+  # Tenant 2: Admin service on /admin path
+  - name: "admin-service"
+    path_prefix: "/admin"
+    services:
+      - name: "admin-backend"
+        url: "http://localhost:9002"
+
+  # Tenant 3: Catch-all service (no path prefix)
+  - name: "default-service"
+    services:
+      - name: "default-backend"
+        url: "http://localhost:9003"

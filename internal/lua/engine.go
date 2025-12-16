@@ -13,6 +13,7 @@ import (
 	lua "github.com/yuin/gopher-lua"
 )
 
+//should become sensible defautls with abilty to manipualte the IMPORTATN parts for performance for power users and testers
 const (
 	MaxScriptExecutionTime = 10 * time.Second
 	DefaultStatePoolSize   = 10
@@ -36,7 +37,7 @@ func NewEngine(scriptsDir string, router *chi.Mux, maxBodySize int64) *Engine {
 		scriptsDir:  scriptsDir,
 		scriptPaths: make(map[string]string),
 		globalPaths: make(map[string]string),
-		compiler:    NewScriptCompiler(150), // Unified cache for all scripts
+		compiler:    NewScriptCompiler(150), // Unified cache for all scripts MAGIC NUMVER HALLO???
 		router:      router,
 		maxBodySize: maxBodySize,
 	}
@@ -46,7 +47,7 @@ func NewEngine(scriptsDir string, router *chi.Mux, maxBodySize int64) *Engine {
 			CallStackSize: LuaCallStackSize,
 			RegistrySize:  LuaRegistrySize,
 		})
-		// Bind Chi directly from your chi-bindings.go
+		// Bind Chi directly from your chi-bindings.go this is very obfuscating ??
 		engine.SetupChiBindings(L, router)
 		L.SetGlobal("log", L.NewFunction(func(L *lua.LState) int {
 			slog.Info("lua_log", "message", L.ToString(1))

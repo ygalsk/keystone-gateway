@@ -16,10 +16,7 @@ type LuaStatePool struct {
 	mu          sync.Mutex
 	created     int64
 	closed      bool
-	// Removed scripts - now using Engine's ScriptCompiler
 }
-
-// CompiledScript type removed - now using ScriptCompiler.CompiledScript
 
 // NewLuaStatePool creates a new pool of Lua states with improved thread safety
 func NewLuaStatePool(maxStates int, createState func() *lua.LState) *LuaStatePool {
@@ -27,7 +24,6 @@ func NewLuaStatePool(maxStates int, createState func() *lua.LState) *LuaStatePoo
 		pool:        make(chan *lua.LState, maxStates),
 		maxStates:   maxStates,
 		createState: createState,
-		// scripts map removed - using Engine's ScriptCompiler
 	}
 }
 
@@ -89,5 +85,3 @@ func (p *LuaStatePool) Close() {
 		L.Close()
 	}
 }
-
-// RegisterScript and GetScript methods removed - using Engine's ScriptCompiler instead

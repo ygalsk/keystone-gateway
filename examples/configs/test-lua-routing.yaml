@@ -1,0 +1,31 @@
+# Test Configuration for Lua-Based Routing
+# Demonstrates v5.0.0 path-based routing with Lua scripts
+
+# Enable Lua routing
+lua_routing:
+  enabled: true
+  scripts_dir: "./examples/scripts"
+
+tenants:
+  # Tenant 1: Pure Lua routing with middleware (no backend services)
+  - name: "lua-service"
+    path_prefix: "/lua"
+    lua_routes:
+      - "test-middleware"  # Middleware MUST come before routes
+      - "test-routes"
+
+  # Tenant 2: API service with traditional proxy
+  - name: "api-service"
+    path_prefix: "/api"
+    services:
+      - name: "api-backend"
+        url: "http://localhost:9001"
+
+  # Tenant 3: Mixed - Lua routes + backend proxy
+  - name: "hybrid-service"
+    path_prefix: "/hybrid"
+    lua_routes:
+      - "test-routes"
+    services:
+      - name: "hybrid-backend"
+        url: "http://localhost:9002"

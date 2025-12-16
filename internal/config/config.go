@@ -4,7 +4,6 @@ package config
 
 import (
 	"fmt"
-	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -32,17 +31,22 @@ type RequestLimitsConfig struct {
 	MaxBodySize int64 `yaml:"max_body_size,omitempty"` // Max request body size in bytes (default: 10MB)
 }
 
-// ServerConfig represents server configuration
-// Note: Port is removed as CLI flag takes precedence
-type ServerConfig struct {
+// MiddlewareConfig controls which middleware components are enabled.
+type MiddlewareConfig struct {
+	RequestID bool `yaml:"request_id"` // Generate request IDs (default: true)
+	RealIP    bool `yaml:"real_ip"`    // Parse real IP from headers (default: true)
+	Logging   bool `yaml:"logging"`    // Log requests (default: true)
+	Recovery  bool `yaml:"recovery"`   // Recover from panics (default: true)
+	Timeout   int  `yaml:"timeout"`    // Request timeout in seconds (default: 10)
+	Throttle  int  `yaml:"throttle"`   // Max concurrent requests (default: 100)
 }
 
 // Config represents the main configuration structure for the gateway,
 // containing tenant definitions and configuration sections.
 type Config struct {
 	Tenants       []Tenant            `yaml:"tenants"`
-	Server        ServerConfig        `yaml:"server,omitempty"`
-	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"` // Embedded Lua routing only
+	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"`    // Embedded Lua routing only
+	Middleware    MiddlewareConfig    `yaml:"middleware"`     // Middleware configuration
 	Compression   CompressionConfig   `yaml:"compression"`
 	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
 }
@@ -54,6 +58,14 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	type rawConfig Config
 	raw := rawConfig{
 		// Set defaults before unmarshaling
+		Middleware: MiddlewareConfig{
+			RequestID: true,
+			RealIP:    true,
+			Logging:   true,
+			Recovery:  true,
+			Timeout:   10,
+			Throttle:  100,
+		},
 		Compression: CompressionConfig{
 			Level: 5,
 			ContentTypes: []string{
@@ -75,6 +87,12 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	// Apply defaults for zero values
+	if raw.Middleware.Timeout == 0 {
+		raw.Middleware.Timeout = 10
+	}
+	if raw.Middleware.Throttle == 0 {
+		raw.Middleware.Throttle = 100
+	}
 	if raw.Compression.Level == 0 {
 		raw.Compression.Level = 5
 	}
@@ -97,11 +115,11 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // Tenant represents a routing configuration for a specific application or service,
-// supporting host-based, path-based, or hybrid routing strategies.
+// using path-based routing. For domain-based routing, use an external reverse proxy
+// (Nginx, HAProxy) or ingress controller to route different domains to different path prefixes.
 type Tenant struct {
 	Name       string    `yaml:"name"`
 	PathPrefix string    `yaml:"path_prefix,omitempty"`
-	Domains    []string  `yaml:"domains,omitempty"`
 	LuaRoutes  []string  `yaml:"lua_routes,omitempty"` // Scripts for route definition
 	Services   []Service `yaml:"services"`
 }
@@ -142,25 +160,12 @@ func LoadConfig(path string) (*Config, error) {
 }
 
 // ValidateTenant validates a tenant configuration for correctness.
+// PathPrefix is optional - if not specified, tenant will use catch-all route.
 func ValidateTenant(t Tenant) error {
-	if len(t.Domains) == 0 && t.PathPrefix == "" {
-		return fmt.Errorf("must specify either domains or path_prefix")
-	}
-
-	for _, domain := range t.Domains {
-		if !isValidDomain(domain) {
-			return fmt.Errorf("invalid domain: %s", domain)
-		}
-	}
-
 	if t.PathPrefix != "" {
 		if !strings.HasPrefix(t.PathPrefix, "/") {
 			return fmt.Errorf("path_prefix must start with '/'")
 		}
-		// Temporarily removed trailing slash requirement to test Chi mounting
-		// if !strings.HasSuffix(t.PathPrefix, "/") {
-		//	return fmt.Errorf("path_prefix must end with '/'")
-		// }
 	}
 
 	// Require at least one service ONLY if no Lua routing is configured
@@ -175,19 +180,4 @@ func ValidateTenant(t Tenant) error {
 	}
 
 	return nil
-}
-
-// isValidDomain performs basic domain name validation.
-func isValidDomain(domain string) bool {
-	if domain == "" || strings.Contains(domain, " ") {
-		return false
-	}
-
-	// Reject IP addresses (both IPv4 and IPv6)
-	if net.ParseIP(domain) != nil {
-		return false
-	}
-
-	// Basic domain validation: must contain a dot and have valid format
-	return strings.Contains(domain, ".")
 }
