@@ -15,8 +15,8 @@ import (
 	"time"
 
 	"golang.org/x/sync/errgroup"
-	"keystone-gateway/internal/gateway"
 	"keystone-gateway/internal/config"
+	"keystone-gateway/internal/gateway"
 )
 
 // Constants for the application

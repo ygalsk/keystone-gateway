@@ -16,8 +16,8 @@ type LuaRoutingConfig struct {
 	Enabled       bool     `yaml:"enabled"`
 	ScriptsDir    string   `yaml:"scripts_dir,omitempty"`
 	GlobalScripts []string `yaml:"global_scripts,omitempty"`
-	ModulePaths   []string `yaml:"module_paths,omitempty"`   // Lua module paths for LuaRocks
-	ModuleCPaths  []string `yaml:"module_cpaths,omitempty"`  // C module paths for LuaRocks
+	ModulePaths   []string `yaml:"module_paths,omitempty"`    // Lua module paths for LuaRocks
+	ModuleCPaths  []string `yaml:"module_cpaths,omitempty"`   // C module paths for LuaRocks
 	StatePoolSize int      `yaml:"state_pool_size,omitempty"` // Lua VM pool size (default: 10)
 }
 
@@ -27,7 +27,6 @@ type CompressionConfig struct {
 	Level        int      `yaml:"level,omitempty"`         // Compression level (1-9, default: 5)
 	ContentTypes []string `yaml:"content_types,omitempty"` // MIME types to compress
 }
-
 
 // RequestLimitsConfig represents request size limits
 type RequestLimitsConfig struct {
@@ -48,8 +47,8 @@ type MiddlewareConfig struct {
 // containing tenant definitions and configuration sections.
 type Config struct {
 	Tenants       []Tenant            `yaml:"tenants"`
-	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"`    // Embedded Lua routing only
-	Middleware    MiddlewareConfig    `yaml:"middleware"`     // Middleware configuration
+	LuaRouting    LuaRoutingConfig    `yaml:"lua_routing"` // Embedded Lua routing only
+	Middleware    MiddlewareConfig    `yaml:"middleware"`  // Middleware configuration
 	Compression   CompressionConfig   `yaml:"compression"`
 	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
 }
@@ -135,7 +134,7 @@ type RouteGroup struct {
 
 // ErrorHandlers represents custom error handlers
 type ErrorHandlers struct {
-	NotFound         string `yaml:"not_found,omitempty"`           // 404 handler (Lua function)
+	NotFound         string `yaml:"not_found,omitempty"`          // 404 handler (Lua function)
 	MethodNotAllowed string `yaml:"method_not_allowed,omitempty"` // 405 handler (Lua function)
 }
 
@@ -143,12 +142,12 @@ type ErrorHandlers struct {
 // using path-based routing. For domain-based routing, use an external reverse proxy
 // (Nginx, HAProxy) or ingress controller to route different domains to different path prefixes.
 type Tenant struct {
-	Name          string         `yaml:"name"`
-	PathPrefix    string         `yaml:"path_prefix,omitempty"`
-	Routes        []Route        `yaml:"routes,omitempty"`         // Go-owned explicit routes
-	RouteGroups   []RouteGroup   `yaml:"route_groups,omitempty"`  // Chi route groups
-	ErrorHandlers ErrorHandlers  `yaml:"error_handlers,omitempty"`
-	Services      []Service      `yaml:"services"`
+	Name          string        `yaml:"name"`
+	PathPrefix    string        `yaml:"path_prefix,omitempty"`
+	Routes        []Route       `yaml:"routes,omitempty"`       // Go-owned explicit routes
+	RouteGroups   []RouteGroup  `yaml:"route_groups,omitempty"` // Chi route groups
+	ErrorHandlers ErrorHandlers `yaml:"error_handlers,omitempty"`
+	Services      []Service     `yaml:"services"`
 
 	// DEPRECATED: Remove in v7.0.0 - use Routes instead
 	LuaRoutes []string `yaml:"lua_routes,omitempty"`
