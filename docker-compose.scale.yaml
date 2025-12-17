@@ -1,0 +1,55 @@
+# Horizontal Scaling Setup for Keystone Gateway
+#
+# This demonstrates running multiple gateway instances behind a load balancer
+# Expected performance: N instances × 80k req/sec
+#
+# Usage:
+#   docker-compose -f docker-compose.scale.yaml up -d
+#   docker-compose -f docker-compose.scale.yaml up -d --scale gateway=4  # Run 4 instances
+
+version: '3.8'
+
+services:
+  # Load balancer (nginx) - distributes requests across gateway instances
+  loadbalancer:
+    image: nginx:alpine
+    ports:
+      - "8080:80"  # External port 8080 maps to nginx port 80
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - gateway
+    networks:
+      - gateway-network
+    restart: unless-stopped
+
+  # Keystone Gateway instances (scale with --scale gateway=N)
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Don't expose ports directly - nginx will route to them
+    expose:
+      - "8080"
+    volumes:
+      - ./examples/configs/config-golua.yaml:/app/config.yaml:ro
+      - ./examples/scripts:/app/scripts:ro
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - LISTEN_ADDR=:8080
+    networks:
+      - gateway-network
+    restart: unless-stopped
+    # Resource limits (optional - tune based on your server)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 1G
+
+networks:
+  gateway-network:
+    driver: bridge
