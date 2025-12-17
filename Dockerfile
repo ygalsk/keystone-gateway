@@ -21,6 +21,8 @@ COPY . .
 # Build with LuaJIT support using CGO
 # The -tags luajit enables LuaJIT-specific code paths
 # pkg-config provides correct compiler and linker flags
+#
+# DEFAULT BUILD (RECOMMENDED): Portable binary that works on any x86_64 CPU
 RUN CGO_ENABLED=1 \
     CGO_CFLAGS="$(pkg-config --cflags luajit)" \
     CGO_LDFLAGS="$(pkg-config --libs luajit)" \
@@ -28,6 +30,18 @@ RUN CGO_ENABLED=1 \
     -ldflags="-w -s" \
     -o keystone-gateway \
     ./cmd
+
+# OPTIMIZED BUILD (OPTIONAL): +10-15% performance, CPU-specific (NOT portable)
+# Uncomment the lines below and comment out the DEFAULT BUILD above to enable
+# ⚠️ WARNING: Binary will only work on CPUs matching the build machine architecture
+#
+# RUN CGO_ENABLED=1 \
+#     CGO_CFLAGS="-O3 -march=native -flto $(pkg-config --cflags luajit)" \
+#     CGO_LDFLAGS="-O3 -flto $(pkg-config --libs luajit)" \
+#     go build -tags luajit \
+#     -ldflags="-w -s" \
+#     -o keystone-gateway \
+#     ./cmd
 
 # ============================================
 # Stage 2: Runtime

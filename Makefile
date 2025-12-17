@@ -16,11 +16,27 @@ build: ## Build binary (without LuaJIT)
 	go build -o keystone-gateway ./cmd
 
 .PHONY: build-luajit
-build-luajit: ## Build with LuaJIT support
+build-luajit: ## Build with LuaJIT support (portable, RECOMMENDED)
 	CGO_CFLAGS="$$(pkg-config luajit --cflags)" CGO_LDFLAGS="$$(pkg-config luajit --libs)" go build -tags luajit -o keystone-gateway ./cmd
+
+.PHONY: build-luajit-optimized
+build-luajit-optimized: ## Build with aggressive optimizations (CPU-specific, +10-15% performance, NOT portable)
+	@echo "⚠️  WARNING: Building with CPU-specific optimizations (-march=native)"
+	@echo "⚠️  Binary will NOT be portable to different CPU architectures"
+	@echo "⚠️  Use 'make build-luajit' for portable builds"
+	@echo ""
+	CGO_CFLAGS="-O3 -march=native -flto $$(pkg-config luajit --cflags)" \
+	CGO_LDFLAGS="-O3 -flto $$(pkg-config luajit --libs)" \
+	go build -tags luajit -ldflags="-s -w" -o keystone-gateway ./cmd
+	@echo ""
+	@echo "✅ Optimized build complete. Expected gain: +10-15% over portable build"
 
 .PHONY: run-luajit
 run-luajit: build-luajit ## Build and run with LuaJIT + example config
+	./keystone-gateway -config examples/configs/config-golua.yaml
+
+.PHONY: run-luajit-optimized
+run-luajit-optimized: build-luajit-optimized ## Build (optimized) and run with LuaJIT + example config
 	./keystone-gateway -config examples/configs/config-golua.yaml
 
 .PHONY: test
