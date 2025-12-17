@@ -102,17 +102,13 @@ function my_handler(req)
     local token = req.headers["Authorization"]
     local query_val = req.query.foo
 
-    -- Make HTTP requests
-    local resp, err = http_get("https://api.example.com/data")
-    if err then
-        log("Error: " .. err)
-        return {status = 500, body = "Internal error"}
-    end
+    -- Use LuaRocks modules for HTTP requests, JSON, etc.
+    -- Example: local http = require("http.request")
 
     -- Return response table
     return {
         status = 200,
-        body = resp.body,
+        body = "Response body",
         headers = {["Content-Type"] = "application/json"}
     }
 end
@@ -133,7 +129,8 @@ end
 **Key Points:**
 - **Request table**: `req.method`, `req.path`, `req.headers`, `req.params`, `req.query`, `req.body`
 - **Response table**: `{status = 200, body = "...", headers = {...}}`
-- **Go primitives**: `log(msg)`, `http_get(url)`, `http_post(url, body, headers)`
+- **Go primitive**: `log(msg)` for structured logging
+- **LuaRocks support**: Use modules like `http`, `lua-cjson` for advanced functionality
 - **Configuration**: Routes and middleware defined in YAML config
 - See example scripts in `examples/scripts/` directory  
 

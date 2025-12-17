@@ -1,6 +1,10 @@
 -- Example Lua handlers using LuaRocks modules
 -- Demonstrates Go-Owned Routing + LuaJIT architecture
 
+-- Install LuaRocks modules:
+-- luarocks install lua-cjson
+-- luarocks install http
+
 -- Try to load cjson from LuaRocks (falls back to simple JSON if not available)
 local cjson_ok, cjson = pcall(require, "cjson")
 if not cjson_ok then
@@ -50,18 +54,32 @@ function get_user(req)
 
     -- log("Getting user: " .. user_id)
 
-    -- Simulate backend call using http_get primitive
-    local resp, err = http_get("https://jsonplaceholder.typicode.com/users/" .. user_id)
-
-    if err then
+    -- Use LuaRocks http module for HTTP requests
+    local http_ok, http_request = pcall(require, "http.request")
+    if not http_ok then
         return {
             status = 500,
-            body = encode_json({error = err}),
+            body = encode_json({error = "http module not available - install with: luarocks install http"}),
             headers = {["Content-Type"] = "application/json"}
         }
     end
 
-    if resp.status == 404 then
+    -- Make HTTP request
+    local request = http_request.new_from_uri("https://jsonplaceholder.typicode.com/users/" .. user_id)
+    local headers, stream = request:go()
+
+    if not headers then
+        return {
+            status = 500,
+            body = encode_json({error = "Failed to fetch user"}),
+            headers = {["Content-Type"] = "application/json"}
+        }
+    end
+
+    local status_code = tonumber(headers:get(":status"))
+    local body = stream:get_body_as_string()
+
+    if status_code == 404 then
         return {
             status = 404,
             body = encode_json({error = "User not found", id = user_id}),
@@ -71,8 +89,8 @@ function get_user(req)
 
     -- Return the user data
     return {
-        status = 200,
-        body = resp.body,
+        status = status_code,
+        body = body,
         headers = {["Content-Type"] = "application/json"}
     }
 end
@@ -92,24 +110,38 @@ function create_user(req)
         }
     end
 
-    -- Make POST request to backend
-    local resp, err = http_post(
-        "https://jsonplaceholder.typicode.com/users",
-        user_data,
-        {["Content-Type"] = "application/json"}
-    )
-
-    if err then
+    -- Use LuaRocks http module for HTTP POST
+    local http_ok, http_request = pcall(require, "http.request")
+    if not http_ok then
         return {
             status = 500,
-            body = encode_json({error = err}),
+            body = encode_json({error = "http module not available - install with: luarocks install http"}),
             headers = {["Content-Type"] = "application/json"}
         }
     end
 
+    -- Make POST request to backend
+    local request = http_request.new_from_uri("https://jsonplaceholder.typicode.com/users")
+    request.headers:upsert(":method", "POST")
+    request.headers:upsert("content-type", "application/json")
+    request:set_body(user_data)
+
+    local headers, stream = request:go()
+
+    if not headers then
+        return {
+            status = 500,
+            body = encode_json({error = "Failed to create user"}),
+            headers = {["Content-Type"] = "application/json"}
+        }
+    end
+
+    local status_code = tonumber(headers:get(":status"))
+    local body = stream:get_body_as_string()
+
     return {
-        status = resp.status,
-        body = resp.body,
+        status = status_code,
+        body = body,
         headers = {["Content-Type"] = "application/json"}
     }
 end

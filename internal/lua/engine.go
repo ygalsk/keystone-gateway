@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 
 	lua "github.com/aarzilli/golua/lua"
 	"github.com/go-chi/chi/v5"
@@ -379,7 +378,7 @@ func (e *Engine) writeResponseFromTable(L *lua.State, w http.ResponseWriter) err
 	return nil
 }
 
-// registerPrimitives registers Go functions as Lua global functions
+// registerPrimitives registers Go primitives as Lua global functions (currently just log)
 func (e *Engine) registerPrimitives(L *lua.State) {
 	// Register log() function
 	L.Register("log", func(L *lua.State) int {
@@ -388,125 +387,6 @@ func (e *Engine) registerPrimitives(L *lua.State) {
 			slog.Info("lua_log", "message", msg, "component", "lua")
 		}
 		return 0
-	})
-
-	// Register http_get() function
-	L.Register("http_get", func(L *lua.State) int {
-		if L.GetTop() < 1 || !L.IsString(1) {
-			L.PushNil()
-			L.PushString("url parameter required")
-			return 2
-		}
-
-		url := L.ToString(1)
-		resp, err := http.Get(url)
-		if err != nil {
-			L.PushNil()
-			L.PushString(err.Error())
-			return 2
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			L.PushNil()
-			L.PushString(err.Error())
-			return 2
-		}
-
-		// Return response table
-		L.NewTable()
-		L.PushString("status")
-		L.PushInteger(int64(resp.StatusCode))
-		L.SetTable(-3)
-		L.PushString("body")
-		L.PushString(string(body))
-		L.SetTable(-3)
-		L.PushString("headers")
-		L.NewTable()
-		for key, values := range resp.Header {
-			if len(values) > 0 {
-				L.PushString(key)
-				L.PushString(values[0])
-				L.SetTable(-3)
-			}
-		}
-		L.SetTable(-3)
-
-		L.PushNil() // No error
-		return 2    // Return (response_table, nil)
-	})
-
-	// Register http_post() function
-	L.Register("http_post", func(L *lua.State) int {
-		if L.GetTop() < 2 || !L.IsString(1) || !L.IsString(2) {
-			L.PushNil()
-			L.PushString("url and body parameters required")
-			return 2
-		}
-
-		url := L.ToString(1)
-		bodyStr := L.ToString(2)
-
-		// Create request
-		req, err := http.NewRequest("POST", url, strings.NewReader(bodyStr))
-		if err != nil {
-			L.PushNil()
-			L.PushString(err.Error())
-			return 2
-		}
-
-		// Set headers if provided (3rd parameter is optional headers table)
-		if L.GetTop() >= 3 && L.IsTable(3) {
-			L.PushNil()
-			for L.Next(3) != 0 {
-				if L.IsString(-2) && L.IsString(-1) {
-					key := L.ToString(-2)
-					value := L.ToString(-1)
-					req.Header.Set(key, value)
-				}
-				L.Pop(1)
-			}
-		}
-
-		// Make request
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			L.PushNil()
-			L.PushString(err.Error())
-			return 2
-		}
-		defer resp.Body.Close()
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			L.PushNil()
-			L.PushString(err.Error())
-			return 2
-		}
-
-		// Return response table
-		L.NewTable()
-		L.PushString("status")
-		L.PushInteger(int64(resp.StatusCode))
-		L.SetTable(-3)
-		L.PushString("body")
-		L.PushString(string(body))
-		L.SetTable(-3)
-		L.PushString("headers")
-		L.NewTable()
-		for key, values := range resp.Header {
-			if len(values) > 0 {
-				L.PushString(key)
-				L.PushString(values[0])
-				L.SetTable(-3)
-			}
-		}
-		L.SetTable(-3)
-
-		L.PushNil() // No error
-		return 2    // Return (response_table, nil)
 	})
 }
 

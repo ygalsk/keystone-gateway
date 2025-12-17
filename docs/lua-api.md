@@ -102,7 +102,7 @@ end
 
 **Critical**: Call `next()` **before** returning `nil`.
 
-## Go Primitives
+## Go Primitive
 
 ### log(message)
 
@@ -115,75 +115,6 @@ log("Error: " .. err)
 ```
 
 Writes to structured logger. Use for debugging and auditing.
-
-### http_get(url)
-
-**Input**: URL string
-**Output**: Response table, error string
-
-```lua
-local resp, err = http_get("https://api.example.com/users/123")
-
-if err then
-    log("HTTP error: " .. err)
-    return {status = 502, body = "Service unavailable"}
-end
-
--- resp = {
---     status = 200,
---     body = '{"id": 123, "name": "John"}',
---     headers = {["Content-Type"] = "application/json"}
--- }
-
-if resp.status == 200 then
-    return {status = 200, body = resp.body}
-end
-```
-
-**Response structure**:
-```lua
-{
-    status = 200,           -- HTTP status code (integer)
-    body = "...",           -- Response body (string)
-    headers = {             -- Response headers (table)
-        ["Content-Type"] = "application/json"
-    }
-}
-```
-
-**Error handling**:
-- Network error: `err` is non-nil string, `resp` is nil
-- HTTP error (4xx, 5xx): `err` is nil, check `resp.status`
-
-### http_post(url, body, headers)
-
-**Input**:
-- `url`: String URL
-- `body`: String request body
-- `headers`: Table of header name → value
-
-**Output**: Response table, error string
-
-```lua
-local resp, err = http_post(
-    "https://api.example.com/users",
-    '{"name": "John", "email": "john@example.com"}',
-    {
-        ["Content-Type"] = "application/json",
-        ["Authorization"] = "Bearer " .. token
-    }
-)
-
-if err then
-    return {status = 502, body = "Failed to create user"}
-end
-
-if resp.status == 201 then
-    return {status = 201, body = resp.body}
-end
-```
-
-**Headers table is optional**: Can pass empty `{}` or omit third argument.
 
 ## Error Handler Interface
 
@@ -232,82 +163,6 @@ routes:
     handler: "get_status"
 ```
 
-### Handler with URL Parameters
-
-```lua
-function get_user(req)
-    local user_id = req.params.id  -- From /users/{id}
-
-    local resp, err = http_get("https://api.example.com/users/" .. user_id)
-
-    if err then
-        log("Error fetching user: " .. err)
-        return {
-            status = 502,
-            body = '{"error": "Service unavailable"}'
-        }
-    end
-
-    return {
-        status = resp.status,
-        body = resp.body,
-        headers = {["Content-Type"] = "application/json"}
-    }
-end
-```
-
-**Config**:
-```yaml
-routes:
-  - method: "GET"
-    pattern: "/users/{id}"
-    handler: "get_user"
-```
-
-### Handler with Request Body
-
-```lua
-function create_user(req)
-    local body = req.body
-
-    if body == "" then
-        return {
-            status = 400,
-            body = '{"error": "Request body required"}'
-        }
-    end
-
-    local resp, err = http_post(
-        "https://api.example.com/users",
-        body,
-        {
-            ["Content-Type"] = "application/json",
-            ["Authorization"] = req.headers["Authorization"]
-        }
-    )
-
-    if err then
-        return {status = 502, body = '{"error": "Service error"}'}
-    end
-
-    return {
-        status = resp.status,
-        body = resp.body,
-        headers = {["Content-Type"] = "application/json"}
-    }
-end
-```
-
-**Config**:
-```yaml
-routes:
-  - method: "POST"
-    pattern: "/users"
-    handler: "create_user"
-    middleware:
-      - "require_auth"
-```
-
 ### Authentication Middleware
 
 ```lua
@@ -323,14 +178,12 @@ function require_auth(req, next)
         }
     end
 
-    -- Validate token (example: check with auth service)
-    local resp, err = http_get("https://auth.example.com/validate?token=" .. token)
-
-    if err or resp.status ~= 200 then
-        log("Token validation failed")
+    -- Basic token validation (check prefix)
+    if not token:match("^Bearer ") then
+        log("Invalid token format")
         return {
             status = 401,
-            body = '{"error": "Invalid token"}'
+            body = '{"error": "Invalid token format"}'
         }
     end
 
@@ -421,27 +274,6 @@ function json_handler(req)
 end
 ```
 
-### Proxy with Header Pass-Through
-
-```lua
-function proxy_handler(req)
-    local resp, err = http_get(
-        "https://backend.example.com" .. req.path,
-        req.headers  -- Pass all headers through
-    )
-
-    if err then
-        return {status = 502, body = "Backend unavailable"}
-    end
-
-    return {
-        status = resp.status,
-        body = resp.body,
-        headers = resp.headers
-    }
-end
-```
-
 ### Conditional Middleware
 
 ```lua
@@ -462,16 +294,14 @@ end
 
 ## Best Practices
 
-1. **Always check errors** from `http_get` and `http_post`
-2. **Set Content-Type** header for all responses
-3. **Log errors** for debugging
-4. **Return early** on validation failures
-5. **Use nil return** in middleware to continue chain
-6. **Don't forget** to call `next()` before returning nil
+1. **Set Content-Type** header for all responses
+2. **Log errors** for debugging
+3. **Return early** on validation failures
+4. **Use nil return** in middleware to continue chain
+5. **Don't forget** to call `next()` before returning nil
 
 ## Performance Notes
 
 - **Request body cached**: Reading `req.body` multiple times is free
 - **String operations**: Lua string concat (`..`) is efficient for small strings
-- **HTTP calls**: Pooled connections, reused across requests
 - **Table construction**: Pre-allocated internally for request tables
