@@ -1,13 +1,21 @@
 # Keystone Gateway - Roadmap
 
-**Purpose:** This document chronicles the evolution of Keystone Gateway from its initial release to the current state, explaining the decisions, refactorings, and lessons learned along the way.
+**Purpose:** This document chronicles the evolution of Keystone Gateway from its initial experimental releases to the current stable v1.0.0, explaining the decisions, refactorings, and lessons learned along the way.
 
 For philosophy and principles, see [MANIFEST.md](MANIFEST.md).
 For technical architecture, see [DESIGN.md](DESIGN.md).
 
 ---
 
-## The Journey: v1.0.0 → v5.0.0 (July 2025 - December 2025)
+## Version Reset (December 2025)
+
+**Note:** This project was reset to v1.0.0 in December 2025. The journey described below represents the **experimental phase** (archived as `archive/v1.0.0-experimental` through `archive/v4.0.0-experimental`). The current v1.0.0 represents the **first stable release**, incorporating all the lessons learned during this evolution.
+
+What was originally planned as v5.0.0 is now v1.0.0 - reflecting that this is truly the first production-ready release.
+
+---
+
+## The Journey: Experimental Phase (July 2025 - December 2025)
 
 **Theme:** From complex to simple. From opinionated to primitive. From stateful to stateless.
 
@@ -18,7 +26,7 @@ For technical architecture, see [DESIGN.md](DESIGN.md).
 ```
 July 2025        September 2025       December 2025
     |                    |                    |
-    v1.0.0              v2.0.0          v3.0.0 → v4.0.0 → v5.0.0
+ archive/v1.x        archive/v2.x    archive/v3.x → archive/v4.x → v1.0.0
     ↓                    ↓                    ↓
 Initial Release    Performance       The Great Simplification
 ```
@@ -314,7 +322,7 @@ This was **controversial but correct**. Some users initially resisted ("why remo
 
 ---
 
-### v5.0.0 (December 2025) - Path-Only Routing
+### Current v1.0.0 (formerly planned as v5.0.0) - Path-Only Routing
 
 **BREAKING CHANGES**
 
@@ -434,9 +442,9 @@ spec:
 - ⚠️ **Breaking change**: Users need external reverse proxy for domain routing
 
 **Lesson learned:**
-This completed the architectural simplification started in v4.0.0:
-- v4.0.0: Removed health checking (stateless)
-- v5.0.0: Removed host routing (path-only)
+This completed the architectural simplification started in archive/v4.0.0:
+- archive/v4.0.0: Removed health checking (stateless)
+- Current v1.0.0: Removed host routing (path-only)
 
 Both changes delegate infrastructure concerns to the infrastructure layer, making the gateway **purely a routing primitive**.
 
@@ -450,9 +458,9 @@ Both changes delegate infrastructure concerns to the infrastructure layer, makin
 
 ### Code Reduction
 ```
-Initial (v1.0.0):  ~3,500 lines
-Current (v5.0.0):  ~2,800 lines
-Reduction:         20% smaller codebase
+Initial (archive/v1.0.0):  ~3,500 lines
+Current (v1.0.0):          ~1,500 lines
+Reduction:                 ~57% smaller codebase
 ```
 
 ### Module Simplification
@@ -465,23 +473,23 @@ Total removed:     ~900 lines
 
 ### Architecture Evolution
 ```
-v1.0.0:  Stateful, opinionated, complex
+archive/v1.0.0:  Stateful, opinionated, complex
          ↓
-v2.0.0:  Performance optimized
+archive/v2.0.0:  Performance optimized
          ↓
-v3.0.0:  Deep modules, clean APIs
+archive/v3.0.0:  Deep modules, clean APIs
          ↓
-v4.0.0:  Stateless, cloud-native
+archive/v4.0.0:  Stateless, cloud-native
          ↓
-v5.0.0:  Path-only, primitives-focused
+v1.0.0:          Path-only, primitives-focused (first stable release)
 ```
 
-### Current State (v5.0.0)
+### Current State (v1.0.0)
 - **Stateless**: No backend state tracking, horizontal scaling
 - **Simple**: One router, clear routing semantics
-- **Deep modules**: 3 major modules (Request, Response, HTTP) with simple interfaces
+- **Lua scripting**: Powered by golua with LuaJIT for high performance
 - **Cloud-native**: Delegates health checking and domain routing to infrastructure
-- **Primitives-focused**: HTTP operations only, no opinions
+- **Primitives-focused**: Core routing operations only, no opinions
 
 ---
 
@@ -490,7 +498,7 @@ v5.0.0:  Path-only, primitives-focused
 ### What Worked ✅
 
 #### 1. Deep Modules Pattern
-**The win:** v3.0.0 refactoring reduced chi_bindings.go by 92% using gopher-luar.
+**The win:** archive/v3.0.0 refactoring reduced chi_bindings.go by 92%.
 
 **Why it worked:**
 - Simple interfaces hide complex implementations
@@ -500,7 +508,7 @@ v5.0.0:  Path-only, primitives-focused
 **Takeaway:** Invest in proper module design upfront. The payoff is massive.
 
 #### 2. Stateless Design
-**The win:** v4.0.0 removed health checking, making gateway horizontally scalable.
+**The win:** archive/v4.0.0 removed health checking, making gateway horizontally scalable.
 
 **Why it worked:**
 - Aligned with cloud-native infrastructure patterns
@@ -510,7 +518,7 @@ v5.0.0:  Path-only, primitives-focused
 **Takeaway:** Push state management to external systems. Stateless services are simpler and more scalable.
 
 #### 3. "Gateway is Dumb" Principle
-**The win:** v4.0.0 and v5.0.0 removed opinionated features (health checking, host routing).
+**The win:** archive/v4.0.0 and current v1.0.0 removed opinionated features (health checking, host routing).
 
 **Why it worked:**
 - Forced clear separation of concerns
@@ -531,7 +539,7 @@ v5.0.0:  Path-only, primitives-focused
 - External load balancers do this better
 - Not a routing primitive
 
-**Fix:** v4.0.0 removed it entirely. Delegate to infrastructure.
+**Fix:** archive/v4.0.0 removed it entirely. Delegate to infrastructure.
 
 #### 2. Host-Based Routing
 **The problem:** Dual routing system (Chi + hostrouter) created complexity and bugs.
@@ -541,7 +549,7 @@ v5.0.0:  Path-only, primitives-focused
 - Lua routes became unreachable with host routing enabled
 - Infrastructure concern, not gateway responsibility
 
-**Fix:** v5.0.0 removed it. Path-only routing with external reverse proxy for domains.
+**Fix:** Current v1.0.0 removed it. Path-only routing with external reverse proxy for domains.
 
 #### 3. Manual Lua Bindings
 **The problem:** chi_bindings.go had 598 lines of repetitive glue code.
@@ -551,7 +559,7 @@ v5.0.0:  Path-only, primitives-focused
 - Error-prone (easy to forget null checks, type checks)
 - Shallow module design (many small functions)
 
-**Fix:** v3.0.0 adopted gopher-luar. 92% code reduction.
+**Fix:** archive/v3.0.0 refactored with better binding approach. 92% code reduction.
 
 ---
 
@@ -566,7 +574,7 @@ Modern platforms provide:
 Keystone Gateway now **complements** these tools instead of **competing** with them.
 
 #### Simplicity Enables Understanding
-From 3,500 lines to 2,800 lines. From complex state management to stateless primitives.
+From ~3,500 lines to ~1,500 lines. From complex state management to stateless primitives.
 
 **Result:** New contributors can understand the codebase faster. Bugs are easier to find and fix.
 
@@ -582,26 +590,26 @@ We removed features (health checking, host routing) to **honor principles** (sta
 Looking back at this journey, several themes emerge:
 
 ### 1. Simplification is a Journey
-- v1.0.0: Built with good intentions
-- v1.4.0: First major refactoring (KISS/DRY)
-- v3.0.0: Deep modules refactoring (92% reduction)
-- v4.0.0: Removed health checking (stateless)
-- v5.0.0: Removed host routing (primitives-focused)
+- archive/v1.0.0: Built with good intentions
+- archive/v1.4.0: First major refactoring (KISS/DRY)
+- archive/v3.0.0: Deep modules refactoring (92% reduction)
+- archive/v4.0.0: Removed health checking (stateless)
+- Current v1.0.0: Removed host routing (primitives-focused)
 
 **Lesson:** Simplification isn't a one-time event. It's continuous refinement.
 
 ### 2. Break Things to Make Progress
-- v2.0.0: Breaking Lua API changes for performance
-- v4.0.0: Removed health checking (users needed external LBs)
-- v5.0.0: Removed host routing (users needed reverse proxy)
+- archive/v2.0.0: Breaking Lua API changes for performance
+- archive/v4.0.0: Removed health checking (users needed external LBs)
+- Current v1.0.0: Removed host routing (users needed reverse proxy)
 
 **Lesson:** Breaking changes are acceptable when they provide significant architectural improvement. Document migration paths clearly.
 
 ### 3. Principles Guide Decisions
 Every major decision was guided by principles from MANIFEST.md:
-- **Deep modules** → v3.0.0 refactoring
-- **Stateless** → v4.0.0 health checking removal
-- **General-purpose** → v4.0.0 and v5.0.0 infrastructure delegation
+- **Deep modules** → archive/v3.0.0 refactoring
+- **Stateless** → archive/v4.0.0 health checking removal
+- **General-purpose** → archive/v4.0.0 and current v1.0.0 infrastructure delegation
 - **Gateway is dumb** → All removal decisions
 
 **Lesson:** Explicit principles make tough decisions easier.
@@ -639,4 +647,4 @@ For planned features and evolution guidelines, see [MANIFEST.md - Future Evoluti
 
 **This roadmap is a living document. It will be updated as we continue evolving Keystone Gateway.**
 
-Last updated: December 2025 (v5.0.0)
+Last updated: December 2025 (v1.0.0 - First Stable Release)
