@@ -1,5 +1,5 @@
 # Working Examples
-
+//update to use http luarock not go primitive
 Complete, copy-paste-ready examples.
 
 > **⚡ Pro Tip**: Always check [LuaRocks](https://luarocks.org/) for existing libraries before implementing features yourself. Keystone Gateway supports LuaRocks modules out of the box.

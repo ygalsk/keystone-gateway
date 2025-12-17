@@ -269,7 +269,7 @@ func (e *Engine) pushRequestTable(L *lua.State, r *http.Request) error {
 		if len(values) > 0 {
 			L.PushString(key)
 			L.PushString(values[0]) // First value only
-			L.RawSet(-3)           // Faster than SetTable
+			L.RawSet(-3)            // Faster than SetTable
 		}
 	}
 	L.RawSet(-3)

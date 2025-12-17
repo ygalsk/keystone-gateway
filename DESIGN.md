@@ -374,7 +374,7 @@ routes:
 - **Information hiding**: User doesn't manage cache or know about Go internals
 
 ---
-
+// old reference
 ### 3. HTTP Client (Go Primitives)
 
 **Interface (Simple):**
@@ -555,7 +555,7 @@ L.CallByParam(...)
 **Rationale:** Lua states are expensive to create. Pooling is the standard pattern for Lua embedding.
 
 ---
-
+//old refernce
 ### Decision 5: Bytecode Compilation and Caching
 
 **Why compile to bytecode?**
@@ -654,6 +654,14 @@ tenants:
 ## Design Decisions Record
 
 This section documents major architectural decisions and their rationale.
+
+### Version Reset Note (Dec 2025)
+
+**Note:** This project was reset to v1.0.0 in December 2025. Previous versions (v1.0.0-v4.0.0) have been archived with the prefix `archive/vX.X.X-experimental` to reflect their experimental nature. The current v1.0.0 represents the first truly stable, production-ready release.
+
+The decisions documented below represent the evolution during the experimental phase that led to this stable release.
+
+---
 
 ### Decision: Remove Host-Based Routing (HostRouter) (Dec 2025)
 
@@ -806,34 +814,38 @@ This is a **breaking change** requiring a major version bump (v4.0.0).
 
 **For detailed version history with rationale and migration guides, see [ROADMAP.md](ROADMAP.md).**
 
-- **v5.0.0** (Dec 2025): Path-only routing - Removed host-based routing
-- **v4.0.0** (Dec 2025): Stateless gateway - Removed health checking
-- **v3.0.0** (Dec 2025): Deep modules refactoring - gopher-luar adoption
-- **v2.0.0** (Sep 2025): Performance breakthrough - Bytecode compilation
-- **v1.4.0** (Aug 2025): KISS/DRY refactoring
-- **v1.2.0** (Jul 2025): Host-based routing added (later removed in v5.0.0)
-- **v1.0.0** (Jul 2025): Initial release
+**Note:** Project was reset to v1.0.0 in December 2025. Previous versions are archived with `archive/` prefix.
+
+### Current Stable Release
+- **v1.0.0** (Dec 17, 2025): **First stable release** - Path-only routing, stateless architecture, ~1,500 lines
+
+### Archived Experimental Versions
+- **archive/v4.0.0** (Dec 2025): Stateless gateway - Removed health checking
+- **archive/v3.0.0** (Dec 2025): Deep modules refactoring
+- **archive/v2.0.0** (Sep 2025): Performance breakthrough - Bytecode compilation
+- **archive/v1.4.0** (Aug 2025): KISS/DRY refactoring
+- **archive/v1.2.0** (Jul 2025): Host-based routing added (later removed)
+- **archive/v1.0.0** (Jul 2025): Initial experimental release
 
 ---
 
 ## Appendix: Key Metrics
 
-**Current codebase (as of Dec 2025):**
-- Total lines: ~1,600 (excluding tests) - Down from ~3,500
-- Lua engine: Table-based API (simple, fast, predictable)
+**Current codebase (v1.0.0, Dec 2025):**
+- Total lines: ~1,500 (excluding tests) - Down from ~3,500 in archive/v1.0.0
+- Lua engine: Powered by golua with LuaJIT for high performance
 - Core modules: 3 (gateway, lua, config)
 - External dependencies: 3 (Chi, golua, yaml)
 
-**Achievements (Dec 2025 refactoring):**
-- ✅ Lua API: Table-based interface (request table in, response table out)
-- ✅ Go primitives: `log()`, `http_get()`, `http_post()` exposed to Lua
+**Achievements (through experimental phase to v1.0.0):**
+- ✅ Lua API: Simplified and streamlined
 - ✅ Handlers package removed (71 lines)
 - ✅ lua_routes.go removed (49 lines)
 - ✅ Script compilation unified (single compiler cache)
 - ✅ **Health checking removed** (~150 lines) - Gateway now stateless
 - ✅ **Host routing removed** (~50 lines) - Path-only routing
 - ✅ Gateway constructor simplified (single constructor pattern)
-- ✅ Total code reduction: ~1,900 lines removed (3,500 → 1,600)
+- ✅ Total code reduction: ~2,000 lines removed (3,500 → 1,500)
 
 **Code quality metrics:**
 - Functions >50 lines: 2 (down from 3)

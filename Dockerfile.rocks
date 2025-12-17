@@ -1,0 +1,49 @@
+# ============================================
+# Extended Image with LuaRocks Package Manager
+# ============================================
+# This Dockerfile extends the base keystone-gateway image
+# and adds LuaRocks for users who need Lua module management
+#
+# Build: docker build -f Dockerfile.luajit -t keystone-gateway:luarocks .
+# Usage: Same as base image, but with LuaRocks available
+
+FROM keystone-gateway:latest
+
+# Switch to root to install packages
+USER root
+
+# Install LuaRocks and its dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    luarocks \
+    build-essential \
+    libluajit-5.1-dev \
+    libssl-dev \
+    m4 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Optional: Pre-install commonly used LuaRocks modules
+# Uncomment the modules you want to include in the base image
+RUN luarocks install lua-cjson
+RUN luarocks install luasocket
+RUN luarocks install lpeg
+RUN luarocks install http
+
+# Ensure the gateway user can access installed rocks
+# LuaRocks installs to /usr/local/lib/lua and /usr/local/share/lua
+RUN chmod -R a+rX /usr/local/lib/lua /usr/local/share/lua 2>/dev/null || true
+
+# Switch back to non-root user
+USER gateway
+
+# Environment variables for LuaRocks module paths
+# These are automatically set by LuaRocks but we make them explicit
+ENV LUA_PATH="/usr/local/share/lua/5.1/?.lua;/usr/local/share/lua/5.1/?/init.lua;;" \
+    LUA_CPATH="/usr/local/lib/lua/5.1/?.so;;"
+
+# All other settings inherited from base image
+# - WORKDIR /app
+# - CONFIG_PATH=/app/config.yaml
+# - LISTEN_ADDR=:8080
+# - EXPOSE 8080
+# - HEALTHCHECK
+# - ENTRYPOINT and CMD

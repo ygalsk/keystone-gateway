@@ -8,8 +8,8 @@
 -- Try to load cjson from LuaRocks (falls back to simple JSON if not available)
 local cjson_ok, cjson = pcall(require, "cjson")
 if not cjson_ok then
-    -- log("WARNING: cjson not available, using simple JSON encoding")
-    -- log("Install with: sudo luarocks install lua-cjson")
+    log("WARNING: cjson not available, using simple JSON encoding")
+    log("Install with: sudo luarocks install lua-cjson")
 end
 
 -- Helper: encode JSON using cjson or fallback

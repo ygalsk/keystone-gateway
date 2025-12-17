@@ -49,8 +49,15 @@ clean: ## Clean build artifacts
 	go clean
 
 .PHONY: docker
-docker: ## Build Docker image
-	docker build -t keystone-gateway .
+docker: ## Build Docker image with LuaJIT support
+	docker build -t keystone-gateway:latest .
+
+.PHONY: docker-luajit
+docker-luajit: docker ## Alias for docker target (LuaJIT is default)
+
+.PHONY: docker-luarocks
+docker-luarocks: docker ## Build Docker image with LuaJIT + LuaRocks
+	docker build -f Dockerfile.luajit -t keystone-gateway:luarocks .
 
 .PHONY: all
 all: fmt lint test build ## Format, lint, test, and build

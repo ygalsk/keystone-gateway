@@ -5,7 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.0.0] - 2025-12-14
+## Version Reset (December 2025)
+
+**Note:** This project was reset to v1.0.0 in December 2025. Previous versions (v1.0.0-v4.0.0) have been archived with the prefix `archive/vX.X.X-experimental` to reflect their experimental nature. This v1.0.0 represents the first truly stable, production-ready release.
+
+The experimental phase (July-December 2025) involved rapid iteration and architectural exploration, including features that were later removed:
+- Microservices architecture (lua-stone service) - added in v2.0.0, removed in v1.4.0
+- Host-based routing - added in v1.2.0, removed in current version
+- Built-in health checking - present through v3.0.0, removed in v4.0.0
+- HTTP client functionality - removed from core
+
+See archived tags for historical reference.
+
+---
+
+## [1.0.0] - 2025-12-17
+
+First stable release of Keystone Gateway.
+
+### Highlights
+- Multi-service reverse proxy with Lua scripting support
+- Stateless, cloud-native architecture
+- Single backend per service for simplicity
+- Comprehensive documentation (MANIFEST.md, DESIGN.md, ROADMAP.md)
+- Simplified codebase focused on core routing primitives (~1,500 lines)
+
+### Architecture
+- Fully stateless design (no health checking, no backend state)
+- Cloud-native (delegates health checks and load balancing to infrastructure)
+- Path-based routing only (no host-based routing complexity)
+- Single backend per service (external load balancer handles HA)
+
+### Lua Scripting
+- Powered by golua with LuaJIT for high performance
+- Request/response manipulation
+- Chi router integration for URL parameters
+- Comprehensive examples in examples/scripts/
+
+### Documentation
+- MANIFEST.md - Project philosophy and principles
+- DESIGN.md - Design decisions and architectural rationale
+- ROADMAP.md - Evolution story and lessons learned
+- Comprehensive examples in examples/scripts/
+
+---
+
+## Archived Experimental Versions
+
+The following versions represent the experimental/development phase. All tags have been archived with the `archive/` prefix.
+
+## [archive/v4.0.0-experimental] - 2025-12-14
 
 **BREAKING CHANGES**
 

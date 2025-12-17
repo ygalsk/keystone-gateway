@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.rocks
+      # Build with your host user's UID/GID to match file permissions
+      # This ensures the container can read your mounted files
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    container_name: keystone-gateway
+
+    # Alternative: Run as current user without rebuilding
+    # Uncomment the line below and comment out the build args above
+    # user: "${UID:-1000}:${GID:-1000}"
+
+    # Volume mounts for configuration and Lua scripts
+    volumes:
+      # Mount your config file (read-only)
+      # Note: :z flag is for SELinux systems (RHEL/Fedora/CentOS)
+      # Use :z for shared volumes or :Z for private volumes
+      # Using config-docker.yaml which has container-appropriate paths
+      - ./examples/configs/config-docker.yaml:/app/config.yaml:ro,z
+      # Mount your Lua scripts directory (read-only)
+      - ./examples/scripts:/app/scripts:ro,z
+
+    # Port mapping
+    ports:
+      - "8080:8080"
+
+    # Environment variables (optional overrides)
+    # Uncomment to customize
+    # environment:
+    #   - CONFIG_PATH=/app/config.yaml
+    #   - LISTEN_ADDR=:8080
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Resource limits (optional but recommended)
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 128M
+
+    # Health check is built into the image
+    # Check status with: docker ps
+
+    # Logging configuration (optional)
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# Example of running multiple gateway instances with different configs
+# Uncomment to enable:
+#
+#  gateway-api:
+#    image: keystone-gateway:latest
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: keystone-gateway-api
+#    volumes:
+#      - ./configs/api-config.yaml:/app/config.yaml:ro
+#      - ./scripts/api:/app/scripts:ro
+#    ports:
+#      - "8081:8080"
+#    restart: unless-stopped
+#
+#  gateway-admin:
+#    image: keystone-gateway:latest
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: keystone-gateway-admin
+#    volumes:
+#      - ./configs/admin-config.yaml:/app/config.yaml:ro
+#      - ./scripts/admin:/app/scripts:ro
+#    ports:
+#      - "8082:8080"
+#    restart: unless-stopped
