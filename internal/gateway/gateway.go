@@ -3,9 +3,11 @@
 package gateway
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -14,9 +16,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/net/http2"
 
 	"keystone-gateway/internal/config"
-	httputil2 "keystone-gateway/internal/http"
 	"keystone-gateway/internal/lua"
 )
 
@@ -54,7 +56,7 @@ func New(cfg *config.Config, version string) (*Gateway, error) {
 		config:    cfg,
 		router:    router,
 		backends:  make(map[string]*backend),
-		transport: httputil2.CreateTransport(),
+		transport: createHTTPTransport(),
 	}
 
 	// Setup global middleware
@@ -367,4 +369,40 @@ func (gw *Gateway) proxyErrorHandler(w http.ResponseWriter, r *http.Request, err
 		"path", r.URL.Path,
 		"component", "gateway")
 	http.Error(w, "Bad Gateway", http.StatusBadGateway)
+}
+
+// createHTTPTransport creates a shared HTTP transport with HTTP/2 support and optimal connection tuning
+func createHTTPTransport() *http.Transport {
+	transport := &http.Transport{
+		// Connection pooling
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		MaxConnsPerHost:     100,
+		IdleConnTimeout:     90 * time.Second,
+
+		// Timeouts
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+
+		// TLS configuration
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			MaxVersion: tls.VersionTLS13,
+		},
+
+		// Performance settings
+		DisableCompression: false,
+		DisableKeepAlives:  false,
+		ForceAttemptHTTP2:  true,
+	}
+
+	// Enable HTTP/2 - if it fails, continue with HTTP/1.1
+	http2.ConfigureTransport(transport)
+
+	return transport
 }
