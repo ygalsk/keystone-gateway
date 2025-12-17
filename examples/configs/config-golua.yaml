@@ -15,7 +15,7 @@ compression:
 lua_routing:
   enabled: true
   scripts_dir: "./examples/scripts"
-  state_pool_size: 100  # Number of pre-allocated Lua VMs (default: 10)
+  state_pool_size: 1  # Number of pre-allocated Lua VMs (default: 10)
   global_scripts:
     - "init"      # Initialize global functions/libraries
     - "handlers"  # Load handler functions

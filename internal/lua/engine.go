@@ -266,11 +266,27 @@ func (e *Engine) pushRequestTable(L *lua.State, r *http.Request) error {
 	L.PushString("headers")
 	L.CreateTable(0, len(r.Header)) // Pre-allocate
 	for key, values := range r.Header {
-		if len(values) > 0 {
-			L.PushString(key)
-			L.PushString(values[0]) // First value only
-			L.RawSet(-3)            // Faster than SetTable
+		n := len(values)
+		if n == 0 {
+			continue
 		}
+
+		L.PushString(key)
+
+		// Check uncommon case first (branch predictor learns "not taken")
+		if n > 1 {
+			// Rare: multi-value header - create Lua array
+			L.CreateTable(n, 0)
+			for i := 0; i < n; i++ {
+				L.PushInteger(int64(i + 1)) // Lua 1-indexed
+				L.PushString(values[i])
+				L.RawSet(-3)
+			}
+		} else {
+			// Common: single-value header (hot path)
+			L.PushString(values[0])
+		}
+		L.RawSet(-3)
 	}
 	L.RawSet(-3)
 
@@ -349,9 +365,10 @@ func (e *Engine) writeResponseFromTable(L *lua.State, w http.ResponseWriter) err
 		L.PushNil() // First key
 		for L.Next(-2) != 0 {
 			// Key at -2, value at -1
-			if L.IsString(-2) && L.IsString(-1) {
-				key := L.ToString(-2)
-				value := L.ToString(-1)
+			// ToString returns "" if not string (no need for IsString check)
+			key := L.ToString(-2)
+			value := L.ToString(-1)
+			if key != "" && value != "" {
 				w.Header().Set(key, value)
 			}
 			L.Pop(1) // Pop value, keep key for next iteration

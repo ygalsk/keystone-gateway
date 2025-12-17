@@ -8,6 +8,7 @@ import (
 	"flag"
 	"log/slog"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -98,6 +99,20 @@ func runServer(gw *gateway.Gateway, addr string) error {
 
 	// Use errgroup for coordinated startup/shutdown
 	g, _ := errgroup.WithContext(ctx)
+
+	// Start pprof debug server on separate port
+	g.Go(func() error {
+		pprofServer := &http.Server{
+			Addr:    ":6060",
+			Handler: http.DefaultServeMux, // pprof registers itself here
+		}
+		slog.Info("pprof_server_starting", "address", ":6060")
+		if err := pprofServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// Don't fail if pprof server has issues
+			slog.Warn("pprof_server_failed", "error", err)
+		}
+		return nil
+	})
 
 	// Start server
 	g.Go(func() error {
