@@ -25,7 +25,7 @@ For the evolution history, see [ROADMAP.md](ROADMAP.md).
 **A general-purpose HTTP routing primitive with embedded Lua scripting.**
 
 Keystone Gateway is a high-performance reverse proxy that provides:
-- Multi-tenant HTTP routing (by domain, path, or both)
+- Multi-service HTTP routing (by domain, path, or both)
 - Embedded Lua scripting for route definition
 - Stateless request forwarding to backend services
 
@@ -135,7 +135,7 @@ L.SetGlobal("request_header", ...)      // 20 lines
 L.SetGlobal("request_body", ...)        // 30 lines
 // ... 20 more functions
 ```
-
+// OLD REFEREnce
 **Good (with gopher-luar):**
 ```go
 // Request table passed to Lua handlers
@@ -234,7 +234,7 @@ internal/routing/
   ├── health_checker.go    # EMPTY
   └── load_balancer.go     # EMPTY
 ```
-
+// OLD
 **Good:**
 ```
 internal/routing/
@@ -333,6 +333,7 @@ end
 - ❌ It's only used in one place and tightly coupled to that place
 - ❌ It's just grouping code by execution phase
 
+//OLD NO COMPILER 
 **Example - Good module:**
 ```go
 // internal/lua/compiler.go
