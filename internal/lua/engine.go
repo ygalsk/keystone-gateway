@@ -236,93 +236,101 @@ func (e *Engine) pushRequestTable(L *lua.State, r *http.Request) error {
 	// This reduces rehashing during construction
 	L.CreateTable(0, 10)
 
-	// Use RawSet* for better performance (bypasses metamethods)
-	// req.method = "GET"
-	L.PushString("method")
-	L.PushString(r.Method)
-	L.RawSet(-3)
-
-	// req.path = "/users/123"
-	L.PushString("path")
-	L.PushString(r.URL.Path)
-	L.RawSet(-3)
-
-	// req.url = "http://example.com/users/123?foo=bar"
-	L.PushString("url")
-	L.PushString(r.URL.String())
-	L.RawSet(-3)
-
-	// req.host = "example.com"
-	L.PushString("host")
-	L.PushString(r.Host)
-	L.RawSet(-3)
-
-	// req.remote_addr = "192.168.1.1:12345"
-	L.PushString("remote_addr")
-	L.PushString(r.RemoteAddr)
-	L.RawSet(-3)
+	// Batch set simple string fields (1 CGO call instead of 15)
+	// Reduces: 5 fields × (PushString + PushString + RawSet) = 15 calls → 1 call
+	BatchSetStringFields(L, -1, map[string]string{
+		"method":      r.Method,
+		"path":        r.URL.Path,
+		"url":         r.URL.String(),
+		"host":        r.Host,
+		"remote_addr": r.RemoteAddr,
+	})
 
 	// req.headers = {["Content-Type"] = "application/json", ...}
+	// Optimize by batching single-value headers, handle multi-value separately
 	L.PushString("headers")
 	L.CreateTable(0, len(r.Header)) // Pre-allocate
+	headersTableIdx := L.GetTop()
+
+	// Collect single-value headers for batching
+	singleValueHeaders := make(map[string]string, len(r.Header))
+	var multiValueHeaders []struct {
+		key    string
+		values []string
+	}
+
 	for key, values := range r.Header {
 		n := len(values)
 		if n == 0 {
 			continue
 		}
 
-		L.PushString(key)
-
-		// Check uncommon case first (branch predictor learns "not taken")
-		if n > 1 {
-			// Rare: multi-value header - create Lua array
-			L.CreateTable(n, 0)
-			for i := 0; i < n; i++ {
-				L.PushInteger(int64(i + 1)) // Lua 1-indexed
-				L.PushString(values[i])
-				L.RawSet(-3)
-			}
+		if n == 1 {
+			// Common case: single value (batch these)
+			singleValueHeaders[key] = values[0]
 		} else {
-			// Common: single-value header (hot path)
-			L.PushString(values[0])
+			// Rare case: multi-value header (handle separately)
+			multiValueHeaders = append(multiValueHeaders, struct {
+				key    string
+				values []string
+			}{key, values})
 		}
-		L.RawSet(-3)
 	}
+
+	// Batch set all single-value headers (1 CGO call for all headers)
+	if len(singleValueHeaders) > 0 {
+		BatchSetStringFields(L, headersTableIdx, singleValueHeaders)
+	}
+
+	// Handle multi-value headers individually (rare)
+	for _, mvh := range multiValueHeaders {
+		L.PushString(mvh.key)
+		L.CreateTable(len(mvh.values), 0)
+		for i, value := range mvh.values {
+			L.PushInteger(int64(i + 1)) // Lua 1-indexed
+			L.PushString(value)
+			L.RawSet(-3)
+		}
+		L.RawSet(headersTableIdx)
+	}
+
 	L.RawSet(-3)
 
 	// req.params = {id = "123", ...} (from Chi URLParam)
-	L.PushString("params")
+	// Batch set params using BatchSetTableField (reduces 3N+3 calls to 1 call)
 	rctx := chi.RouteContext(r.Context())
 	if rctx != nil && len(rctx.URLParams.Keys) > 0 {
-		L.CreateTable(0, len(rctx.URLParams.Keys))
+		params := make(map[string]string, len(rctx.URLParams.Keys))
 		for i, key := range rctx.URLParams.Keys {
 			if i < len(rctx.URLParams.Values) {
-				L.PushString(key)
-				L.PushString(rctx.URLParams.Values[i])
-				L.RawSet(-3)
+				params[key] = rctx.URLParams.Values[i]
 			}
 		}
+		BatchSetTableField(L, -1, "params", params)
 	} else {
-		L.NewTable() // Empty table if no params
+		// Empty params table
+		L.PushString("params")
+		L.NewTable()
+		L.RawSet(-3)
 	}
-	L.RawSet(-3)
 
 	// req.query = {foo = "bar", ...}
+	// Batch set query params (reduces 3N+3 calls to 1 call)
 	query := r.URL.Query()
-	L.PushString("query")
 	if len(query) > 0 {
-		L.CreateTable(0, len(query))
+		queryParams := make(map[string]string, len(query))
 		for key, values := range query {
 			if len(values) > 0 {
-				L.PushString(key)
-				L.PushString(values[0])
-				L.RawSet(-3)
+				queryParams[key] = values[0] // Take first value only
 			}
 		}
+		BatchSetTableField(L, -1, "query", queryParams)
 	} else {
-		L.NewTable() // Empty table if no query
+		// Empty query table
+		L.PushString("query")
+		L.NewTable()
+		L.RawSet(-3)
 	}
-	L.RawSet(-3)
 
 	// req.body = "..." (read body with size limit)
 	// Only read body if Content-Length > 0 (optimization)
