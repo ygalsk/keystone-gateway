@@ -1,3 +1,8 @@
+---
+title: Quick Start
+nav_order: 2
+---
+
 # Quick Start Guide
 
 Get Keystone Gateway running in 5 minutes.

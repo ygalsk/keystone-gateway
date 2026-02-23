@@ -1,3 +1,8 @@
+---
+title: Lua API
+nav_order: 4
+---
+
 # Lua API Reference
 
 Interface documentation: what goes in, what comes out.

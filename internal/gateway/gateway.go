@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/metrics"
 	"golang.org/x/net/http2"
 
 	"keystone-gateway/internal/config"
@@ -34,7 +35,7 @@ type Gateway struct {
 	config    *config.Config
 	router    *chi.Mux
 	backends  map[string]*backend
-	transport *http.Transport
+	transport http.RoundTripper
 	luaEngine *lua.Engine
 	mu        sync.RWMutex
 }
@@ -57,6 +58,11 @@ func New(cfg *config.Config, version string) (*Gateway, error) {
 		router:    router,
 		backends:  make(map[string]*backend),
 		transport: createHTTPTransport(),
+	}
+
+	// Wrap transport with metrics instrumentation if enabled
+	if cfg.Metrics.Enabled {
+		gw.transport = metrics.Transport(metrics.TransportOpts{})(gw.transport)
 	}
 
 	// Setup global middleware
@@ -93,6 +99,11 @@ func New(cfg *config.Config, version string) (*Gateway, error) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+
+	// Prometheus metrics endpoint
+	if cfg.Metrics.Enabled {
+		gw.router.Handle(cfg.Metrics.Path, metrics.Handler())
+	}
 
 	// Lua pool stats endpoint (if Lua routing is enabled)
 	if cfg.LuaRouting.Enabled && gw.luaEngine != nil {
@@ -166,6 +177,10 @@ func (gw *Gateway) setupMiddleware() {
 
 	gw.router.Use(middleware.CleanPath)
 	gw.router.Use(middleware.StripSlashes)
+
+	if gw.config.Metrics.Enabled {
+		gw.router.Use(metrics.Collector(metrics.CollectorOpts{}))
+	}
 }
 
 // setupTenantRoutes configures all routes for a tenant (Go-owned routing)

@@ -5,7 +5,10 @@ middleware:
   request_id: false  # Skip UUID generation
   real_ip: false     # Skip IP parsing
   logging: false     # Biggest win - no I/O per request
-  throttle: 5000     # High limit for maximum throughput
+  throttle: 5000 # High limit for maximum throughput
+
+metrics:
+  enabled: true
 
 lua_routing:
   enabled: true

@@ -1,3 +1,8 @@
+---
+title: Examples
+nav_order: 5
+---
+
 # Working Examples
 //update to use http luarock not go primitive
 Complete, copy-paste-ready examples.
