@@ -33,6 +33,12 @@ type RequestLimitsConfig struct {
 	MaxBodySize int64 `yaml:"max_body_size,omitempty"` // Max request body size in bytes (default: 10MB)
 }
 
+// MetricsConfig represents Prometheus metrics configuration
+type MetricsConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Path    string `yaml:"path,omitempty"` // Metrics endpoint path (default: /metrics)
+}
+
 // MiddlewareConfig controls which middleware components are enabled.
 type MiddlewareConfig struct {
 	RequestID bool `yaml:"request_id"` // Generate request IDs (default: true)
@@ -51,6 +57,7 @@ type Config struct {
 	Middleware    MiddlewareConfig    `yaml:"middleware"`  // Middleware configuration
 	Compression   CompressionConfig   `yaml:"compression"`
 	RequestLimits RequestLimitsConfig `yaml:"request_limits"`
+	Metrics       MetricsConfig       `yaml:"metrics"`
 }
 
 // UnmarshalYAML implements custom unmarshaling with automatic defaults.
@@ -82,6 +89,10 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 		RequestLimits: RequestLimitsConfig{
 			MaxBodySize: 10 << 20, // 10MB
 		},
+		Metrics: MetricsConfig{
+			Enabled: false,
+			Path:    "/metrics",
+		},
 	}
 
 	if err := value.Decode(&raw); err != nil {
@@ -110,6 +121,9 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 	}
 	if raw.RequestLimits.MaxBodySize <= 0 {
 		raw.RequestLimits.MaxBodySize = 10 << 20
+	}
+	if raw.Metrics.Path == "" {
+		raw.Metrics.Path = "/metrics"
 	}
 
 	*c = Config(raw)
