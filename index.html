@@ -4,26 +4,41 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Keystone Gateway</title>
-    <meta name="description" content="A highly opinionated gateway with no opinions. Service router with embedded Lua scripting and LuaRocks support.">
+    <meta name="description" content="A highly opinionated gateway with no opinions. Multi-tenant HTTP routing with embedded Lua scripting.">
     <style>
-        /* Typography */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
         :root {
-            --text-primary: #2C2C2C;
-            --text-secondary: #4A4A4A;
-            --text-tertiary: #8B7355;
-            --accent: #73B44C;
-            --accent-hover: #5A9138;
-            --accent-light: #E8F5E9;
-            --accent-brown: #5C4033;
-            --accent-brown-dark: #3D2B22;
-            --accent-brown-light: #8B7355;
-            --border: #E5E7EB;
-            --bg: #FAFADC;
-            --bg-subtle: #F5F5DC;
-            --bg-gradient-start: #FAFADC;
-            --bg-gradient-end: #F5F5DC;
+            /* BRAND.md palette */
+            --kiwi-green: #73B44C;
+            --kiwi-green-dark: #5A9138;
+            --kiwi-green-light: #9CCC65;
+            --kiwi-lime: #BFD85F;
+            --kiwi-brown: #5C4033;
+            --kiwi-brown-light: #8B7355;
+            --kiwi-brown-dark: #3D2B22;
+            --kiwi-cream: #FAFADC;
+            --kiwi-cream-dark: #F5F5DC;
+            --kiwi-seed: #2C2C2C;
+            --kiwi-seed-light: #4A4A4A;
+            --kiwi-white: #FFFFFF;
+            --kiwi-border: #E5E7EB;
+
+            /* Semantic aliases */
+            --bg: var(--kiwi-white);
+            --bg-subtle: var(--kiwi-cream);
+            --text-primary: var(--kiwi-seed);
+            --text-secondary: var(--kiwi-seed-light);
+            --text-tertiary: var(--kiwi-brown-light);
+            --accent: var(--kiwi-green);
+            --accent-hover: var(--kiwi-green-dark);
+            --border: var(--kiwi-border);
+            --mono: 'JetBrains Mono', monospace;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+
+            /* Dark terminal code blocks */
             --code-bg: #2a2418;
             --code-bg-header: #3d3426;
             --code-text: #e8e8e0;
@@ -31,38 +46,22 @@
             --code-keyword: #9CCC65;
             --code-string: #BFD85F;
             --code-function: #d4a574;
-            --mono: 'JetBrains Mono', monospace;
-            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
 
         [data-theme="dark"] {
+            --bg: #1a1814;
+            --bg-subtle: #242018;
             --text-primary: #e8e8e0;
             --text-secondary: #b8b8a8;
             --text-tertiary: #8B7355;
             --accent: #9CCC65;
             --accent-hover: #BFD85F;
-            --accent-light: #1a2a0f;
-            --accent-brown: #8B7355;
-            --accent-brown-dark: #5C4033;
-            --accent-brown-light: #A0826D;
             --border: #5a4f3f;
-            --bg: #1a1814;
-            --bg-subtle: #242018;
-            --bg-card: #242018;
-            --bg-gradient-start: #1a1814;
-            --bg-gradient-end: #242018;
-            --code-bg: #1a1814;
-            --code-bg-header: #2a2418;
-            --code-text: #e8e8e0;
-            --code-comment: #7a6a5a;
-            --code-keyword: #9CCC65;
-            --code-string: #BFD85F;
-            --code-function: #d4a574;
             --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
             --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
             --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+            --code-bg: #1a1814;
+            --code-bg-header: #2a2418;
         }
 
         * {
@@ -82,14 +81,13 @@
             overflow-x: hidden;
         }
 
-        /* Layout */
         .container {
             max-width: 75rem;
             margin: 0 auto;
             padding: 0 1.5rem;
         }
 
-        /* Enhanced Typography */
+        /* Typography */
         .h1 {
             font-size: 3rem;
             font-weight: 800;
@@ -132,7 +130,6 @@
             color: var(--text-tertiary);
         }
 
-        /* Links */
         a {
             color: var(--accent);
             text-decoration: none;
@@ -153,57 +150,55 @@
             font-weight: 600;
             text-decoration: none;
             border-radius: 0.5rem;
-            transition: all 0.2s ease;
+            transition: all 150ms ease;
             border: 2px solid;
             cursor: pointer;
         }
 
         .btn-primary {
-            background: var(--accent);
-            color: white;
-            border-color: var(--accent);
+            background: var(--kiwi-green);
+            color: var(--kiwi-white);
+            border-color: var(--kiwi-green);
             box-shadow: var(--shadow-md);
         }
 
         .btn-primary:hover {
-            background: var(--accent-hover);
-            border-color: var(--accent-hover);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
+            background: var(--kiwi-green-dark);
+            border-color: var(--kiwi-green-dark);
+            color: var(--kiwi-white);
         }
 
         .btn-secondary {
             background: transparent;
-            color: var(--text-primary);
-            border-color: var(--border);
+            color: var(--kiwi-green);
+            border-color: var(--kiwi-green);
         }
 
         .btn-secondary:hover {
-            background: var(--accent-light);
-            border-color: var(--accent-brown-dark);
-            transform: translateY(-2px);
+            background: var(--kiwi-green);
+            color: var(--kiwi-white);
         }
 
         /* Navigation */
         nav {
             position: sticky;
             top: 0;
-            background: rgba(212, 196, 168, 0.95);
+            background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--accent-brown);
+            border-bottom: 1px solid var(--border);
             z-index: 100;
             box-shadow: var(--shadow-sm);
         }
 
         [data-theme="dark"] nav {
-            background: rgba(10, 10, 10, 0.95);
+            background: rgba(44, 44, 44, 0.95);
         }
 
         .nav-content {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            height: 5rem;
+            height: 4rem;
         }
 
         .logo {
@@ -212,7 +207,7 @@
             text-decoration: none;
             display: flex;
             align-items: center;
-            gap: 0.875rem;
+            gap: 0.75rem;
             transition: opacity 0.2s ease;
         }
 
@@ -226,36 +221,24 @@
         }
 
         .logo-brown {
-            color: var(--accent-brown);
+            color: var(--kiwi-brown);
         }
 
         .logo-green {
-            color: var(--accent);
+            color: var(--kiwi-green);
         }
 
         .kiwi-icon {
-            width: 6.25rem;
-            height: 6.25rem;
+            width: 2.5rem;
+            height: 2.5rem;
             flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
         }
 
-        .kiwi-icon svg,
         .kiwi-icon img {
             width: 100%;
             height: 100%;
             display: block;
             object-fit: contain;
-            max-width: 100%;
-            max-height: 100%;
-            transition: transform 0.3s ease;
-        }
-
-        .logo:hover .kiwi-icon svg,
-        .logo:hover .kiwi-icon img {
-            transform: scale(1.05) rotate(-5deg);
         }
 
         .nav-links {
@@ -308,72 +291,24 @@
         .theme-toggle:hover {
             color: var(--text-primary);
             background: var(--bg-subtle);
-            border-color: var(--accent-brown);
         }
 
-        /* Hero Section */
+        /* Hero */
         .hero {
             padding: 8rem 0 6rem;
-            position: relative;
-            overflow: hidden;
+            background: var(--kiwi-white);
+        }
+
+        [data-theme="dark"] .hero {
             background: var(--bg);
         }
 
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: -50%;
-            right: -10%;
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, rgba(107, 142, 35, 0.1) 0%, transparent 70%);
-            border-radius: 50%;
-            pointer-events: none;
-        }
-
-        .hero::after {
-            content: '';
-            position: absolute;
-            bottom: -30%;
-            left: -5%;
-            width: 500px;
-            height: 500px;
-            background: radial-gradient(circle, rgba(184, 149, 110, 0.1) 0%, transparent 70%);
-            border-radius: 50%;
-            pointer-events: none;
-        }
-
         .hero-content {
-            position: relative;
-            z-index: 1;
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 4rem;
             align-items: center;
         }
-
-        .hero-text {
-            animation: fadeInUp 0.8s ease;
-        }
-
-        .hero-visual {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2rem;
-            animation: fadeInUp 1s ease;
-        }
-
-.hero-kiwi {
-    max-width: 1000px;
-}
-
-.hero-kiwi img {
-    width: 100%;
-    height: auto;
-    display: block;
-    object-fit: contain;
-}
 
         .hero-actions {
             display: flex;
@@ -384,87 +319,59 @@
 
         .hero-code {
             margin-top: 2rem;
-            animation: fadeInUp 1.2s ease;
         }
 
-        /* Network Arcs Decoration */
-        .network-arcs {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 200px;
-            overflow: hidden;
-            pointer-events: none;
-            z-index: 0;
+        .hero-kiwi {
+            max-width: 1000px;
         }
 
-        .arc {
-            position: absolute;
-            border: 2px solid;
-            border-radius: 50%;
-            opacity: 0.15;
+        .hero-kiwi img {
+            width: 100%;
+            height: auto;
+            display: block;
+            object-fit: contain;
         }
 
-        .arc-1 {
-            width: 300px;
-            height: 300px;
-            border-color: var(--accent);
-            bottom: -150px;
-            left: 10%;
-            animation: float 6s ease-in-out infinite;
-        }
-
-        .arc-2 {
-            width: 400px;
-            height: 400px;
-            border-color: var(--accent-brown);
-            bottom: -200px;
-            right: 15%;
-            animation: float 8s ease-in-out infinite;
-        }
-
-        /* Code Blocks */
+        /* Code blocks — dark terminal style */
         .code-block {
             background: var(--code-bg);
-            border: 1px solid var(--accent-brown);
+            border: 1px solid var(--kiwi-border);
+            border-left: 4px solid var(--kiwi-green);
             border-radius: 0.75rem;
             overflow: hidden;
             box-shadow: var(--shadow-lg);
-            max-width: 100%;
         }
 
         .code-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 1rem 1.25rem;
-            border-bottom: 1px solid var(--accent-brown);
+            padding: 0.75rem 1.25rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             background: var(--code-bg-header);
         }
 
         .code-title {
             font-family: var(--mono);
             font-size: 0.8125rem;
-            color: var(--text-tertiary);
+            color: var(--code-comment);
             font-weight: 500;
         }
 
         .code-copy {
             background: none;
             border: none;
-            color: var(--text-tertiary);
+            color: var(--code-comment);
             cursor: pointer;
             padding: 0.25rem 0.5rem;
             border-radius: 0.25rem;
             font-size: 0.75rem;
-            transition: all 0.2s ease;
+            transition: color 0.2s ease;
             font-family: var(--mono);
         }
 
         .code-copy:hover {
-            background: var(--bg-subtle);
-            color: var(--accent);
+            color: var(--kiwi-green-light);
         }
 
         .code-content {
@@ -475,7 +382,6 @@
             color: var(--code-text);
             white-space: pre;
             overflow-x: auto;
-            max-width: 100%;
         }
 
         .code-comment { color: var(--code-comment); }
@@ -485,29 +391,45 @@
 
         /* Sections */
         section {
-            padding: 8rem 0;
-            position: relative;
+            padding: 6rem 0;
         }
 
         .section-header {
             text-align: center;
-            margin-bottom: 4rem;
+            margin-bottom: 3.5rem;
         }
 
-        /* Feature Cards */
+        /* Features — cream background */
+        #features {
+            background: var(--kiwi-cream);
+        }
+
+        [data-theme="dark"] #features {
+            background: var(--bg-subtle);
+        }
+
         .feature-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 2rem;
         }
 
         .feature-card {
-            background: var(--bg);
-            border: 1px solid var(--border);
+            background: var(--kiwi-white);
+            border: 1px solid var(--kiwi-border);
             border-radius: 1rem;
             padding: 2.5rem;
-            position: relative;
-            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: box-shadow 150ms ease;
+        }
+
+        .feature-card:hover {
+            box-shadow: 0 4px 12px rgba(115, 180, 76, 0.1);
+        }
+
+        [data-theme="dark"] .feature-card {
+            background: var(--bg);
+            border-color: var(--border);
         }
 
         .feature-icon {
@@ -521,94 +443,59 @@
             margin-bottom: 1rem;
         }
 
-        .feature-card .body {
-            margin-bottom: 0;
+        /* Quick Start — white background */
+        #start {
+            background: var(--kiwi-white);
         }
 
-        /* Philosophy Section */
-        .philosophy {
+        [data-theme="dark"] #start {
             background: var(--bg);
         }
 
-        .philosophy-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 4rem;
-            align-items: center;
+        /* Examples — cream background */
+        #examples {
+            background: var(--kiwi-cream);
         }
 
-        .philosophy-visual {
-            background: var(--code-bg);
-            border-radius: 1rem;
-            padding: 2rem;
-            border: 1px solid var(--accent-brown);
-        }
-
-        .module-diagram {
-            display: flex;
-            flex-direction: column;
-            gap: 1rem;
-        }
-
-        .module-box {
+        [data-theme="dark"] #examples {
             background: var(--bg-subtle);
-            border: 2px solid var(--accent);
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            text-align: center;
         }
 
-        .module-box.simple {
-            border-color: var(--accent);
-            border-width: 2px;
+        .example-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
         }
 
-        .module-box.complex {
-            border-color: var(--accent-brown);
-            border-width: 4px;
-            background: var(--code-bg-header);
-        }
-
-        /* Examples Section */
         .example-card {
-            background: var(--bg);
-            border: 1px solid var(--border);
+            background: var(--kiwi-white);
+            border: 1px solid var(--kiwi-border);
             border-radius: 1rem;
             padding: 2rem;
+        }
+
+        [data-theme="dark"] .example-card {
+            background: var(--bg);
+            border-color: var(--border);
         }
 
         /* Footer */
         footer {
-            border-top: 1px solid var(--accent-brown);
-            padding: 4rem 0;
-            background: var(--bg);
+            background: var(--kiwi-cream-dark);
+            border-top: 1px solid var(--kiwi-border);
+            padding: 3rem 0;
         }
 
-        /* Animations */
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        [data-theme="dark"] footer {
+            background: var(--bg-subtle);
+            border-top-color: var(--border);
         }
 
-        @keyframes float {
-            0%, 100% {
-                transform: translateY(0);
-            }
-            50% {
-                transform: translateY(-20px);
-            }
-        }
-
+        /* Scroll animations */
         .fade-in {
             opacity: 0;
-            transform: translateY(30px);
-            transition: opacity 0.6s ease, transform 0.6s ease;
+            transform: translateY(20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
         }
 
         .fade-in.visible {
@@ -616,106 +503,37 @@
             transform: translateY(0);
         }
 
-        /* Typing Animation */
-        .typing-cursor {
-            display: inline-block;
-            width: 2px;
-            height: 1.2em;
-            background: var(--accent);
-            animation: blink 1s infinite;
-            margin-left: 2px;
-        }
-
-        @keyframes blink {
-            0%, 50% { opacity: 1; }
-            51%, 100% { opacity: 0; }
-        }
-
         /* Utilities */
         .text-center { text-align: center; }
-        .mb-4 { margin-bottom: 1rem; }
         .mb-8 { margin-bottom: 2rem; }
-        .mb-12 { margin-bottom: 3rem; }
         .mt-8 { margin-top: 2rem; }
         .mt-16 { margin-top: 4rem; }
 
-        /* Mobile Responsive */
+        /* Responsive */
         @media (max-width: 768px) {
-            .container {
-                padding: 0 1rem;
+            .container { padding: 0 1rem; }
+            .h1 { font-size: 2.25rem; }
+            .h2 { font-size: 1.75rem; }
+            .h3 { font-size: 1.25rem; }
+            .hero { padding: 4rem 0 3rem; }
+            .hero-content {
+                grid-template-columns: 1fr;
+                gap: 3rem;
             }
-
-            .code-block {
-                max-width: 100%;
-                overflow-x: auto;
-            }
-
+            .hero-kiwi { max-width: 400px; margin: 0 auto; }
+            .feature-grid { grid-template-columns: 1fr; }
+            section { padding: 4rem 0; }
+            .nav-links { display: none; }
             .code-content {
                 font-size: 0.75rem;
                 padding: 1rem;
                 white-space: pre-wrap;
                 word-break: break-word;
             }
-
-            .hero-code {
-                max-width: 100%;
-                overflow: hidden;
-            }
-
-            .h1 {
-                font-size: 2.25rem;
-            }
-
-            .h2 {
-                font-size: 1.75rem;
-            }
-
-            .h3 {
-                font-size: 1.25rem;
-            }
-
-            .hero {
-                padding: 4rem 0 3rem;
-            }
-
-            .hero-content {
-                grid-template-columns: 1fr;
-                gap: 3rem;
-            }
-
-            .hero-kiwi {
-                max-width: 625px;
-            }
-
-            .philosophy-content {
-                grid-template-columns: 1fr;
-            }
-
-            .feature-grid {
-                grid-template-columns: 1fr;
-            }
-
-            section {
-                padding: 4rem 0;
-            }
-
-            .nav-links {
-                display: none;
-            }
-
-            .nav-content {
-                height: 4rem;
-            }
         }
 
         @media (min-width: 769px) and (max-width: 1024px) {
-            .hero-content {
-                gap: 3rem;
-            }
-
-            .hero-kiwi {
-                max-width: 750px;
-            }
+            .feature-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
@@ -725,16 +543,16 @@
             <div class="nav-content">
                 <a href="#" class="logo">
                     <span class="kiwi-icon">
-                        <img src="mascot.svg" alt="Keystone Gateway mascot">
+                        <img src="mascot.svg" alt="Key-Way the kiwi mascot">
                     </span>
                     <span class="logo-text">
-                        <span class="logo-green">Key</span><span class="logo-brown">stone-Gate</span><span class="logo-green">way</span>
+                        <span class="logo-brown">Keystone</span><span class="logo-green">&nbsp;Gateway</span>
                     </span>
                 </a>
                 <div style="display: flex; align-items: center; gap: 1rem;">
                     <ul class="nav-links">
                         <li><a href="#features">Features</a></li>
-                        <li><a href="#start">Start</a></li>
+                        <li><a href="#start">Quick Start</a></li>
                         <li><a href="#examples">Examples</a></li>
                         <li><a href="docs/">Docs</a></li>
                         <li><a href="https://github.com/ygalsk/keystone-gateway">GitHub</a></li>
@@ -749,16 +567,12 @@
 
     <main>
         <section class="hero">
-            <div class="network-arcs">
-                <div class="arc arc-1"></div>
-                <div class="arc arc-2"></div>
-            </div>
             <div class="container">
                 <div class="hero-content">
                     <div class="hero-text">
                         <h1 class="h1">A highly opinionated gateway<br>with no opinions</h1>
                         <p class="body-large" style="margin-top: 1.5rem; margin-bottom: 0;">
-                            Service router with embedded Lua scripting. Write custom routing logic without rebuilding. LuaJIT-powered performance with LuaRocks ecosystem support out of the box.
+                            Multi-tenant HTTP routing with embedded Lua. You write the logic, we handle the HTTP.
                         </p>
                         <div class="hero-actions">
                             <a href="#start" class="btn btn-primary">Get Started</a>
@@ -773,7 +587,7 @@
                                     <span class="code-title">Terminal</span>
                                     <button class="code-copy" onclick="copyCode(this)" title="Copy">Copy</button>
                                 </div>
-                                <div class="code-content" id="typing-code"><span class="code-comment"># Download and run</span>
+                                <div class="code-content"><span class="code-comment"># Download and run</span>
 git clone https://github.com/ygalsk/keystone-gateway.git
 cd keystone-gateway
 make dev</div>
@@ -782,7 +596,7 @@ make dev</div>
                     </div>
                     <div class="hero-visual">
                         <div class="hero-kiwi">
-                            <img src="mascot.svg" alt="Keystone Gateway mascot">
+                            <img src="mascot.svg" alt="Key-Way the kiwi mascot directing HTTP traffic">
                         </div>
                     </div>
                 </div>
@@ -792,25 +606,12 @@ make dev</div>
         <section id="features">
             <div class="container">
                 <div class="section-header fade-in">
-                    <h2 class="h2">What You Can Do</h2>
+                    <h2 class="h2">What It Does</h2>
                     <p class="body-large" style="margin-top: 1rem;">
-                        Everything you need to build custom routing logic. Nothing you don't.
+                        HTTP primitives. No built-in opinions about your business logic.
                     </p>
                 </div>
                 <div class="feature-grid">
-                    <div class="feature-card fade-in">
-                        <div class="feature-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-                                <path d="M2 17l10 5 10-5"/>
-                                <path d="M2 12l10 5 10-5"/>
-                            </svg>
-                        </div>
-                        <h3 class="h3">One Binary</h3>
-                        <p class="body">
-                            Single executable. No containers or orchestrators. Download, configure, run. Everything you need in one stateless binary.
-                        </p>
-                    </div>
                     <div class="feature-card fade-in">
                         <div class="feature-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -822,7 +623,7 @@ make dev</div>
                         </div>
                         <h3 class="h3">Multi-Service Routing</h3>
                         <p class="body">
-                            Route requests to different backend services. Isolate service logic without separate deployments. One gateway, many services.
+                            Route requests to different backends per tenant, path, or any custom logic you write.
                         </p>
                     </div>
                     <div class="feature-card fade-in">
@@ -831,9 +632,9 @@ make dev</div>
                                 <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                             </svg>
                         </div>
-                        <h3 class="h3">LuaJIT Performance</h3>
+                        <h3 class="h3">Lua-Powered Flexibility</h3>
                         <p class="body">
-                            Powered by LuaJIT for exceptional speed. Full LuaRocks ecosystem support out of the box—use any Lua library without modification.
+                            Change routing rules on the fly. Full LuaRocks ecosystem. No gateway rebuild required.
                         </p>
                     </div>
                     <div class="feature-card fade-in">
@@ -844,7 +645,7 @@ make dev</div>
                         </div>
                         <h3 class="h3">Bring Your Own Logic</h3>
                         <p class="body">
-                            No built-in auth, rate limiting, or workflows. You write the policies you need in Lua. No vendor lock-in, complete flexibility.
+                            No built-in auth, rate limiting, or opinions. Just HTTP primitives.
                         </p>
                     </div>
                 </div>
@@ -854,9 +655,9 @@ make dev</div>
         <section id="start">
             <div class="container">
                 <div class="section-header fade-in">
-                    <h2 class="h2">From zero to routing<br>in 60 seconds</h2>
+                    <h2 class="h2">Quick Start</h2>
                 </div>
-                <div class="grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 3rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem; margin-top: 2rem;">
                     <div class="fade-in">
                         <h3 class="h3 mb-8">1. Configure routes</h3>
                         <div class="code-block">
@@ -894,7 +695,7 @@ make dev</div>
     <span class="code-keyword">return nil</span>
 <span class="code-keyword">end</span>
 
-<span class="code-comment">-- Handler function</span>
+<span class="code-comment">-- Handler</span>
 <span class="code-keyword">function</span> <span class="code-function">get_users</span>(req)
     <span class="code-keyword">return</span> {status = <span class="code-string">200</span>, body = <span class="code-string">"User data"</span>}
 <span class="code-keyword">end</span></div>
@@ -920,9 +721,9 @@ make dev</div>
         <section id="examples">
             <div class="container">
                 <div class="section-header fade-in">
-                    <h2 class="h2">Real problems.<br>Real solutions.</h2>
+                    <h2 class="h2">Examples</h2>
                 </div>
-                <div class="feature-grid fade-in">
+                <div class="example-grid fade-in">
                     <div class="example-card">
                         <h3 class="h3">Service Routing</h3>
                         <p class="body">
@@ -935,7 +736,7 @@ make dev</div>
                     <div class="example-card">
                         <h3 class="h3">Custom Middleware</h3>
                         <p class="body">
-                            Implement authentication, logging, rate limiting—whatever you need. Write middleware functions that check requests before routing.
+                            Implement authentication, logging, or rate limiting. Write middleware functions that check requests before routing.
                         </p>
                         <p class="caption" style="margin-top: 1rem;">
                             <a href="docs/examples.md">View examples →</a>
@@ -949,41 +750,36 @@ make dev</div>
     <footer>
         <div class="container text-center">
             <p class="body" style="margin-bottom: 1rem;">
-                <strong style="color: var(--accent);">A highly opinionated gateway with no opinions</strong><br>
-                <span style="color: var(--text-secondary);">Simple to deploy. Flexible to customize.</span>
+                <strong style="color: var(--kiwi-green);">A highly opinionated gateway with no opinions</strong><br>
+                <span style="color: var(--text-secondary);">Dumb gateway, smart tenants.</span>
             </p>
             <p class="caption" style="margin-top: 1.5rem;">
                 MIT Licensed •
-                <a href="https://github.com/ygalsk/keystone-gateway" style="color: var(--accent);">Source</a> •
-                <a href="docs/" style="color: var(--accent);">Documentation</a>
+                <a href="https://github.com/ygalsk/keystone-gateway">Source</a> •
+                <a href="docs/">Documentation</a>
             </p>
         </div>
     </footer>
 
     <script>
-        // Dark mode functionality
+        // Dark mode
         const themeToggle = document.getElementById('theme-toggle');
         const themeIcon = document.getElementById('theme-icon');
-        const body = document.body;
 
-        const currentTheme = localStorage.getItem('theme') || 'light';
-
-        if (currentTheme === 'dark') {
-            body.setAttribute('data-theme', 'dark');
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        if (savedTheme === 'dark') {
+            document.body.setAttribute('data-theme', 'dark');
             themeIcon.textContent = '☀️';
-        } else {
-            themeIcon.textContent = '🌙';
         }
 
         themeToggle.addEventListener('click', () => {
-            const currentTheme = body.getAttribute('data-theme');
-
-            if (currentTheme === 'dark') {
-                body.removeAttribute('data-theme');
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            if (isDark) {
+                document.body.removeAttribute('data-theme');
                 themeIcon.textContent = '🌙';
                 localStorage.setItem('theme', 'light');
             } else {
-                body.setAttribute('data-theme', 'dark');
+                document.body.setAttribute('data-theme', 'dark');
                 themeIcon.textContent = '☀️';
                 localStorage.setItem('theme', 'dark');
             }
@@ -991,72 +787,32 @@ make dev</div>
 
         // Smooth scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
+            anchor.addEventListener('click', function(e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
         });
 
         // Scroll animations
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
-        };
-
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
+                if (entry.isIntersecting) entry.target.classList.add('visible');
             });
-        }, observerOptions);
+        }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
 
-        document.querySelectorAll('.fade-in').forEach(el => {
-            observer.observe(el);
-        });
+        document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
 
-        // Copy code functionality
+        // Copy code
         function copyCode(button) {
-            const codeBlock = button.closest('.code-block');
-            const codeContent = codeBlock.querySelector('.code-content');
-            const text = codeContent.textContent;
-            
+            const text = button.closest('.code-block').querySelector('.code-content').textContent;
             navigator.clipboard.writeText(text).then(() => {
-                const originalText = button.textContent;
+                const original = button.textContent;
                 button.textContent = 'Copied!';
-                button.style.color = 'var(--accent)';
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.style.color = '';
-                }, 2000);
+                setTimeout(() => { button.textContent = original; }, 2000);
             });
-        }
-
-        // Typing animation for hero code
-        const typingCode = document.getElementById('typing-code');
-        if (typingCode) {
-            const originalText = typingCode.innerHTML;
-            typingCode.innerHTML = '';
-            let index = 0;
-            const typingSpeed = 30;
-
-            function typeChar() {
-                if (index < originalText.length) {
-                    typingCode.innerHTML = originalText.substring(0, index + 1) + '<span class="typing-cursor"></span>';
-                    index++;
-                    setTimeout(typeChar, typingSpeed);
-                } else {
-                    typingCode.innerHTML = originalText;
-                }
-            }
-
-            setTimeout(typeChar, 500);
         }
     </script>
 </body>
