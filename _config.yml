@@ -1,0 +1,57 @@
+title: Keystone Gateway
+description: A highly opinionated gateway with no opinions
+
+url: https://keystone-gateway.dev
+
+remote_theme: just-the-docs/just-the-docs
+
+color_scheme: kiwi
+
+logo: "/mascot.svg"
+
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 2
+
+heading_anchors: true
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
+footer_content: "MIT Licensed &nbsp;&bull;&nbsp;
+  <a href=\"https://github.com/ygalsk/keystone-gateway\">GitHub</a> &nbsp;&bull;&nbsp;
+  <a href=\"/\">keystone-gateway.dev</a>"
+
+aux_links:
+  "keystone-gateway.dev":
+    - "/"
+
+aux_links_new_tab: false
+
+nav_sort: case_insensitive
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-sitemap
+
+exclude:
+  - README.md
+  - BRAND.md
+  - MANIFEST.md
+  - DESIGN.md
+  - ROADMAP.md
+  - CHANGELOG.md
+  - CONTRIBUTING.md
+  - CLAUDE.md
+  - Makefile
+  - Dockerfile
+  - Dockerfile.rocks
+  - docker-compose.yml
+  - go.mod
+  - go.sum
+  - keystone-gateway
+  - cmd/
+  - internal/
+  - examples/

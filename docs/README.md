@@ -1,3 +1,9 @@
+---
+title: Documentation
+nav_order: 1
+permalink: /docs/
+---
+
 # Keystone Gateway Documentation
 
 Simple, interface-focused documentation.
