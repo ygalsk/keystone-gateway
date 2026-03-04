@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/metrics"
+	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/net/http2"
 
 	"keystone-gateway/internal/config"
@@ -105,6 +106,11 @@ func New(cfg *config.Config, version string) (*Gateway, error) {
 		gw.router.Handle(cfg.Metrics.Path, metrics.Handler())
 	}
 
+	// Register Lua pool metrics with Prometheus (if both are enabled)
+	if cfg.LuaRouting.Enabled && gw.luaEngine != nil && cfg.Metrics.Enabled {
+		gw.registerLuaPoolMetrics()
+	}
+
 	// Lua pool stats endpoint (if Lua routing is enabled)
 	if cfg.LuaRouting.Enabled && gw.luaEngine != nil {
 		gw.router.Get("/debug/lua-pool", func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +140,31 @@ func New(cfg *config.Config, version string) (*Gateway, error) {
 	return gw, nil
 }
 
+// registerLuaPoolMetrics registers Lua state pool metrics with the default Prometheus registry.
+func (gw *Gateway) registerLuaPoolMetrics() {
+	prometheus.MustRegister(
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name: "lua_pool_hits_total",
+			Help: "Cumulative Lua states obtained from pool without waiting.",
+		}, func() float64 { return float64(gw.luaEngine.Stats().PoolHits) }),
+
+		prometheus.NewCounterFunc(prometheus.CounterOpts{
+			Name: "lua_pool_misses_total",
+			Help: "Cumulative times the Lua pool was exhausted and a request had to wait.",
+		}, func() float64 { return float64(gw.luaEngine.Stats().PoolMisses) }),
+
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "lua_pool_active_states",
+			Help: "Lua states currently checked out and in use.",
+		}, func() float64 { return float64(gw.luaEngine.Stats().ActiveStates) }),
+
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Name: "lua_pool_avg_wait_ms",
+			Help: "Average wait time in milliseconds when pool is exhausted.",
+		}, func() float64 { return gw.luaEngine.Stats().AvgWaitTimeMs }),
+	)
+}
+
 // Handler returns the HTTP handler for the gateway.
 func (gw *Gateway) Handler() http.Handler {
 	return gw.router
@@ -143,6 +174,9 @@ func (gw *Gateway) Handler() http.Handler {
 func (gw *Gateway) Stop() {
 	if gw.luaEngine != nil {
 		gw.luaEngine.Close()
+	}
+	if t, ok := gw.transport.(*http.Transport); ok {
+		t.CloseIdleConnections()
 	}
 }
 
@@ -179,7 +213,7 @@ func (gw *Gateway) setupMiddleware() {
 	gw.router.Use(middleware.StripSlashes)
 
 	if gw.config.Metrics.Enabled {
-		gw.router.Use(metrics.Collector(metrics.CollectorOpts{}))
+		gw.router.Use(metrics.Collector(metrics.CollectorOpts{Host: true, Proto: true}))
 	}
 }
 
@@ -267,6 +301,7 @@ func (gw *Gateway) setupRoute(r chi.Router, tenant config.Tenant, route config.R
 
 // setupRouteGroup configures a route group (Chi's Route pattern)
 func (gw *Gateway) setupRouteGroup(r chi.Router, tenant config.Tenant, group config.RouteGroup) error {
+	var setupErr error
 	r.Route(group.Pattern, func(subRouter chi.Router) {
 		// Apply group-level middleware
 		for _, mwName := range group.Middleware {
@@ -277,14 +312,13 @@ func (gw *Gateway) setupRouteGroup(r chi.Router, tenant config.Tenant, group con
 		// Setup nested routes
 		for _, route := range group.Routes {
 			if err := gw.setupRoute(subRouter, tenant, route); err != nil {
-				slog.Error("failed to setup group route",
-					"group", group.Pattern,
-					"route", route.Pattern,
-					"error", err)
+				setupErr = fmt.Errorf("route group %s, route %s %s: %w",
+					group.Pattern, route.Method, route.Pattern, err)
+				return
 			}
 		}
 	})
-	return nil
+	return setupErr
 }
 
 // createLuaHandler creates an HTTP handler that executes a Lua function
@@ -326,15 +360,12 @@ func (gw *Gateway) createLuaMiddleware(middlewareName string) func(http.Handler)
 	}
 }
 
-// getBackend retrieves or creates a backend for proxying
+// getBackend retrieves or creates a backend for proxying.
+// Called only at startup from setupRoute (single-threaded), so no locking needed.
 func (gw *Gateway) getBackend(tenant config.Tenant, backendName string) (*backend, error) {
-	// Check if backend already exists
-	gw.mu.RLock()
 	if back, ok := gw.backends[backendName]; ok {
-		gw.mu.RUnlock()
 		return back, nil
 	}
-	gw.mu.RUnlock()
 
 	// Find service in tenant config
 	var svc *config.Service
@@ -359,15 +390,8 @@ func (gw *Gateway) getBackend(tenant config.Tenant, backendName string) (*backen
 	proxy.Transport = gw.transport
 	proxy.ErrorHandler = gw.proxyErrorHandler
 
-	back := &backend{
-		URL:   u,
-		Proxy: proxy,
-	}
-
-	// Store backend
-	gw.mu.Lock()
+	back := &backend{URL: u, Proxy: proxy}
 	gw.backends[backendName] = back
-	gw.mu.Unlock()
 
 	slog.Info("backend_created",
 		"name", backendName,

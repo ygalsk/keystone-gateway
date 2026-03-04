@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	lua "github.com/aarzilli/golua/lua"
 	"github.com/go-chi/chi/v5"
@@ -311,7 +312,11 @@ func (e *Engine) pushRequestTable(L *lua.State, r *http.Request) error {
 	// req.body = "..." (read body with size limit)
 	// Only read body if Content-Length > 0 (optimization)
 	if r.Body != nil && r.ContentLength > 0 {
-		bodyBytes := make([]byte, MaxBodySize)
+		bufSize := r.ContentLength
+		if bufSize > MaxBodySize {
+			bufSize = MaxBodySize
+		}
+		bodyBytes := make([]byte, bufSize)
 		n, err := io.ReadFull(r.Body, bodyBytes)
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			// Only log error, don't fail the request
@@ -335,7 +340,7 @@ func (e *Engine) writeResponseFromTable(L *lua.State, w http.ResponseWriter) err
 	}
 
 	// Get status (default 200)
-	status := 200
+	status := http.StatusOK
 	L.GetField(-1, "status")
 	if L.IsNumber(-1) {
 		status = L.ToInteger(-1)
@@ -405,28 +410,18 @@ func (e *Engine) setupModulePaths(L *lua.State) {
 	// Append custom Lua module paths (package.path)
 	if len(e.modulePaths) > 0 {
 		L.GetField(-1, "path")
-		currentPath := L.ToString(-1)
+		current := L.ToString(-1)
 		L.Pop(1)
-
-		for _, customPath := range e.modulePaths {
-			currentPath = currentPath + ";" + customPath
-		}
-
-		L.PushString(currentPath)
+		L.PushString(strings.Join(append([]string{current}, e.modulePaths...), ";"))
 		L.SetField(-2, "path")
 	}
 
 	// Append custom C module paths (package.cpath)
 	if len(e.moduleCPaths) > 0 {
 		L.GetField(-1, "cpath")
-		currentCPath := L.ToString(-1)
+		current := L.ToString(-1)
 		L.Pop(1)
-
-		for _, customCPath := range e.moduleCPaths {
-			currentCPath = currentCPath + ";" + customCPath
-		}
-
-		L.PushString(currentCPath)
+		L.PushString(strings.Join(append([]string{current}, e.moduleCPaths...), ";"))
 		L.SetField(-2, "cpath")
 	}
 

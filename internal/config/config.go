@@ -11,6 +11,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var defaultCompressionTypes = []string{
+	"text/html",
+	"text/css",
+	"text/javascript",
+	"application/json",
+	"application/xml",
+	"text/plain",
+}
+
 // LuaRoutingConfig represents embedded Lua routing configuration
 type LuaRoutingConfig struct {
 	Enabled       bool     `yaml:"enabled"`
@@ -76,15 +85,8 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 			Throttle:  100,
 		},
 		Compression: CompressionConfig{
-			Level: 5,
-			ContentTypes: []string{
-				"text/html",
-				"text/css",
-				"text/javascript",
-				"application/json",
-				"application/xml",
-				"text/plain",
-			},
+			Level:        5,
+			ContentTypes: append([]string{}, defaultCompressionTypes...),
 		},
 		RequestLimits: RequestLimitsConfig{
 			MaxBodySize: 10 << 20, // 10MB
@@ -110,14 +112,7 @@ func (c *Config) UnmarshalYAML(value *yaml.Node) error {
 		raw.Compression.Level = 5
 	}
 	if len(raw.Compression.ContentTypes) == 0 {
-		raw.Compression.ContentTypes = []string{
-			"text/html",
-			"text/css",
-			"text/javascript",
-			"application/json",
-			"application/xml",
-			"text/plain",
-		}
+		raw.Compression.ContentTypes = append([]string{}, defaultCompressionTypes...)
 	}
 	if raw.RequestLimits.MaxBodySize <= 0 {
 		raw.RequestLimits.MaxBodySize = 10 << 20
@@ -227,17 +222,8 @@ func ValidateTenant(t Tenant) error {
 
 	// Validate routes
 	for i, route := range t.Routes {
-		if route.Method == "" {
-			return fmt.Errorf("route %d: method is required", i)
-		}
-		if route.Pattern == "" {
-			return fmt.Errorf("route %d: pattern is required", i)
-		}
-		if route.Handler == "" && route.Backend == "" {
-			return fmt.Errorf("route %d: either handler or backend is required", i)
-		}
-		if route.Handler != "" && route.Backend != "" {
-			return fmt.Errorf("route %d: cannot specify both handler and backend", i)
+		if err := validateRoute(i, route); err != nil {
+			return err
 		}
 	}
 
@@ -249,7 +235,28 @@ func ValidateTenant(t Tenant) error {
 		if len(group.Routes) == 0 {
 			return fmt.Errorf("route_group %d: must have at least one route", i)
 		}
+		for j, route := range group.Routes {
+			if err := validateRoute(j, route); err != nil {
+				return fmt.Errorf("route_group %d (%s): %w", i, group.Pattern, err)
+			}
+		}
 	}
 
+	return nil
+}
+
+func validateRoute(i int, route Route) error {
+	if route.Method == "" {
+		return fmt.Errorf("route %d: method is required", i)
+	}
+	if route.Pattern == "" {
+		return fmt.Errorf("route %d: pattern is required", i)
+	}
+	if route.Handler == "" && route.Backend == "" {
+		return fmt.Errorf("route %d: either handler or backend is required", i)
+	}
+	if route.Handler != "" && route.Backend != "" {
+		return fmt.Errorf("route %d: cannot specify both handler and backend", i)
+	}
 	return nil
 }

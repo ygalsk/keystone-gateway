@@ -1,7 +1,6 @@
 package lua
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -13,8 +12,7 @@ import (
 type LuaStatePool struct {
 	pool    chan *lua.State
 	factory func() *lua.State
-	mu      sync.Mutex
-	closed  bool
+	closed  atomic.Bool
 
 	// Metrics
 	poolHits     atomic.Int64 // States obtained from pool
@@ -42,12 +40,9 @@ func NewLuaStatePool(size int, factory func() *lua.State) *LuaStatePool {
 // Get retrieves a Lua state from the pool.
 // Blocks until a state is available. Never creates new states dynamically.
 func (p *LuaStatePool) Get() *lua.State {
-	p.mu.Lock()
-	if p.closed {
-		p.mu.Unlock()
+	if p.closed.Load() {
 		panic("state pool is closed")
 	}
-	p.mu.Unlock()
 
 	start := time.Now()
 
@@ -76,16 +71,20 @@ func (p *LuaStatePool) Get() *lua.State {
 func (p *LuaStatePool) Put(L *lua.State) {
 	p.activeStates.Add(-1)
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.closed {
+	if p.closed.Load() {
 		L.Close()
 		return
 	}
 
-	// Reset stack to clean state
 	L.SetTop(0)
+
+	// Recover handles the unlikely race where Close() runs between the closed
+	// check above and the channel send below (during graceful shutdown).
+	defer func() {
+		if recover() != nil {
+			L.Close()
+		}
+	}()
 
 	select {
 	case p.pool <- L:
@@ -131,14 +130,10 @@ func (p *LuaStatePool) Stats() PoolStats {
 
 // Close shuts down the state pool and closes all pooled Lua states.
 func (p *LuaStatePool) Close() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.closed {
-		return
+	if !p.closed.CompareAndSwap(false, true) {
+		return // Already closed
 	}
 
-	p.closed = true
 	close(p.pool)
 
 	// Close all pooled states
